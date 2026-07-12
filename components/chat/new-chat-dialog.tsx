@@ -5,7 +5,7 @@ import { Modal } from "./modal"
 import { Avatar } from "./avatar"
 import { fetchAllUsers, getOrCreateDirectConversation } from "@/lib/chat-actions"
 import type { Profile } from "@/lib/types"
-import { Search, Users } from "lucide-react"
+import { Search, Users, AlertCircle } from "lucide-react"
 
 type Props = {
   open: boolean
@@ -19,12 +19,22 @@ export function NewChatDialog({ open, currentUserId, onClose, onCreated, onNewGr
   const [users, setUsers] = useState<Profile[]>([])
   const [query, setQuery] = useState("")
   const [busy, setBusy] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (open) {
-      fetchAllUsers(currentUserId).then((u) => setUsers(u as Profile[]))
-      setQuery("")
-    }
+    if (!open) return
+    setQuery("")
+    setActionError(null)
+    setLoading(true)
+    setError(null)
+    fetchAllUsers(currentUserId)
+      .then((res) => {
+        setUsers(res.users)
+        setError(res.error)
+      })
+      .finally(() => setLoading(false))
   }, [open, currentUserId])
 
   const filtered = users.filter((u) =>
@@ -34,9 +44,12 @@ export function NewChatDialog({ open, currentUserId, onClose, onCreated, onNewGr
   const handleSelect = async (userId: string) => {
     if (busy) return
     setBusy(true)
+    setActionError(null)
     try {
       const convId = await getOrCreateDirectConversation(currentUserId, userId)
       onCreated(convId)
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "נכשל בפתיחת שיחה")
     } finally {
       setBusy(false)
     }
@@ -68,8 +81,32 @@ export function NewChatDialog({ open, currentUserId, onClose, onCreated, onNewGr
 
       <div className="px-5 py-2 text-xs font-medium text-[#008069]">אנשי קשר</div>
 
-      {filtered.length === 0 ? (
-        <div className="p-6 text-center text-sm text-[#667781]">לא נמצאו משתמשים</div>
+      {error && (
+        <div className="mx-4 mb-3 flex gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {actionError && (
+        <div className="mx-4 mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {actionError}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="p-6 text-center text-sm text-[#667781]">טוען אנשי קשר...</div>
+      ) : filtered.length === 0 ? (
+        <div className="space-y-2 p-6 text-center text-sm text-[#667781]">
+          <p>{query ? "לא נמצאו תוצאות" : "אין אנשי קשר עדיין"}</p>
+          {!query && !error && (
+            <p className="text-xs leading-relaxed">
+              צריך לפחות משתמש נוסף שנרשם למערכת.
+              <br />
+              הירשם עם אימייל שני, ואז חזור לכאן.
+            </p>
+          )}
+        </div>
       ) : (
         filtered.map((u) => (
           <button

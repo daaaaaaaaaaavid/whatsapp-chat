@@ -253,8 +253,23 @@ create policy "status_views_all"
   using (true)
   with check (true);
 
--- Realtime
-alter publication supabase_realtime add table public.messages;
-alter publication supabase_realtime add table public.message_reads;
-alter publication supabase_realtime add table public.conversation_participants;
-alter publication supabase_realtime add table public.conversations;
+-- Realtime (ignore if already added)
+do $$
+begin
+  begin
+    alter publication supabase_realtime add table public.messages;
+  exception when duplicate_object then null;
+  end;
+  begin
+    alter publication supabase_realtime add table public.message_reads;
+  exception when duplicate_object then null;
+  end;
+  begin
+    alter publication supabase_realtime add table public.conversation_participants;
+  exception when duplicate_object then null;
+  end;
+  begin
+    alter publication supabase_realtime add table public.conversations;
+  exception when duplicate_object then null;
+  end;
+end $$;

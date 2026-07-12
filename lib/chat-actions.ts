@@ -1,12 +1,13 @@
 "use client"
 
-import { createClient } from "@/lib/supabase/client"
+import { createClient, ensureSupabaseConfig } from "@/lib/supabase/client"
+import type { Profile } from "@/lib/types"
 
 // Find an existing 1-on-1 conversation between two users, or create one.
 export async function getOrCreateDirectConversation(currentUserId: string, otherUserId: string): Promise<string> {
+  await ensureSupabaseConfig()
   const supabase = createClient()
 
-  // conversations I'm in
   const { data: mine } = await supabase
     .from("conversation_participants")
     .select("conversation_id")
@@ -14,7 +15,6 @@ export async function getOrCreateDirectConversation(currentUserId: string, other
   const myConvIds = (mine ?? []).map((p) => p.conversation_id)
 
   if (myConvIds.length) {
-    // conversations the other user is in, intersect, that are not groups
     const { data: theirs } = await supabase
       .from("conversation_participants")
       .select("conversation_id")
@@ -32,18 +32,18 @@ export async function getOrCreateDirectConversation(currentUserId: string, other
     }
   }
 
-  // create new direct conversation
   const { data: conv, error } = await supabase
     .from("conversations")
     .insert({ is_group: false, created_by: currentUserId })
     .select()
     .single()
-  if (error || !conv) throw error ?? new Error("failed to create conversation")
+  if (error || !conv) throw error ?? new Error("נכשל ביצירת שיחה. ודא שהרצת את schema.sql ב־Supabase.")
 
-  await supabase.from("conversation_participants").insert([
+  const { error: partsError } = await supabase.from("conversation_participants").insert([
     { conversation_id: conv.id, user_id: currentUserId },
     { conversation_id: conv.id, user_id: otherUserId },
   ])
+  if (partsError) throw partsError
 
   return conv.id
 }
@@ -53,28 +53,59 @@ export async function createGroupConversation(
   name: string,
   memberIds: string[],
 ): Promise<string> {
+  await ensureSupabaseConfig()
   const supabase = createClient()
   const { data: conv, error } = await supabase
     .from("conversations")
     .insert({ is_group: true, name, created_by: currentUserId })
     .select()
     .single()
-  if (error || !conv) throw error ?? new Error("failed to create group")
+  if (error || !conv) throw error ?? new Error("נכשל ביצירת קבוצה. ודא שהרצת את schema.sql ב־Supabase.")
 
   const members = Array.from(new Set([currentUserId, ...memberIds]))
-  await supabase.from("conversation_participants").insert(
+  const { error: partsError } = await supabase.from("conversation_participants").insert(
     members.map((uid) => ({
       conversation_id: conv.id,
       user_id: uid,
       is_admin: uid === currentUserId,
     })),
   )
+  if (partsError) throw partsError
 
   return conv.id
 }
 
-export async function fetchAllUsers(currentUserId: string) {
-  const supabase = createClient()
-  const { data } = await supabase.from("profiles").select("*").neq("id", currentUserId).order("display_name")
-  return data ?? []
+export type FetchUsersResult = {
+  users: Profile[]
+  error: string | null
+}
+
+export async function fetchAllUsers(currentUserId: string): Promise<FetchUsersResult> {
+  try {
+    await ensureSupabaseConfig()
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("*")
+      .neq("id", currentUserId)
+      .order("display_name")
+
+    if (error) {
+      const msg = error.message.toLowerCase()
+      if (msg.includes("relation") || msg.includes("does not exist") || error.code === "42P01") {
+        return {
+          users: [],
+          error: "טבלת הפרופילים עדיין לא קיימת. הרץ את הקובץ supabase/schema.sql ב־SQL Editor של Supabase.",
+        }
+      }
+      return { users: [], error: error.message }
+    }
+
+    return { users: (data ?? []) as Profile[], error: null }
+  } catch (err) {
+    return {
+      users: [],
+      error: err instanceof Error ? err.message : "שגיאה בטעינת אנשי קשר",
+    }
+  }
 }

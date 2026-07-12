@@ -24,7 +24,7 @@ export function NewGroupDialog({ open, currentUserId, onClose, onCreated }: Prop
 
   useEffect(() => {
     if (open) {
-      fetchAllUsers(currentUserId).then((u) => setUsers(u as Profile[]))
+      fetchAllUsers(currentUserId).then((res) => setUsers(res.users))
       setQuery("")
       setSelected([])
       setStep("members")

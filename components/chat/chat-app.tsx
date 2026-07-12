@@ -36,16 +36,41 @@ export function ChatApp({ currentUser: initialUser }: Props) {
     [conversations, activeId],
   )
 
-  // Keep last_seen fresh while the app is open
+  // Ensure profile row exists + keep last_seen fresh
   useEffect(() => {
-    const supabase = createClient()
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { ensureProfileClient } = await import("@/lib/ensure-profile")
+        const updated = await ensureProfileClient({
+          id: currentUser.id,
+          email: currentUser.email,
+          display_name: currentUser.display_name,
+        })
+        if (!cancelled && updated) setCurrentUser(updated)
+      } catch {
+        // profiles table may not exist yet
+      }
+    })()
+
     const bump = () => {
-      supabase.from("profiles").update({ last_seen: new Date().toISOString() }).eq("id", currentUser.id).then(() => {})
+      try {
+        const supabase = createClient()
+        supabase
+          .from("profiles")
+          .update({ last_seen: new Date().toISOString() })
+          .eq("id", currentUser.id)
+          .then(() => {})
+      } catch {
+        // ignore
+      }
     }
-    bump()
     const id = window.setInterval(bump, 60_000)
-    return () => window.clearInterval(id)
-  }, [currentUser.id])
+    return () => {
+      cancelled = true
+      window.clearInterval(id)
+    }
+  }, [currentUser.id, currentUser.email, currentUser.display_name])
 
   const selectConversation = useCallback((conv: Conversation) => {
     setActiveId(conv.id)
