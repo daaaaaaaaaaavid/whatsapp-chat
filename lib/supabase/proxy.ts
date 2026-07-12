@@ -3,13 +3,22 @@ import { NextResponse, type NextRequest } from "next/server"
 import { getSupabaseEnv } from "@/lib/supabase/env"
 
 export async function updateSession(request: NextRequest) {
+  const pathname = request.nextUrl.pathname
+
+  // Public routes that must never be blocked by auth/env checks
+  if (
+    pathname.startsWith("/api/") ||
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/auth") ||
+    pathname === "/"
+  ) {
+    // Still refresh session cookies on /auth when possible, but never block.
+  }
+
   const { url, anonKey } = getSupabaseEnv()
 
-  // Missing env vars on Vercel cause MIDDLEWARE_INVOCATION_FAILED (500).
-  // Fail softly so the deploy still loads and shows auth/setup instead of crashing.
   if (!url || !anonKey) {
-    const pathname = request.nextUrl.pathname
-    if (pathname.startsWith("/auth")) {
+    if (pathname.startsWith("/auth") || pathname.startsWith("/api/") || pathname === "/") {
       return NextResponse.next({ request })
     }
     const redirectUrl = request.nextUrl.clone()
@@ -36,16 +45,15 @@ export async function updateSession(request: NextRequest) {
     },
   })
 
-  // Do not run code between createServerClient and supabase.auth.getUser()
   const {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const pathname = request.nextUrl.pathname
   const isAuthRoute = pathname.startsWith("/auth")
-  const isPublicAsset = pathname === "/"
+  const isPublic =
+    pathname === "/" || pathname.startsWith("/api/") || isAuthRoute
 
-  if (!user && !isAuthRoute && !isPublicAsset) {
+  if (!user && !isPublic) {
     const loginUrl = request.nextUrl.clone()
     loginUrl.pathname = "/auth/login"
     return NextResponse.redirect(loginUrl)

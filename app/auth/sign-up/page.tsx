@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { createClient } from "@/lib/supabase/client"
+import { createClient, ensureSupabaseConfig } from "@/lib/supabase/client"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
@@ -48,16 +48,9 @@ export default function SignUpPage() {
       return
     }
 
-    const supabaseUrl = typeof window !== "undefined" ? window.__SUPABASE_URL__ : process.env.NEXT_PUBLIC_SUPABASE_URL
-    const supabaseKey =
-      typeof window !== "undefined" ? window.__SUPABASE_ANON_KEY__ : process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-    if (!supabaseUrl || !supabaseKey) {
-      setError("חסרים מפתחות Supabase ב־Vercel. בדוק Environment Variables ו־Redeploy.")
-      return
-    }
-
     setIsLoading(true)
     try {
+      await ensureSupabaseConfig()
       const supabase = createClient()
       const { data, error: signUpError } = await supabase.auth.signUp({
         email: email.trim(),
@@ -73,7 +66,6 @@ export default function SignUpPage() {
         return
       }
 
-      // Supabase sometimes returns a fake user when email confirmations / duplicates are involved
       if (!data.user) {
         setError("לא נוצר משתמש. בדוק את הגדרות Authentication ב־Supabase.")
         return
