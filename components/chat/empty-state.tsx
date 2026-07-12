@@ -1,0 +1,21 @@
+import { Laptop, Lock } from "lucide-react"
+
+export function EmptyState() {
+  return (
+    <div className="flex h-full flex-col items-center justify-center border-b-[6px] border-[#25d366] bg-[#f0f2f5] text-center">
+      <div className="flex h-40 w-40 items-center justify-center rounded-full bg-[#daf1e4]">
+        <Laptop className="h-20 w-20 text-[#3fbb8d]" strokeWidth={1} />
+      </div>
+      <h1 className="mt-8 text-3xl font-light text-[#41525d]">WhatsApp Web</h1>
+      <p className="mt-4 max-w-md text-sm leading-relaxed text-[#667781]">
+        שלח וקבל הודעות ללא צורך בחיבור הטלפון.
+        <br />
+        בחר צ'אט מהרשימה כדי להתחיל לשוחח.
+      </p>
+      <p className="mt-16 flex items-center gap-1.5 text-xs text-[#8696a0]">
+        <Lock className="h-3 w-3" />
+        מוצפן מקצה לקצה
+      </p>
+    </div>
+  )
+}
