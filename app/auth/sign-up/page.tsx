@@ -8,6 +8,16 @@ import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { MessageCircle, Lock } from "lucide-react"
 
+function errorMessage(err: unknown): string {
+  if (err instanceof Error && err.message) return err.message
+  if (typeof err === "object" && err !== null && "message" in err) {
+    const msg = (err as { message?: unknown }).message
+    if (typeof msg === "string" && msg.trim()) return msg
+  }
+  if (typeof err === "string" && err.trim()) return err
+  return "אירעה שגיאה לא צפויה. נסה שוב."
+}
+
 export default function SignUpPage() {
   const [displayName, setDisplayName] = useState("")
   const [email, setEmail] = useState("")
@@ -19,30 +29,59 @@ export default function SignUpPage() {
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault()
-    const supabase = createClient()
-    setIsLoading(true)
     setError(null)
 
+    if (!displayName.trim()) {
+      setError("נא להזין שם תצוגה")
+      return
+    }
+    if (!email.trim()) {
+      setError("נא להזין כתובת אימייל")
+      return
+    }
+    if (password.length < 6) {
+      setError("הסיסמה חייבת להכיל לפחות 6 תווים")
+      return
+    }
     if (password !== repeatPassword) {
       setError("הסיסמאות אינן תואמות")
-      setIsLoading(false)
       return
     }
 
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    if (!supabaseUrl || !supabaseKey) {
+      setError("חסרים מפתחות Supabase ב־Vercel. בדוק Environment Variables ו־Redeploy.")
+      return
+    }
+
+    setIsLoading(true)
     try {
-      const { error } = await supabase.auth.signUp({
-        email,
+      const supabase = createClient()
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email: email.trim(),
         password,
         options: {
-          emailRedirectTo:
-            process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ?? `${window.location.origin}/auth/callback`,
-          data: { display_name: displayName },
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+          data: { display_name: displayName.trim() },
         },
       })
-      if (error) throw error
+
+      if (signUpError) {
+        setError(signUpError.message || "ההרשמה נכשלה")
+        return
+      }
+
+      // Supabase sometimes returns a fake user when email confirmations / duplicates are involved
+      if (!data.user) {
+        setError("לא נוצר משתמש. בדוק את הגדרות Authentication ב־Supabase.")
+        return
+      }
+
       router.push("/auth/sign-up-success")
+      router.refresh()
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "אירעה שגיאה")
+      setError(errorMessage(err))
     } finally {
       setIsLoading(false)
     }
@@ -60,7 +99,7 @@ export default function SignUpPage() {
           <h1 className="text-2xl font-normal text-[#111b21]">יצירת חשבון</h1>
           <p className="mt-1 text-sm text-[#667781]">הצטרף כדי להתחיל לשלוח הודעות</p>
 
-          <form onSubmit={handleSignUp} className="mt-6 flex flex-col gap-4">
+          <form onSubmit={handleSignUp} className="mt-6 flex flex-col gap-4" noValidate>
             <div className="flex flex-col gap-1.5">
               <label htmlFor="name" className="text-sm font-medium text-[#3b4a54]">
                 שם תצוגה
@@ -68,7 +107,7 @@ export default function SignUpPage() {
               <input
                 id="name"
                 type="text"
-                required
+                autoComplete="name"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 placeholder="השם שיראו אחרים"
@@ -82,7 +121,7 @@ export default function SignUpPage() {
               <input
                 id="email"
                 type="email"
-                required
+                autoComplete="email"
                 dir="ltr"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -92,12 +131,13 @@ export default function SignUpPage() {
             </div>
             <div className="flex flex-col gap-1.5">
               <label htmlFor="password" className="text-sm font-medium text-[#3b4a54]">
-                סיסמה
+                סיסמה (לפחות 6 תווים)
               </label>
               <input
                 id="password"
                 type="password"
-                required
+                autoComplete="new-password"
+                minLength={6}
                 dir="ltr"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -111,7 +151,8 @@ export default function SignUpPage() {
               <input
                 id="repeat-password"
                 type="password"
-                required
+                autoComplete="new-password"
+                minLength={6}
                 dir="ltr"
                 value={repeatPassword}
                 onChange={(e) => setRepeatPassword(e.target.value)}
@@ -120,7 +161,7 @@ export default function SignUpPage() {
             </div>
 
             {error && (
-              <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-600" role="alert">
+              <p className="rounded-md border border-red-200 bg-red-50 px-3 py-3 text-sm font-medium text-red-700" role="alert">
                 {error}
               </p>
             )}
