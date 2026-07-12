@@ -48,8 +48,9 @@ export default function SignUpPage() {
       return
     }
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    const supabaseUrl = typeof window !== "undefined" ? window.__SUPABASE_URL__ : process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseKey =
+      typeof window !== "undefined" ? window.__SUPABASE_ANON_KEY__ : process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
     if (!supabaseUrl || !supabaseKey) {
       setError("חסרים מפתחות Supabase ב־Vercel. בדוק Environment Variables ו־Redeploy.")
       return
