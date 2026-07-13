@@ -1,5 +1,6 @@
 "use client"
 
+import type React from "react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import type { RealtimeChannel } from "@supabase/supabase-js"
 import type { Conversation, Message, Profile } from "@/lib/types"
@@ -17,13 +18,24 @@ import { broadcastTyping, subscribeTyping } from "@/lib/typing"
 import { messagePreview } from "@/lib/conversation-display"
 import { Avatar } from "./avatar"
 import { MessageBubble } from "./message-bubble"
-import { MessageInput } from "./message-input"
+import { MessageInput, type MessageInputHandle } from "./message-input"
 import { MediaGallery, mediaItemsFromMessages } from "./media-gallery"
 import { ForwardDialog } from "./forward-dialog"
 import { convAvatarUrl, convDisplayName, isSelfConversation } from "@/lib/conversation-display"
 import { formatDateDivider, formatChatListTime } from "@/lib/format"
 import { parseCallSystemPayload } from "@/lib/call-system-message"
-import { ChevronDown, ChevronUp, ArrowRight, Search, MoreVertical, Lock, X, Phone, Video } from "lucide-react"
+import {
+  ChevronDown,
+  ChevronUp,
+  ArrowRight,
+  Search,
+  MoreVertical,
+  Lock,
+  X,
+  Phone,
+  Video,
+  ImagePlus,
+} from "lucide-react"
 
 type Props = {
   conversation: Conversation
@@ -75,9 +87,12 @@ export function ConversationView({
     useMessages(conversation.id, currentUser.id)
   const bottomRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const messageInputRef = useRef<MessageInputHandle>(null)
+  const dragDepthRef = useRef(0)
   const typingChannelRef = useRef<RealtimeChannel | null>(null)
   const typingClearRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
+  const [dragOver, setDragOver] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [searchHit, setSearchHit] = useState(0)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -327,8 +342,55 @@ export function ConversationView({
     }
   }
 
+  const onDragEnter = (e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes("Files") || searchOpen) return
+    e.preventDefault()
+    dragDepthRef.current += 1
+    setDragOver(true)
+  }
+
+  const onDragLeave = (e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes("Files")) return
+    e.preventDefault()
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1)
+    if (dragDepthRef.current === 0) setDragOver(false)
+  }
+
+  const onDragOver = (e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes("Files") || searchOpen) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = "copy"
+  }
+
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    dragDepthRef.current = 0
+    setDragOver(false)
+    if (searchOpen) return
+    const files = e.dataTransfer.files
+    if (files?.length) messageInputRef.current?.stageFiles(files)
+  }
+
   return (
-    <div className="flex h-full flex-col">
+    <div
+      className="relative flex h-full flex-col"
+      onDragEnter={onDragEnter}
+      onDragLeave={onDragLeave}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+    >
+      {dragOver && !searchOpen && (
+        <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center bg-[#00a884]/15 backdrop-blur-[1px]">
+          <div className="flex flex-col items-center gap-3 rounded-2xl bg-white px-10 py-8 shadow-xl ring-1 ring-black/5">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#00a884]/15 text-[#00a884]">
+              <ImagePlus className="h-8 w-8" />
+            </div>
+            <div className="text-lg font-medium text-[#111b21]">גרור לכאן כדי לצרף</div>
+            <div className="text-sm text-[#667781]">תמונות, סרטונים ומסמכים</div>
+          </div>
+        </div>
+      )}
+
       <header className="flex h-16 items-center gap-3 bg-[#f0f2f5] px-4">
         <button onClick={onBack} className="text-[#54656f] md:hidden" aria-label="חזרה">
           <ArrowRight className="h-6 w-6" />
@@ -568,6 +630,7 @@ export function ConversationView({
 
       {!searchOpen && (
         <MessageInput
+          ref={messageInputRef}
           conversationId={conversation.id}
           currentUserId={currentUser.id}
           onOptimistic={(msg) => {

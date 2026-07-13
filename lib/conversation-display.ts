@@ -37,10 +37,14 @@ export function messagePreview(msg: Message | null | undefined): string {
     return call ? callSystemLabel(call) : (msg.content ?? "הודעת מערכת")
   }
   switch (msg.type) {
-    case "image":
-      return "📷 תמונה"
-    case "video":
-      return "🎥 סרטון"
+    case "image": {
+      const caption = msg.content?.replace(/^↩ .+\n/, "").trim()
+      return caption ? `📷 ${caption}` : "📷 תמונה"
+    }
+    case "video": {
+      const caption = msg.content?.replace(/^↩ .+\n/, "").trim()
+      return caption ? `🎥 ${caption}` : "🎥 סרטון"
+    }
     case "audio":
       return "🎵 הודעה קולית"
     case "file":
