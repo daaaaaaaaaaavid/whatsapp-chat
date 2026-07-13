@@ -51,13 +51,15 @@ create table if not exists public.messages (
   created_at timestamptz not null default now(),
   deleted_at timestamptz,
   edited_at timestamptz,
-  reply_to_id uuid references public.messages (id) on delete set null
+  reply_to_id uuid references public.messages (id) on delete set null,
+  is_forwarded boolean not null default false
 );
 
--- Soft-delete / edit / reply support for existing DBs
+-- Soft-delete / edit / reply / forward support for existing DBs
 alter table public.messages add column if not exists deleted_at timestamptz;
 alter table public.messages add column if not exists edited_at timestamptz;
 alter table public.messages add column if not exists reply_to_id uuid references public.messages (id) on delete set null;
+alter table public.messages add column if not exists is_forwarded boolean not null default false;
 
 create index if not exists messages_conversation_created_idx
   on public.messages (conversation_id, created_at);

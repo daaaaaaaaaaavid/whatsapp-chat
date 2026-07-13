@@ -373,6 +373,7 @@ export function ConversationView({
             file_name: src.file_name,
             file_size: src.file_size,
             reply_to_id: null,
+            is_forwarded: true,
           })
           .select("*")
           .single()

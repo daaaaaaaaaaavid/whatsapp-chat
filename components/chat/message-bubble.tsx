@@ -536,6 +536,13 @@ export function MessageBubble({
           </div>
         )}
 
+        {message.is_forwarded && (
+          <div className="mb-0.5 flex items-center gap-1 text-[11px] italic text-[#667781]">
+            <Forward className="h-3 w-3 shrink-0" />
+            הועבר
+          </div>
+        )}
+
         {reply && (
           <div className="mb-1 rounded-md border-r-4 border-[#06cf9c] bg-black/[0.06] px-2 py-1.5 text-right">
             <div className="truncate text-xs font-medium text-[#06cf9c]">{reply.author}</div>
