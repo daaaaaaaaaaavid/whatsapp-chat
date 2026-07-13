@@ -2,7 +2,7 @@
 
 import { Lock } from "lucide-react"
 
-/** Full-screen WHACHAT splash while chats load. */
+/** Full-screen WhaChat splash while chats load. */
 export function LoadingScreen({ label = "טוען צ'אטים" }: { label?: string }) {
   return (
     <div className="fixed inset-0 z-[300] flex flex-col items-center justify-center bg-[#f0f2f5]">
@@ -20,7 +20,7 @@ export function LoadingScreen({ label = "טוען צ'אטים" }: { label?: stri
           </svg>
         </div>
 
-        <h1 className="text-[28px] font-light tracking-[0.12em] text-[#41525d]">WHACHAT</h1>
+        <h1 className="text-[28px] font-light tracking-wide text-[#41525d]">WhaChat</h1>
 
         <div className="mt-8 h-[3px] w-48 overflow-hidden rounded-full bg-[#e9edef]">
           <div className="wa-loading-bar h-full w-1/3 rounded-full bg-[#25d366]" />

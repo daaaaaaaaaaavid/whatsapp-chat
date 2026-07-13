@@ -2,7 +2,7 @@
 chcp 65001 >nul
 cd /d "%~dp0"
 
-echo Starting WHACHAT...
+echo Starting WhaChat...
 echo.
 
 where npm >nul 2>&1

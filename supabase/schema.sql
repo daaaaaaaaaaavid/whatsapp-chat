@@ -1,4 +1,4 @@
--- WHACHAT chat schema for Supabase
+-- WhaChat chat schema for Supabase
 -- Run this in: Supabase → SQL Editor → New query → Run
 
 -- Profiles (contacts list reads from here)

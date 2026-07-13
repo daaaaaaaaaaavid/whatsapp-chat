@@ -1,1 +1,1 @@
-# WHACHAT
+# WhaChat

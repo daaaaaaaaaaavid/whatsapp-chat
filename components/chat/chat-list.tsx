@@ -302,7 +302,7 @@ export function ChatList({
           <Laptop className="h-5 w-5" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium text-[#111b21]">הורד את WHACHAT ל-Windows</div>
+          <div className="text-sm font-medium text-[#111b21]">הורד את WhaChat ל-Windows</div>
           <div className="text-xs text-[#667781]">קבל התראות וגיבוי אוטומטי</div>
         </div>
         <span className="shrink-0 rounded-full bg-[#00a884] px-3 py-1.5 text-xs font-medium text-white">

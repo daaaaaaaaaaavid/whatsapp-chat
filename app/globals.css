@@ -47,7 +47,7 @@
 
 :root {
   color-scheme: light;
-  /* WHACHAT light theme */
+  /* WhaChat light theme */
   --background: oklch(0.96 0.005 240);
   --foreground: oklch(0.24 0.02 200);
   --card: oklch(1 0 0);
@@ -81,7 +81,7 @@
   --sidebar-border: oklch(0.92 0.005 220);
   --sidebar-ring: oklch(0.6 0.11 175);
 
-  /* WHACHAT tokens */
+  /* WhaChat tokens */
   --wa-teal: #00a884;
   --wa-teal-dark: #008069;
   --wa-header: #f0f2f5;
@@ -192,14 +192,14 @@
   }
 }
 
-/* WHACHAT chat area background */
+/* WhaChat chat area background */
 .wa-chat-bg {
   background-color: #efeae2;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260' viewBox='0 0 260 260'%3E%3Cg fill='%23d1c7b7' fill-opacity='0.35'%3E%3Cpath d='M40 30c8 0 12 6 12 12s-4 12-12 12-12-6-12-12 4-12 12-12zm90 40c6 0 10 5 10 10s-4 10-10 10-10-5-10-10 4-10 10-10zm70 20c5 0 8 4 8 8s-3 8-8 8-8-4-8-8 3-8 8-8zM30 120c7 0 11 5 11 11s-4 11-11 11-11-5-11-11 4-11 11-11zm140 50c6 0 10 5 10 10s-4 10-10 10-10-5-10-10 4-10 10-10zM80 180c5 0 9 4 9 9s-4 9-9 9-9-4-9-9 4-9 9-9zm100 40c7 0 11 5 11 11s-4 11-11 11-11-5-11-11 4-11 11-11z'/%3E%3Ccircle cx='200' cy='90' r='3'/%3E%3Ccircle cx='60' cy='200' r='2.5'/%3E%3Ccircle cx='180' cy='200' r='2'/%3E%3Cpath d='M110 20h14v2h-14zm20 80h10v2h-10zm-70 60h12v2H60zm130 30h8v2h-8z'/%3E%3C/g%3E%3C/svg%3E");
   background-size: 260px 260px;
 }
 
-/* Thin WHACHAT-style scrollbar */
+/* Thin WhaChat-style scrollbar */
 .wa-scroll::-webkit-scrollbar {
   width: 6px;
   height: 6px;
