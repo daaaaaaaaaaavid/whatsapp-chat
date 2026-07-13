@@ -236,8 +236,8 @@ export function ChatApp({ currentUser: initialUser }: Props) {
   }
 
   return (
-    <div className="flex h-svh w-full overflow-hidden bg-[#d1d7db]">
-      <div className="mx-auto flex h-full w-full max-w-[1600px] overflow-hidden bg-white shadow-xl">
+    <div className="flex h-svh w-svw max-w-[100vw] overflow-hidden bg-white">
+      <div className="flex h-full min-w-0 w-full flex-1 overflow-hidden">
         <NavRail
           active={navTab === "settings" ? "settings" : navTab === "status" ? "status" : navTab}
           currentUser={currentUser}
@@ -246,10 +246,10 @@ export function ChatApp({ currentUser: initialUser }: Props) {
           onOpenProfile={() => setProfileOpen(true)}
         />
 
-        {/* Middle pane */}
+        {/* Chat list pane */}
         <aside
-          className={`flex w-full flex-col border-l border-[#e9edef] md:w-[30%] md:min-w-[320px] md:max-w-[420px] ${
-            showChatPane ? "hidden md:flex" : "flex"
+          className={`flex min-w-0 flex-col border-l border-[#e9edef] bg-white ${
+            showChatPane ? "hidden md:flex md:w-[min(30%,420px)] md:min-w-[340px] md:max-w-[420px]" : "flex w-full md:w-[min(30%,420px)] md:min-w-[340px] md:max-w-[420px]"
           }`}
         >
           {navTab === "calls" ? (
@@ -279,17 +279,23 @@ export function ChatApp({ currentUser: initialUser }: Props) {
           )}
         </aside>
 
-        {/* Main pane */}
+        {/* Main pane — fills remaining width */}
         <main
-          className={`relative flex min-w-0 flex-1 ${showChatPane ? "flex" : "hidden md:flex"}`}
+          className={`relative min-h-0 min-w-0 flex-1 ${
+            showChatPane ? "flex" : "hidden md:flex"
+          }`}
         >
           {navTab === "communities" ? (
-            <CommunitiesPanel />
+            <div className="flex h-full min-w-0 flex-1 flex-col">
+              <CommunitiesPanel />
+            </div>
           ) : navTab === "calls" ? (
-            <EmptyState title="שיחות" subtitle="בחר שיחה מהרשימה או התחל שיחה מצ'אט." />
+            <div className="flex h-full min-w-0 flex-1 flex-col">
+              <EmptyState title="שיחות" subtitle="בחר שיחה מהרשימה או התחל שיחה מצ'אט." />
+            </div>
           ) : activeConversation ? (
-            <>
-              <div className={`min-w-0 flex-1 ${showInfo ? "hidden lg:block" : "block"}`}>
+            <div className="flex h-full min-w-0 flex-1">
+              <div className={`min-h-0 min-w-0 flex-1 ${showInfo ? "hidden lg:block" : "block"}`}>
                 <ConversationView
                   conversation={activeConversation}
                   currentUser={currentUser}
@@ -326,9 +332,11 @@ export function ChatApp({ currentUser: initialUser }: Props) {
                   setShowInfo(false)
                 }}
               />
-            </>
+            </div>
           ) : (
-            <EmptyState />
+            <div className="flex h-full min-w-0 flex-1 flex-col">
+              <EmptyState />
+            </div>
           )}
         </main>
       </div>
