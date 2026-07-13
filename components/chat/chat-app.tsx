@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useConversations } from "@/lib/use-conversations"
@@ -10,6 +10,7 @@ import {
   saveChatPrefs,
   toggleArchived,
   toggleFavorite,
+  toggleMuted,
   togglePinned,
   type ChatPrefs,
 } from "@/lib/chat-prefs"
@@ -28,6 +29,12 @@ import { CommunitiesPanel } from "./communities-panel"
 import { CallOverlay } from "./call-overlay"
 import { useWebRtcCall } from "@/lib/use-webrtc-call"
 import { playIncomingMessageSound, unlockNotificationSound } from "@/lib/notification-sound"
+import {
+  ensureNotificationPermission,
+  showIncomingMessageNotification,
+} from "@/lib/browser-notifications"
+import { messagePreview } from "@/lib/conversation-display"
+import { convDisplayName } from "@/lib/conversation-display"
 
 type Props = {
   currentUser: Profile
@@ -46,6 +53,13 @@ export function ChatApp({ currentUser: initialUser }: Props) {
   const [statusOpen, setStatusOpen] = useState(false)
   const [navTab, setNavTab] = useState<NavTab>("chats")
   const [prefs, setPrefs] = useState<ChatPrefs>(() => loadChatPrefs(initialUser.id))
+  const [infoGalleryMessageId, setInfoGalleryMessageId] = useState<string | null>(null)
+  const prefsRef = useRef(prefs)
+  prefsRef.current = prefs
+  const activeIdRef = useRef(activeId)
+  activeIdRef.current = activeId
+  const conversationsRef = useRef(conversations)
+  conversationsRef.current = conversations
 
   const {
     phase,
@@ -81,9 +95,12 @@ export function ChatApp({ currentUser: initialUser }: Props) {
     setPrefs(loadChatPrefs(currentUser.id))
   }, [currentUser.id])
 
-  // Incoming message notification sound (any conversation except own messages)
+  // Incoming message sound + browser notifications
   useEffect(() => {
-    const unlock = () => unlockNotificationSound()
+    const unlock = () => {
+      unlockNotificationSound()
+      void ensureNotificationPermission()
+    }
     window.addEventListener("pointerdown", unlock, { once: true })
     window.addEventListener("keydown", unlock, { once: true })
 
@@ -97,7 +114,24 @@ export function ChatApp({ currentUser: initialUser }: Props) {
           const msg = payload.new as Message
           if (!msg || msg.sender_id === currentUser.id) return
           if (msg.type === "system") return
-          playIncomingMessageSound()
+
+          const mutedIds = prefsRef.current.muted
+          if (mutedIds.includes(msg.conversation_id)) return
+
+          const isActiveChat =
+            activeIdRef.current === msg.conversation_id && document.visibilityState === "visible"
+          if (!isActiveChat) {
+            playIncomingMessageSound()
+          }
+
+          const conv = conversationsRef.current.find((c) => c.id === msg.conversation_id)
+          const title = conv ? convDisplayName(conv, currentUser.id) : "הודעה חדשה"
+          showIncomingMessageNotification({
+            title,
+            body: messagePreview(msg),
+            tag: msg.conversation_id,
+            onClick: () => setActiveId(msg.conversation_id),
+          })
         },
       )
       .subscribe()
@@ -255,6 +289,9 @@ export function ChatApp({ currentUser: initialUser }: Props) {
                 <ConversationView
                   conversation={activeConversation}
                   currentUser={currentUser}
+                  conversations={conversations}
+                  prefs={prefs}
+                  onPrefsChange={updatePrefs}
                   onBack={() => {
                     setActiveId(null)
                     setShowInfo(false)
@@ -265,6 +302,8 @@ export function ChatApp({ currentUser: initialUser }: Props) {
                   onToggleFavorite={() => updatePrefs(toggleFavorite(prefs, activeConversation.id))}
                   isArchived={prefs.archived.includes(activeConversation.id)}
                   isFavorite={prefs.favorites.includes(activeConversation.id)}
+                  initialGalleryMessageId={infoGalleryMessageId}
+                  onGalleryOpened={() => setInfoGalleryMessageId(null)}
                 />
               </div>
               <ConversationInfo
@@ -274,8 +313,14 @@ export function ChatApp({ currentUser: initialUser }: Props) {
                 onClose={() => setShowInfo(false)}
                 onToggleArchive={() => updatePrefs(toggleArchived(prefs, activeConversation.id))}
                 onToggleFavorite={() => updatePrefs(toggleFavorite(prefs, activeConversation.id))}
+                onToggleMute={() => updatePrefs(toggleMuted(prefs, activeConversation.id))}
                 isArchived={prefs.archived.includes(activeConversation.id)}
                 isFavorite={prefs.favorites.includes(activeConversation.id)}
+                isMuted={prefs.muted.includes(activeConversation.id)}
+                onOpenMedia={(messageId) => {
+                  setInfoGalleryMessageId(messageId)
+                  setShowInfo(false)
+                }}
               />
             </>
           ) : (

@@ -1,9 +1,12 @@
 "use client"
 
+import { useMemo, useState } from "react"
 import type { Conversation, Profile } from "@/lib/types"
+import { useMessages } from "@/lib/use-messages"
 import { Avatar } from "./avatar"
 import { convAvatarUrl, convDisplayName } from "@/lib/conversation-display"
-import { X, Bell, Ban, Trash2, Users, Archive, Star } from "lucide-react"
+import { mediaItemsFromMessages, type GalleryItem } from "./media-gallery"
+import { X, Bell, BellOff, Ban, Trash2, Users, Archive, Star, ImageIcon } from "lucide-react"
 
 type Props = {
   open: boolean
@@ -12,8 +15,11 @@ type Props = {
   onClose: () => void
   onToggleArchive?: () => void
   onToggleFavorite?: () => void
+  onToggleMute?: () => void
   isArchived?: boolean
   isFavorite?: boolean
+  isMuted?: boolean
+  onOpenMedia?: (messageId: string) => void
 }
 
 export function ConversationInfo({
@@ -23,15 +29,27 @@ export function ConversationInfo({
   onClose,
   onToggleArchive,
   onToggleFavorite,
+  onToggleMute,
   isArchived,
   isFavorite,
+  isMuted,
+  onOpenMedia,
 }: Props) {
-  if (!open) return null
+  const [mediaTab, setMediaTab] = useState<"all" | "image" | "video" | "file">("all")
+  const { messages } = useMessages(open ? conversation.id : null, currentUser.id)
 
   const name = convDisplayName(conversation, currentUser.id)
   const avatar = convAvatarUrl(conversation, currentUser.id)
   const others = (conversation.participants ?? []).filter((p) => p.user_id !== currentUser.id)
   const other = others[0]?.profile
+
+  const mediaItems = useMemo(() => mediaItemsFromMessages(messages), [messages])
+  const filteredMedia = useMemo(() => {
+    if (mediaTab === "all") return mediaItems
+    return mediaItems.filter((m) => m.type === mediaTab)
+  }, [mediaItems, mediaTab])
+
+  if (!open) return null
 
   return (
     <aside className="absolute inset-y-0 left-0 z-30 flex w-full max-w-md flex-col border-r border-[#e9edef] bg-white shadow-xl md:relative md:inset-auto md:z-auto md:w-[360px] md:shrink-0 md:shadow-none">
@@ -98,6 +116,62 @@ export function ConversationInfo({
         )}
 
         <div className="mt-2 bg-white shadow-sm">
+          <div className="flex items-center gap-2 px-6 py-3 text-sm text-[#008069]">
+            <ImageIcon className="h-4 w-4" />
+            מדיה, קישורים ומסמכים
+            <span className="mr-auto text-[#667781]">{mediaItems.length}</span>
+          </div>
+          <div className="flex gap-1 px-4 pb-2">
+            {(
+              [
+                ["all", "הכל"],
+                ["image", "תמונות"],
+                ["video", "סרטונים"],
+                ["file", "קבצים"],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setMediaTab(id)}
+                className={`rounded-full px-3 py-1 text-xs ${
+                  mediaTab === id ? "bg-[#e7fce3] text-[#008069]" : "bg-[#f0f2f5] text-[#54656f]"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {filteredMedia.length === 0 ? (
+            <p className="px-6 pb-4 text-sm text-[#667781]">אין מדיה עדיין</p>
+          ) : (
+            <div className="grid grid-cols-3 gap-0.5 px-0.5 pb-2">
+              {filteredMedia.slice(0, 24).map((item: GalleryItem) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => {
+                    onOpenMedia?.(item.id)
+                    onClose()
+                  }}
+                  className="relative aspect-square overflow-hidden bg-[#e9edef]"
+                >
+                  {item.type === "image" ? (
+                    <img src={item.url} alt="" className="h-full w-full object-cover" />
+                  ) : item.type === "video" ? (
+                    <video src={item.url} muted preload="metadata" className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-xs text-[#54656f]">
+                      קובץ
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="mt-2 bg-white shadow-sm">
           {onToggleFavorite && (
             <button
               type="button"
@@ -118,13 +192,20 @@ export function ConversationInfo({
               {isArchived ? "הוצא מארכיון" : "העבר לארכיון"}
             </button>
           )}
-          <button
-            type="button"
-            className="flex w-full items-center gap-4 px-6 py-4 text-right text-[#111b21] transition hover:bg-[#f5f6f6]"
-          >
-            <Bell className="h-5 w-5 text-[#54656f]" />
-            השתקת התראות
-          </button>
+          {onToggleMute && (
+            <button
+              type="button"
+              onClick={onToggleMute}
+              className="flex w-full items-center gap-4 px-6 py-4 text-right text-[#111b21] transition hover:bg-[#f5f6f6]"
+            >
+              {isMuted ? (
+                <BellOff className="h-5 w-5 text-[#54656f]" />
+              ) : (
+                <Bell className="h-5 w-5 text-[#54656f]" />
+              )}
+              {isMuted ? "ביטול השתקת התראות" : "השתקת התראות"}
+            </button>
+          )}
           <button
             type="button"
             className="flex w-full items-center gap-4 px-6 py-4 text-right text-[#ea0038] transition hover:bg-[#f5f6f6]"

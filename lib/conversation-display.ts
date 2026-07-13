@@ -21,6 +21,10 @@ export function otherParticipantId(conv: Conversation, currentUserId: string): s
 export function messagePreview(msg: Message | null | undefined): string {
   if (!msg) return "אין הודעות עדיין"
   if (msg.deleted_at) return "ההודעה נמחקה"
+  const call = parseCallSystemPayload(msg.content)
+  if (call || msg.type === "system") {
+    return call ? callSystemLabel(call) : (msg.content ?? "הודעת מערכת")
+  }
   switch (msg.type) {
     case "image":
       return "📷 תמונה"
@@ -30,10 +34,6 @@ export function messagePreview(msg: Message | null | undefined): string {
       return "🎵 הודעה קולית"
     case "file":
       return "📎 " + (msg.file_name ?? "קובץ")
-    case "system": {
-      const payload = parseCallSystemPayload(msg.content)
-      return payload ? callSystemLabel(payload) : (msg.content ?? "הודעת מערכת")
-    }
     default:
       return msg.content ?? ""
   }

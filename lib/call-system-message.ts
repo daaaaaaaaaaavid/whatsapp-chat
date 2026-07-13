@@ -50,6 +50,7 @@ export async function insertCallSystemMessage(opts: {
     ...(typeof opts.durationSec === "number" ? { durationSec: opts.durationSec } : {}),
   }
 
+  const label = callSystemLabel(payload)
   const supabase = createClient()
   const { error } = await supabase.from("messages").insert({
     conversation_id: opts.conversationId,
@@ -59,12 +60,20 @@ export async function insertCallSystemMessage(opts: {
   })
 
   if (error) {
-    // Fallback if migration not applied yet — store as plain text
-    await supabase.from("messages").insert({
+    // Fallback if migration not applied — still store JSON so UI can parse, with text type
+    const { error: err2 } = await supabase.from("messages").insert({
       conversation_id: opts.conversationId,
       sender_id: opts.senderId,
       type: "text",
-      content: callSystemLabel(payload),
+      content: JSON.stringify(payload),
     })
+    if (err2) {
+      await supabase.from("messages").insert({
+        conversation_id: opts.conversationId,
+        sender_id: opts.senderId,
+        type: "text",
+        content: label,
+      })
+    }
   }
 }

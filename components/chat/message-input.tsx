@@ -5,6 +5,7 @@ import type React from "react"
 import { useRef, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import type { Message, MessageType } from "@/lib/types"
+import { parseCallSystemPayload, callSystemLabel } from "@/lib/call-system-message"
 import { Plus, SendHorizontal, Smile, X, ImageIcon, FileText, Mic, Reply } from "lucide-react"
 
 type Props = {
@@ -14,16 +15,19 @@ type Props = {
   replyTo?: Message | null
   replyAuthor?: string | null
   onCancelReply?: () => void
+  onTyping?: (typing: boolean) => void
 }
 
 const EMOJIS = ["😀", "😂", "😍", "🥰", "😎", "🤔", "😢", "😡", "👍", "🙏", "❤️", "🔥", "🎉", "💯", "😴", "🤗"]
 
 function replyPreview(message: Message) {
-  if (message.content) return message.content
   if (message.type === "image") return "תמונה"
   if (message.type === "video") return "סרטון"
   if (message.type === "audio") return "הודעה קולית"
   if (message.type === "file") return message.file_name ?? "קובץ"
+  const call = parseCallSystemPayload(message.content)
+  if (call) return callSystemLabel(call)
+  if (message.content) return message.content
   return "הודעה"
 }
 
@@ -34,6 +38,7 @@ export function MessageInput({
   replyTo,
   replyAuthor,
   onCancelReply,
+  onTyping,
 }: Props) {
   const [text, setText] = useState("")
   const [sending, setSending] = useState(false)
@@ -315,11 +320,16 @@ export function MessageInput({
 
         <input
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value)
+            onTyping?.(e.target.value.trim().length > 0)
+          }}
+          onBlur={() => onTyping?.(false)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               if (e.nativeEvent.isComposing) return
               e.preventDefault()
+              onTyping?.(false)
               void handleSendText()
             }
           }}

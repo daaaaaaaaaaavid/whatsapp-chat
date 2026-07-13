@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type MouseEvent } from "react"
 import type { Message, Participant } from "@/lib/types"
 import { formatTime, formatFileSize, avatarColor } from "@/lib/format"
 import { callSystemLabel, parseCallSystemPayload } from "@/lib/call-system-message"
+import { extractUrls, highlightQuery, parseReplyContent, splitTextWithLinks } from "@/lib/message-content"
 import { MessageTicks } from "./message-ticks"
 import { VoiceMessage } from "./voice-message"
 import { resolveMediaKind } from "./media-gallery"
@@ -27,6 +28,7 @@ import {
   Star,
   ThumbsDown,
   Plus,
+  EyeOff,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -39,16 +41,25 @@ type Props = {
   showSenderName: boolean
   participants: Participant[]
   totalOthers: number
-  onDelete?: () => void
+  onDeleteForEveryone?: () => void
+  onDeleteForMe?: () => void
   onReply?: () => void
+  onForward?: () => void
+  onToggleStar?: () => void
+  onTogglePin?: () => void
+  onReaction?: (emoji: string | null) => void
   onOpenMedia?: (messageId: string) => void
   currentUserAvatarUrl?: string | null
   currentUserName?: string | null
+  reaction?: string | null
+  isStarred?: boolean
+  isPinned?: boolean
+  searchQuery?: string
 }
 
 function SystemCallMessage({ message }: { message: Message }) {
   const payload = parseCallSystemPayload(message.content)
-  const label = payload ? callSystemLabel(payload) : (message.content ?? "הודעת מערכת")
+  const label = payload ? callSystemLabel(payload) : "הודעת מערכת"
   const event = payload?.event
   const isVideo = payload?.video
 
@@ -83,11 +94,84 @@ function SystemCallMessage({ message }: { message: Message }) {
   )
 }
 
+function MessageText({
+  text,
+  searchQuery,
+}: {
+  text: string
+  searchQuery?: string
+}) {
+  const parts = splitTextWithLinks(text)
+  return (
+    <span className="whitespace-pre-wrap break-words text-[15px] leading-[19px] text-[#111b21]">
+      {parts.map((p, i) => {
+        if (p.type === "link") {
+          return (
+            <a
+              key={i}
+              href={p.value}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[#027eb5] underline underline-offset-2"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {p.value}
+            </a>
+          )
+        }
+        if (!searchQuery?.trim()) return <span key={i}>{p.value}</span>
+        return (
+          <span key={i}>
+            {highlightQuery(p.value, searchQuery).map((h, j) =>
+              h.hit ? (
+                <mark key={j} className="rounded-sm bg-[#f6e59c] px-0.5 text-inherit">
+                  {h.text}
+                </mark>
+              ) : (
+                <span key={j}>{h.text}</span>
+              ),
+            )}
+          </span>
+        )
+      })}
+    </span>
+  )
+}
+
+function LinkPreview({ url }: { url: string }) {
+  let host = url
+  try {
+    host = new URL(url).hostname.replace(/^www\./, "")
+  } catch {
+    // keep raw
+  }
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="mb-1 mt-1 block overflow-hidden rounded-md border border-black/10 bg-black/[0.03] text-right transition hover:bg-black/[0.06]"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="border-r-4 border-[#00a884] px-3 py-2">
+        <div className="truncate text-xs font-medium text-[#027eb5]" dir="ltr">
+          {host}
+        </div>
+        <div className="truncate text-[13px] text-[#667781]" dir="ltr">
+          {url}
+        </div>
+      </div>
+    </a>
+  )
+}
+
 function copyMessageText(message: Message) {
+  const reply = parseReplyContent(message.content)
+  const body = reply?.body ?? message.content
   const parts: string[] = []
-  if (message.content) parts.push(message.content)
+  if (body) parts.push(body)
   if (message.file_name) parts.push(message.file_name)
-  if (message.file_url && !message.content && !message.file_name) parts.push(message.file_url)
+  if (message.file_url && !body && !message.file_name) parts.push(message.file_url)
   const text = parts.join("\n").trim()
   if (!text) return
   void navigator.clipboard.writeText(text)
@@ -100,18 +184,30 @@ export function MessageBubble({
   showSenderName,
   participants,
   totalOthers,
-  onDelete,
+  onDeleteForEveryone,
+  onDeleteForMe,
   onReply,
+  onForward,
+  onToggleStar,
+  onTogglePin,
+  onReaction,
   onOpenMedia,
   currentUserAvatarUrl,
   currentUserName,
+  reaction: reactionProp,
+  isStarred,
+  isPinned,
+  searchQuery,
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false)
-  const [reaction, setReaction] = useState<string | null>(null)
   const [showMoreEmoji, setShowMoreEmoji] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const senderProfile = participants.find((p) => p.user_id === message.sender_id)?.profile
   const senderName = senderProfile?.display_name ?? senderProfile?.email ?? "משתמש"
+
+  const reaction = reactionProp ?? null
+  const callPayload = parseCallSystemPayload(message.content)
 
   const readCount = (message.reads ?? []).filter((r) => r.user_id !== message.sender_id).length
   let status: "sent" | "delivered" | "read" = "sent"
@@ -123,17 +219,17 @@ export function MessageBubble({
       if (e.key === "Escape") {
         setMenuOpen(false)
         setShowMoreEmoji(false)
+        setConfirmDelete(false)
       }
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
   }, [menuOpen])
 
-  if (message.type === "system") {
+  if (message.type === "system" || callPayload) {
     return <SystemCallMessage message={message} />
   }
 
-  // direction:ltr so left/right are physical: mine=left, theirs=right
   if (message.deleted_at) {
     return (
       <div className={cn("flex px-2", isMine ? "justify-start" : "justify-end")} dir="ltr">
@@ -167,25 +263,32 @@ export function MessageBubble({
     ? resolveMediaKind(message.type, message.file_name, message.file_url)
     : null
 
+  const reply = parseReplyContent(message.content)
+  const bodyText = reply?.body ?? message.content
+  const urls = bodyText ? extractUrls(bodyText) : []
+
   const openMenu = () => {
     setShowMoreEmoji(false)
+    setConfirmDelete(false)
     setMenuOpen(true)
   }
 
   const closeMenu = () => {
     setMenuOpen(false)
     setShowMoreEmoji(false)
+    setConfirmDelete(false)
   }
 
   const pickReaction = (emoji: string) => {
-    setReaction((prev) => (prev === emoji ? null : emoji))
+    const next = reaction === emoji ? null : emoji
+    onReaction?.(next)
     closeMenu()
   }
 
   const menuItems = [
     {
       id: "reply",
-      label: "תגובה",
+      label: "תשובה",
       icon: Reply,
       onClick: () => {
         closeMenu()
@@ -211,19 +314,28 @@ export function MessageBubble({
       id: "forward",
       label: "העברה",
       icon: Forward,
-      onClick: closeMenu,
+      onClick: () => {
+        closeMenu()
+        onForward?.()
+      },
     },
     {
       id: "pin",
-      label: "הצמדה",
+      label: isPinned ? "ביטול הצמדה" : "הצמדה",
       icon: Pin,
-      onClick: closeMenu,
+      onClick: () => {
+        closeMenu()
+        onTogglePin?.()
+      },
     },
     {
       id: "star",
-      label: "סימון בכוכב",
+      label: isStarred ? "הסר כוכב" : "סימון בכוכב",
       icon: Star,
-      onClick: closeMenu,
+      onClick: () => {
+        closeMenu()
+        onToggleStar?.()
+      },
     },
   ] as const
 
@@ -234,6 +346,7 @@ export function MessageBubble({
           "relative my-0.5 max-w-[65%] rounded-lg px-2.5 py-1.5 shadow-sm",
           isMine ? "bubble-tail-out rounded-tl-none bg-[#d9fdd3]" : "bubble-tail-in rounded-tr-none bg-white",
           menuOpen && "z-20",
+          isPinned && "ring-1 ring-[#00a884]/40",
         )}
         dir="rtl"
         onContextMenu={(e) => {
@@ -244,6 +357,13 @@ export function MessageBubble({
         {isGroup && !isMine && showSenderName && (
           <div className="mb-0.5 text-xs font-medium" style={{ color: avatarColor(senderName) }}>
             {senderName}
+          </div>
+        )}
+
+        {reply && (
+          <div className="mb-1 rounded-md border-r-4 border-[#06cf9c] bg-black/[0.06] px-2 py-1.5 text-right">
+            <div className="truncate text-xs font-medium text-[#06cf9c]">{reply.author}</div>
+            <div className="truncate text-[12px] text-[#667781]">{reply.preview || "הודעה"}</div>
           </div>
         )}
 
@@ -305,20 +425,24 @@ export function MessageBubble({
             </div>
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm text-[#111b21]">{message.file_name}</div>
-              <div className="text-xs text-[#667781]">{message.file_size ? formatFileSize(message.file_size) : ""}</div>
+              <div className="text-xs text-[#667781]">
+                {message.file_size ? formatFileSize(message.file_size) : ""}
+              </div>
             </div>
             <Download className="h-4 w-4 shrink-0 text-[#667781]" />
           </button>
         )}
 
-        {message.content && message.type !== "audio" && (
-          <span className="whitespace-pre-wrap break-words text-[15px] leading-[19px] text-[#111b21]">
-            {message.content}
-          </span>
+        {bodyText && message.type !== "audio" && (
+          <MessageText text={bodyText} searchQuery={searchQuery} />
         )}
+
+        {urls[0] && message.type === "text" && <LinkPreview url={urls[0]} />}
 
         {message.type !== "audio" && (
           <span className="float-right ml-2 mt-1 flex items-center gap-1 text-[11px] text-[#667781]" dir="ltr">
+            {isStarred && <Star className="h-3 w-3 fill-[#eab308] text-[#eab308]" />}
+            {isPinned && <Pin className="h-3 w-3 text-[#00a884]" />}
             {formatTime(message.created_at)}
             {isMine && <MessageTicks status={status} />}
           </span>
@@ -360,7 +484,6 @@ export function MessageBubble({
             )}
             dir="rtl"
           >
-            {/* Reaction bar */}
             <div className="flex items-center gap-0.5 rounded-full bg-white px-1.5 py-1 shadow-lg ring-1 ring-black/5">
               <button
                 type="button"
@@ -376,7 +499,7 @@ export function MessageBubble({
                   type="button"
                   onClick={() => pickReaction(emoji)}
                   className={cn(
-                    "flex h-8 w-8 items-center justify-center rounded-full text-lg transition hover:bg-[#f0f2f5] hover:scale-110",
+                    "flex h-8 w-8 items-center justify-center rounded-full text-lg transition hover:scale-110 hover:bg-[#f0f2f5]",
                     reaction === emoji && "bg-[#e7fce3]",
                   )}
                 >
@@ -402,8 +525,7 @@ export function MessageBubble({
               </div>
             )}
 
-            {/* Context menu */}
-            <div className="min-w-[200px] overflow-hidden rounded-xl bg-white py-1.5 shadow-lg ring-1 ring-black/5">
+            <div className="min-w-[220px] overflow-hidden rounded-xl bg-white py-1.5 shadow-lg ring-1 ring-black/5">
               {menuItems.map((item) => (
                 <button
                   key={item.id}
@@ -412,7 +534,14 @@ export function MessageBubble({
                   onClick={item.onClick}
                 >
                   <span>{item.label}</span>
-                  <item.icon className="h-[18px] w-[18px] shrink-0 text-[#54656f]" strokeWidth={1.75} />
+                  <item.icon
+                    className={cn(
+                      "h-[18px] w-[18px] shrink-0 text-[#54656f]",
+                      item.id === "star" && isStarred && "fill-[#eab308] text-[#eab308]",
+                      item.id === "pin" && isPinned && "text-[#00a884]",
+                    )}
+                    strokeWidth={1.75}
+                  />
                 </button>
               ))}
 
@@ -427,18 +556,43 @@ export function MessageBubble({
                 <ThumbsDown className="h-[18px] w-[18px] shrink-0 text-[#54656f]" strokeWidth={1.75} />
               </button>
 
-              {onDelete && (
+              {onDeleteForMe && (
                 <button
                   type="button"
                   className="flex w-full items-center justify-between gap-6 px-4 py-2.5 text-[15px] text-[#111b21] transition hover:bg-[#f5f6f6]"
                   onClick={() => {
                     closeMenu()
-                    onDelete()
+                    onDeleteForMe()
                   }}
                 >
-                  <span>מחיקה</span>
-                  <Trash2 className="h-[18px] w-[18px] shrink-0 text-[#54656f]" strokeWidth={1.75} />
+                  <span>מחק אצלי</span>
+                  <EyeOff className="h-[18px] w-[18px] shrink-0 text-[#54656f]" strokeWidth={1.75} />
                 </button>
+              )}
+
+              {onDeleteForEveryone && (
+                confirmDelete ? (
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between gap-6 px-4 py-2.5 text-[15px] text-[#ea0038] transition hover:bg-[#f5f6f6]"
+                    onClick={() => {
+                      closeMenu()
+                      onDeleteForEveryone()
+                    }}
+                  >
+                    <span>אשר מחיקה לכולם</span>
+                    <Trash2 className="h-[18px] w-[18px] shrink-0" strokeWidth={1.75} />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between gap-6 px-4 py-2.5 text-[15px] text-[#111b21] transition hover:bg-[#f5f6f6]"
+                    onClick={() => setConfirmDelete(true)}
+                  >
+                    <span>מחק לכולם</span>
+                    <Trash2 className="h-[18px] w-[18px] shrink-0 text-[#54656f]" strokeWidth={1.75} />
+                  </button>
+                )
               )}
             </div>
           </div>
