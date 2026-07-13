@@ -88,3 +88,12 @@ export type Status = {
   profile?: Profile
   viewed?: boolean
 }
+
+export type StatusReply = {
+  id: string
+  status_id: string
+  user_id: string
+  content: string
+  created_at: string
+  profile?: Profile
+}

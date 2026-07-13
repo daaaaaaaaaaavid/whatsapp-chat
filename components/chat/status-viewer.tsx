@@ -3,14 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Avatar } from "./avatar"
 import { createClient } from "@/lib/supabase/client"
-import { getOrCreateDirectConversation } from "@/lib/chat-actions"
-import type { Profile, Status } from "@/lib/types"
+import type { Profile, Status, StatusReply } from "@/lib/types"
 import { formatStatusTime } from "@/lib/format"
 import {
   ChevronLeft,
   ChevronRight,
+  MessageCircle,
   MoreVertical,
-  Paperclip,
   Pause,
   Play,
   SendHorizontal,
@@ -76,8 +75,11 @@ export function StatusViewer({
   const [showEmoji, setShowEmoji] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [replySent, setReplySent] = useState(false)
+  const [replies, setReplies] = useState<StatusReply[]>([])
+  const [showReplies, setShowReplies] = useState(false)
+  const [repliesLoading, setRepliesLoading] = useState(false)
 
-  const paused = userPaused || holding || Boolean(reply.trim()) || showEmoji
+  const paused = userPaused || holding || Boolean(reply.trim()) || showEmoji || showReplies
   const progressRef = useRef(0)
   const videoRef = useRef<HTMLVideoElement>(null)
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -92,6 +94,8 @@ export function StatusViewer({
     setShowEmoji(false)
     setMenuOpen(false)
     setReplySent(false)
+    setShowReplies(false)
+    setReplies([])
   }, [status?.id])
 
   useEffect(() => {
@@ -103,6 +107,33 @@ export function StatusViewer({
         .upsert({ status_id: status.id, viewer_id: currentUserId }, { onConflict: "status_id,viewer_id" })
     }
   }, [status, currentUserId])
+
+  const loadReplies = useCallback(async (statusId: string) => {
+    setRepliesLoading(true)
+    try {
+      const supabase = createClient()
+      const { data } = await supabase
+        .from("status_replies")
+        .select("*")
+        .eq("status_id", statusId)
+        .order("created_at", { ascending: true })
+      if (!data) {
+        setReplies([])
+        return
+      }
+      const uids = Array.from(new Set(data.map((r) => r.user_id)))
+      const { data: profiles } = await supabase.from("profiles").select("*").in("id", uids)
+      const pmap = new Map((profiles ?? []).map((p) => [p.id, p as Profile]))
+      setReplies(data.map((r) => ({ ...r, profile: pmap.get(r.user_id) })) as StatusReply[])
+    } finally {
+      setRepliesLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!status || !isOwn) return
+    void loadReplies(status.id)
+  }, [status?.id, isOwn, loadReplies])
 
   const goNext = useCallback(() => {
     if (index < group.statuses.length - 1) {
@@ -144,7 +175,13 @@ export function StatusViewer({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose()
+      if (e.key === "Escape") {
+        if (showReplies) {
+          setShowReplies(false)
+          return
+        }
+        onClose()
+      }
       if (e.key === "ArrowLeft") goNext()
       if (e.key === "ArrowRight") goPrev()
       if (e.key === " ") {
@@ -154,7 +191,7 @@ export function StatusViewer({
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [goNext, goPrev, onClose])
+  }, [goNext, goPrev, onClose, showReplies])
 
   useEffect(() => {
     const prev = document.body.style.overflow
@@ -174,21 +211,19 @@ export function StatusViewer({
 
   const sendReply = async () => {
     const trimmed = reply.trim()
-    if (!trimmed || sending || isOwn) return
+    if (!trimmed || sending || isOwn || !status) return
     setSending(true)
     try {
-      const conversationId = await getOrCreateDirectConversation(currentUserId, group.profile.id)
       const supabase = createClient()
-      await supabase.from("messages").insert({
-        conversation_id: conversationId,
-        sender_id: currentUserId,
+      const { error } = await supabase.from("status_replies").insert({
+        status_id: status.id,
+        user_id: currentUserId,
         content: trimmed,
-        type: "text",
       })
-      await supabase
-        .from("conversations")
-        .update({ updated_at: new Date().toISOString() })
-        .eq("id", conversationId)
+      if (error) {
+        console.error("status reply failed", error.message)
+        return
+      }
       setReply("")
       setReplySent(true)
       setShowEmoji(false)
@@ -438,11 +473,69 @@ export function StatusViewer({
           )}
         </div>
 
+        {/* Own status: view replies */}
+        {isOwn && (
+          <div className="absolute inset-x-0 bottom-0 z-30 bg-gradient-to-t from-black/70 to-transparent px-3 pb-4 pt-10">
+            {showReplies ? (
+              <div className="max-h-56 overflow-y-auto rounded-xl bg-[#1f2c34]/95 p-3" dir="rtl">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-sm font-medium text-white">תגובות ({replies.length})</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowReplies(false)}
+                    className="rounded-full p-1 text-white/80 hover:bg-white/10"
+                    aria-label="סגור תגובות"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                {repliesLoading ? (
+                  <div className="py-4 text-center text-sm text-white/70">טוען...</div>
+                ) : replies.length === 0 ? (
+                  <div className="py-4 text-center text-sm text-white/70">אין תגובות עדיין</div>
+                ) : (
+                  <ul className="space-y-2.5">
+                    {replies.map((r) => (
+                      <li key={r.id} className="flex items-start gap-2">
+                        <Avatar
+                          name={r.profile?.display_name}
+                          url={r.profile?.avatar_url}
+                          size={28}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-medium text-[#00a884]">
+                            {r.profile?.display_name ?? r.profile?.email ?? "משתמש"}
+                          </div>
+                          <div className="text-sm text-white whitespace-pre-wrap">{r.content}</div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowReplies(true)
+                  void loadReplies(status.id)
+                }}
+                className="flex w-full items-center justify-center gap-2 rounded-full bg-black/45 px-4 py-3 text-sm text-white transition hover:bg-black/55"
+              >
+                <MessageCircle className="h-4 w-4" />
+                {replies.length > 0 ? `תגובות (${replies.length})` : "אין תגובות עדיין"}
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Reply bar */}
         {!isOwn && (
           <div className="absolute inset-x-0 bottom-0 z-30 bg-gradient-to-t from-black/70 to-transparent px-3 pb-4 pt-10">
             {replySent ? (
-              <div className="rounded-full bg-black/45 px-4 py-3 text-center text-sm text-white">התגובה נשלחה</div>
+              <div className="rounded-full bg-black/45 px-4 py-3 text-center text-sm text-white">
+                התגובה נוספה לסטטוס
+              </div>
             ) : (
               <div className="relative flex items-center gap-2">
                 {showEmoji && (
@@ -467,7 +560,7 @@ export function StatusViewer({
                   disabled={!reply.trim() || sending}
                   onClick={() => void sendReply()}
                   className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white disabled:opacity-40"
-                  aria-label="שלח"
+                  aria-label="שלח תגובה"
                 >
                   <SendHorizontal className="h-6 w-6 -scale-x-100" />
                 </button>
@@ -481,7 +574,7 @@ export function StatusViewer({
                         void sendReply()
                       }
                     }}
-                    placeholder="כאן מקלידים תגובה..."
+                    placeholder="הגב לסטטוס..."
                     className="min-w-0 flex-1 bg-transparent px-2 py-2 text-[15px] text-white outline-none placeholder:text-white/70"
                     dir="rtl"
                   />
@@ -492,14 +585,6 @@ export function StatusViewer({
                     aria-label="אימוג'י"
                   >
                     <Smile className="h-5 w-5" />
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded-full p-2 text-white/90 hover:bg-white/10"
-                    aria-label="צרף"
-                    onClick={() => setShowEmoji(false)}
-                  >
-                    <Paperclip className="h-5 w-5" />
                   </button>
                 </div>
               </div>

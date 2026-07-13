@@ -80,6 +80,17 @@ create table if not exists public.status_views (
   primary key (status_id, viewer_id)
 );
 
+create table if not exists public.status_replies (
+  id uuid primary key default gen_random_uuid(),
+  status_id uuid not null references public.statuses (id) on delete cascade,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  content text not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists status_replies_status_id_idx
+  on public.status_replies (status_id, created_at);
+
 -- Auto-create profile when a user signs up
 create or replace function public.handle_new_user()
 returns trigger
@@ -125,6 +136,7 @@ alter table public.messages enable row level security;
 alter table public.message_reads enable row level security;
 alter table public.statuses enable row level security;
 alter table public.status_views enable row level security;
+alter table public.status_replies enable row level security;
 
 -- Helper: true if the other user shares at least one conversation with auth.uid()
 create or replace function public.is_known_contact(p_user_id uuid)
@@ -326,6 +338,40 @@ create policy "status_views_all"
   using (true)
   with check (true);
 
+drop policy if exists "status_replies_select" on public.status_replies;
+create policy "status_replies_select"
+  on public.status_replies for select
+  to authenticated
+  using (
+    exists (
+      select 1 from public.statuses s
+      where s.id = status_id
+        and s.expires_at > now()
+        and public.is_known_contact(s.user_id)
+    )
+  );
+
+drop policy if exists "status_replies_insert" on public.status_replies;
+create policy "status_replies_insert"
+  on public.status_replies for insert
+  to authenticated
+  with check (
+    auth.uid() = user_id
+    and exists (
+      select 1 from public.statuses s
+      where s.id = status_id
+        and s.expires_at > now()
+        and s.user_id <> auth.uid()
+        and public.is_known_contact(s.user_id)
+    )
+  );
+
+drop policy if exists "status_replies_delete_own" on public.status_replies;
+create policy "status_replies_delete_own"
+  on public.status_replies for delete
+  to authenticated
+  using (auth.uid() = user_id);
+
 -- Realtime (ignore if already added)
 do $$
 begin
@@ -343,6 +389,10 @@ begin
   end;
   begin
     alter publication supabase_realtime add table public.conversations;
+  exception when duplicate_object then null;
+  end;
+  begin
+    alter publication supabase_realtime add table public.status_replies;
   exception when duplicate_object then null;
   end;
 end $$;
