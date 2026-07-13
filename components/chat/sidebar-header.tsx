@@ -24,7 +24,7 @@ export function SidebarHeader({ onNewChat, onNewGroup, onOpenProfile, onLogout }
 
   return (
     <header className="flex h-[60px] items-center justify-between bg-white px-4 pt-1">
-      <h1 className="text-[22px] font-semibold tracking-tight text-[#00a884]">WhatsApp</h1>
+      <h1 className="text-[22px] font-semibold tracking-tight text-[#00a884]">WHACHAT</h1>
       <div className="flex items-center gap-1 text-[#54656f]">
         <button
           onClick={onNewChat}

@@ -1,4 +1,4 @@
--- WhatsApp-like chat schema for Supabase
+-- WHACHAT chat schema for Supabase
 -- Run this in: Supabase → SQL Editor → New query → Run
 
 -- Profiles (contacts list reads from here)
@@ -126,12 +126,52 @@ alter table public.message_reads enable row level security;
 alter table public.statuses enable row level security;
 alter table public.status_views enable row level security;
 
--- Profiles: everyone authenticated can read contacts; users update themselves
+-- Helper: true if the other user shares at least one conversation with auth.uid()
+create or replace function public.is_known_contact(p_user_id uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select p_user_id = auth.uid()
+    or exists (
+      select 1
+      from public.conversation_participants mine
+      join public.conversation_participants theirs
+        on mine.conversation_id = theirs.conversation_id
+      where mine.user_id = auth.uid()
+        and theirs.user_id = p_user_id
+    );
+$$;
+
+revoke all on function public.is_known_contact(uuid) from public;
+grant execute on function public.is_known_contact(uuid) to authenticated;
+
+-- Exact email lookup for starting a chat with someone who is not yet a contact
+create or replace function public.find_user_by_email(p_email text)
+returns setof public.profiles
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select p.*
+  from public.profiles p
+  where p.email is not null
+    and lower(trim(p.email)) = lower(trim(p_email))
+  limit 1;
+$$;
+
+revoke all on function public.find_user_by_email(text) from public;
+grant execute on function public.find_user_by_email(text) to authenticated;
+
+-- Profiles: own row + people you have interacted with (shared conversation)
 drop policy if exists "profiles_select_authenticated" on public.profiles;
 create policy "profiles_select_authenticated"
   on public.profiles for select
   to authenticated
-  using (true);
+  using (public.is_known_contact(id));
 
 drop policy if exists "profiles_update_own" on public.profiles;
 create policy "profiles_update_own"
@@ -236,12 +276,19 @@ create policy "messages_update_own"
   using (auth.uid() = sender_id)
   with check (auth.uid() = sender_id);
 
--- Reads
+-- Reads: only within conversations you belong to
 drop policy if exists "reads_select_participant" on public.message_reads;
 create policy "reads_select_participant"
   on public.message_reads for select
   to authenticated
-  using (true);
+  using (
+    exists (
+      select 1
+      from public.messages m
+      where m.id = message_id
+        and public.is_conversation_member(m.conversation_id)
+    )
+  );
 
 drop policy if exists "reads_upsert_own" on public.message_reads;
 create policy "reads_upsert_own"
@@ -256,12 +303,15 @@ create policy "reads_update_own"
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
 
--- Statuses
+-- Statuses: own + contacts only
 drop policy if exists "statuses_select_authenticated" on public.statuses;
 create policy "statuses_select_authenticated"
   on public.statuses for select
   to authenticated
-  using (expires_at > now());
+  using (
+    expires_at > now()
+    and public.is_known_contact(user_id)
+  );
 
 drop policy if exists "statuses_insert_own" on public.statuses;
 create policy "statuses_insert_own"

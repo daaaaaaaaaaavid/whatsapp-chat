@@ -4,9 +4,9 @@ import { useMemo, useState } from "react"
 import type { Conversation, Profile } from "@/lib/types"
 import { useMessages } from "@/lib/use-messages"
 import { Avatar } from "./avatar"
-import { convAvatarUrl, convDisplayName } from "@/lib/conversation-display"
+import { convAvatarUrl, convDisplayName, isSelfConversation } from "@/lib/conversation-display"
 import { mediaItemsFromMessages, type GalleryItem } from "./media-gallery"
-import { X, Bell, BellOff, Ban, Trash2, Users, Archive, Star, ImageIcon } from "lucide-react"
+import { X, Bell, BellOff, Ban, Trash2, Users, Archive, Star, ImageIcon, Pin } from "lucide-react"
 
 type Props = {
   open: boolean
@@ -16,9 +16,11 @@ type Props = {
   onToggleArchive?: () => void
   onToggleFavorite?: () => void
   onToggleMute?: () => void
+  onTogglePinned?: () => void
   isArchived?: boolean
   isFavorite?: boolean
   isMuted?: boolean
+  isPinned?: boolean
   onOpenMedia?: (messageId: string) => void
 }
 
@@ -30,14 +32,17 @@ export function ConversationInfo({
   onToggleArchive,
   onToggleFavorite,
   onToggleMute,
+  onTogglePinned,
   isArchived,
   isFavorite,
   isMuted,
+  isPinned,
   onOpenMedia,
 }: Props) {
   const [mediaTab, setMediaTab] = useState<"all" | "image" | "video" | "file">("all")
   const { messages } = useMessages(open ? conversation.id : null, currentUser.id)
 
+  const isSelf = isSelfConversation(conversation, currentUser.id)
   const name = convDisplayName(conversation, currentUser.id)
   const avatar = convAvatarUrl(conversation, currentUser.id)
   const others = (conversation.participants ?? []).filter((p) => p.user_id !== currentUser.id)
@@ -57,14 +62,17 @@ export function ConversationInfo({
         <button onClick={onClose} aria-label="סגור" className="rounded-full p-1 transition hover:bg-white/10">
           <X className="h-6 w-6" />
         </button>
-        <h2 className="text-lg font-medium">{conversation.is_group ? "פרטי קבוצה" : "פרטי איש קשר"}</h2>
+        <h2 className="text-lg font-medium">
+          {isSelf ? "פרטי השיחה" : conversation.is_group ? "פרטי קבוצה" : "פרטי איש קשר"}
+        </h2>
       </header>
 
       <div className="wa-scroll flex-1 overflow-y-auto bg-[#f0f2f5]">
         <div className="flex flex-col items-center bg-white px-6 py-8 shadow-sm">
-          <Avatar name={name} url={avatar} isGroup={conversation.is_group} size={200} />
+          <Avatar name={name} url={avatar} isGroup={conversation.is_group} isSelf={isSelf} size={200} />
           <h3 className="mt-4 text-2xl font-light text-[#111b21]">{name}</h3>
-          {!conversation.is_group && other?.email && (
+          {isSelf && <p className="mt-1 text-sm text-[#667781]">הודעות שמורות בשבילך בלבד</p>}
+          {!conversation.is_group && !isSelf && other?.email && (
             <p className="mt-1 text-sm text-[#667781]" dir="ltr">
               {other.email}
             </p>
@@ -76,7 +84,7 @@ export function ConversationInfo({
           )}
         </div>
 
-        {!conversation.is_group && (
+        {!conversation.is_group && !isSelf && (
           <div className="mt-2 bg-white px-6 py-4 shadow-sm">
             <div className="text-sm text-[#008069]">מידע</div>
             <p className="mt-1 text-[#111b21]">{other?.about ?? "זמין"}</p>
@@ -172,6 +180,16 @@ export function ConversationInfo({
         </div>
 
         <div className="mt-2 bg-white shadow-sm">
+          {!isSelf && onTogglePinned && (
+            <button
+              type="button"
+              onClick={onTogglePinned}
+              className="flex w-full items-center gap-4 px-6 py-4 text-right text-[#111b21] transition hover:bg-[#f5f6f6]"
+            >
+              <Pin className={`h-5 w-5 ${isPinned ? "text-[#00a884]" : "text-[#54656f]"}`} />
+              {isPinned ? "בטל נעיצה" : "נעץ צ'אט"}
+            </button>
+          )}
           {onToggleFavorite && (
             <button
               type="button"

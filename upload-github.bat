@@ -40,7 +40,7 @@ git status
 
 echo.
 set /p MSG="Commit message (or Enter for default): "
-if "%MSG%"=="" set MSG=Initial commit: WhatsApp chat app
+if "%MSG%"=="" set MSG=Initial commit: WHACHAT app
 
 git diff --cached --quiet
 if errorlevel 1 (

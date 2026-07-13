@@ -3,7 +3,7 @@ import { Analytics } from "@vercel/analytics/next"
 import "./globals.css"
 
 export const metadata: Metadata = {
-  title: "WhatsApp",
+  title: "WHACHAT",
   description: "פשוט. אמין. הודעות פרטיות.",
   generator: "v0.app",
 }

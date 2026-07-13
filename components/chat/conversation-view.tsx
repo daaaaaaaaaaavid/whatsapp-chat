@@ -20,7 +20,7 @@ import { MessageBubble } from "./message-bubble"
 import { MessageInput } from "./message-input"
 import { MediaGallery, mediaItemsFromMessages } from "./media-gallery"
 import { ForwardDialog } from "./forward-dialog"
-import { convAvatarUrl, convDisplayName } from "@/lib/conversation-display"
+import { convAvatarUrl, convDisplayName, isSelfConversation } from "@/lib/conversation-display"
 import { formatDateDivider, formatChatListTime } from "@/lib/format"
 import { parseCallSystemPayload } from "@/lib/call-system-message"
 import { ChevronDown, ChevronUp, ArrowRight, Search, MoreVertical, Lock, X, Phone, Video } from "lucide-react"
@@ -36,8 +36,10 @@ type Props = {
   onStartCall: (video: boolean) => void
   onToggleArchive: () => void
   onToggleFavorite: () => void
+  onTogglePinned: () => void
   isArchived: boolean
   isFavorite: boolean
+  isPinned: boolean
   initialGalleryMessageId?: string | null
   onGalleryOpened?: () => void
 }
@@ -58,8 +60,10 @@ export function ConversationView({
   onStartCall,
   onToggleArchive,
   onToggleFavorite,
+  onTogglePinned,
   isArchived,
   isFavorite,
+  isPinned,
   initialGalleryMessageId,
   onGalleryOpened,
 }: Props) {
@@ -80,6 +84,7 @@ export function ConversationView({
   const [typingUsers, setTypingUsers] = useState<Record<string, number>>({})
   const markedRef = useRef<string | null>(null)
 
+  const isSelf = isSelfConversation(conversation, currentUser.id)
   const otherParticipants = (conversation.participants ?? []).filter((p) => p.user_id !== currentUser.id)
   const totalOthers = otherParticipants.length
 
@@ -87,7 +92,7 @@ export function ConversationView({
   const avatar = convAvatarUrl(conversation, currentUser.id)
 
   const other = otherParticipants[0]?.profile
-  const online = !conversation.is_group && isOnline(other?.last_seen)
+  const online = !conversation.is_group && !isSelf && isOnline(other?.last_seen)
 
   const typingNames = useMemo(() => {
     const now = Date.now()
@@ -96,19 +101,21 @@ export function ConversationView({
       .map((p) => (p.user_id === currentUser.id ? "אתה" : p.profile?.display_name ?? "משתמש"))
   }, [typingUsers, otherParticipants, currentUser.id])
 
-  const subtitle = typingNames.length
-    ? typingNames.length === 1
-      ? `${typingNames[0]} מקליד/ה...`
-      : "מקלידים..."
-    : conversation.is_group
-      ? (conversation.participants ?? [])
-          .map((p) => (p.user_id === currentUser.id ? "אתה" : p.profile?.display_name ?? "משתמש"))
-          .join(", ")
-      : online
-        ? "מחובר/ת"
-        : other?.last_seen
-          ? `נראה לאחרונה ${formatChatListTime(other.last_seen)}`
-          : (other?.about ?? "זמין")
+  const subtitle = isSelf
+    ? "הודעות שמורות"
+    : typingNames.length
+      ? typingNames.length === 1
+        ? `${typingNames[0]} מקליד/ה...`
+        : "מקלידים..."
+      : conversation.is_group
+        ? (conversation.participants ?? [])
+            .map((p) => (p.user_id === currentUser.id ? "אתה" : p.profile?.display_name ?? "משתמש"))
+            .join(", ")
+        : online
+          ? "מחובר/ת"
+          : other?.last_seen
+            ? `נראה לאחרונה ${formatChatListTime(other.last_seen)}`
+            : (other?.about ?? "זמין")
 
   const visibleMessages = useMemo(
     () => messages.filter((m) => !prefs.hiddenMessages.includes(m.id)),
@@ -317,7 +324,7 @@ export function ConversationView({
           <ArrowRight className="h-6 w-6" />
         </button>
         <button onClick={onOpenInfo} className="flex min-w-0 flex-1 items-center gap-3 text-right">
-          <Avatar name={name} url={avatar} isGroup={conversation.is_group} size={40} />
+          <Avatar name={name} url={avatar} isGroup={conversation.is_group} isSelf={isSelf} size={40} />
           <div className="min-w-0">
             <div className="truncate font-medium text-[#111b21]">{name}</div>
             <div
@@ -330,20 +337,24 @@ export function ConversationView({
           </div>
         </button>
         <div className="relative flex items-center gap-0.5 text-[#54656f]">
-          <button
-            onClick={() => onStartCall(true)}
-            className="flex h-10 w-10 items-center justify-center rounded-full transition hover:bg-black/5"
-            aria-label="שיחת וידאו"
-          >
-            <Video className="h-5 w-5" />
-          </button>
-          <button
-            onClick={() => onStartCall(false)}
-            className="flex h-10 w-10 items-center justify-center rounded-full transition hover:bg-black/5"
-            aria-label="שיחה קולית"
-          >
-            <Phone className="h-5 w-5" />
-          </button>
+          {!isSelf && (
+            <>
+              <button
+                onClick={() => onStartCall(true)}
+                className="flex h-10 w-10 items-center justify-center rounded-full transition hover:bg-black/5"
+                aria-label="שיחת וידאו"
+              >
+                <Video className="h-5 w-5" />
+              </button>
+              <button
+                onClick={() => onStartCall(false)}
+                className="flex h-10 w-10 items-center justify-center rounded-full transition hover:bg-black/5"
+                aria-label="שיחה קולית"
+              >
+                <Phone className="h-5 w-5" />
+              </button>
+            </>
+          )}
           <button
             onClick={() => setSearchOpen((v) => !v)}
             className="flex h-10 w-10 items-center justify-center rounded-full transition hover:bg-black/5"
@@ -370,8 +381,20 @@ export function ConversationView({
                   }}
                   className="block w-full px-5 py-2.5 text-right text-sm text-[#3b4a54] hover:bg-[#f5f6f6]"
                 >
-                  פרטי איש קשר
+                  {isSelf ? "פרטי השיחה" : conversation.is_group ? "פרטי קבוצה" : "פרטי איש קשר"}
                 </button>
+                {!isSelf && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false)
+                      onTogglePinned()
+                    }}
+                    className="block w-full px-5 py-2.5 text-right text-sm text-[#3b4a54] hover:bg-[#f5f6f6]"
+                  >
+                    {isPinned ? "בטל נעיצה" : "נעץ צ'אט"}
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => {

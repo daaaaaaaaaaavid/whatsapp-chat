@@ -1,20 +1,31 @@
 import type { Conversation, Message } from "@/lib/types"
 import { callSystemLabel, parseCallSystemPayload } from "@/lib/call-system-message"
 
+/** Non-group chat with only the current user (notes / message yourself). */
+export function isSelfConversation(conv: Conversation, currentUserId: string): boolean {
+  if (conv.is_group) return false
+  const parts = conv.participants ?? []
+  if (parts.length === 0) return false
+  return parts.every((p) => p.user_id === currentUserId)
+}
+
 export function convDisplayName(conv: Conversation, currentUserId: string): string {
   if (conv.is_group) return conv.name ?? "קבוצה"
+  if (isSelfConversation(conv, currentUserId)) return "הודעה לעצמי"
   const other = conv.participants?.find((p) => p.user_id !== currentUserId)
   return other?.profile?.display_name ?? other?.profile?.email ?? "משתמש"
 }
 
 export function convAvatarUrl(conv: Conversation, currentUserId: string): string | null {
   if (conv.is_group) return conv.avatar_url
+  if (isSelfConversation(conv, currentUserId)) return null
   const other = conv.participants?.find((p) => p.user_id !== currentUserId)
   return other?.profile?.avatar_url ?? null
 }
 
 export function otherParticipantId(conv: Conversation, currentUserId: string): string | null {
   if (conv.is_group) return null
+  if (isSelfConversation(conv, currentUserId)) return null
   return conv.participants?.find((p) => p.user_id !== currentUserId)?.user_id ?? null
 }
 

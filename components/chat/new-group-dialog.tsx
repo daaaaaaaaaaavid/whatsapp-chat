@@ -3,15 +3,19 @@
 import { useEffect, useState } from "react"
 import { Modal } from "./modal"
 import { Avatar } from "./avatar"
-import { createGroupConversation, fetchAllUsers } from "@/lib/chat-actions"
+import { createGroupConversation, fetchContacts, findUserByEmail } from "@/lib/chat-actions"
 import type { Profile } from "@/lib/types"
-import { Check, Search, ArrowLeft, X } from "lucide-react"
+import { Check, Search, ArrowLeft, X, Mail, AlertCircle } from "lucide-react"
 
 type Props = {
   open: boolean
   currentUserId: string
   onClose: () => void
   onCreated: (conversationId: string) => void
+}
+
+function looksLikeEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
 }
 
 export function NewGroupDialog({ open, currentUserId, onClose, onCreated }: Props) {
@@ -21,14 +25,16 @@ export function NewGroupDialog({ open, currentUserId, onClose, onCreated }: Prop
   const [step, setStep] = useState<"members" | "name">("members")
   const [groupName, setGroupName] = useState("")
   const [busy, setBusy] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   useEffect(() => {
     if (open) {
-      fetchAllUsers(currentUserId).then((res) => setUsers(res.users))
+      fetchContacts(currentUserId).then((res) => setUsers(res.users))
       setQuery("")
       setSelected([])
       setStep("members")
       setGroupName("")
+      setActionError(null)
     }
   }, [open, currentUserId])
 
@@ -36,13 +42,42 @@ export function NewGroupDialog({ open, currentUserId, onClose, onCreated }: Prop
     (u.display_name ?? u.email ?? "").toLowerCase().includes(query.toLowerCase()),
   )
 
+  const showEmailAdd =
+    looksLikeEmail(query) &&
+    !filtered.some((u) => (u.email ?? "").toLowerCase() === query.trim().toLowerCase()) &&
+    !selected.some((u) => (u.email ?? "").toLowerCase() === query.trim().toLowerCase())
+
   const toggle = (u: Profile) => {
     setSelected((prev) => (prev.some((p) => p.id === u.id) ? prev.filter((p) => p.id !== u.id) : [...prev, u]))
+  }
+
+  const handleAddByEmail = async () => {
+    if (busy || !looksLikeEmail(query)) return
+    setBusy(true)
+    setActionError(null)
+    try {
+      const profile = await findUserByEmail(query)
+      if (!profile) {
+        setActionError("לא נמצא משתמש עם המייל הזה. ודא שהמייל מעודכן ונכון.")
+        return
+      }
+      if (profile.id === currentUserId) {
+        setActionError("אי אפשר להוסיף את עצמך לקבוצה כחבר נוסף.")
+        return
+      }
+      setSelected((prev) => (prev.some((p) => p.id === profile.id) ? prev : [...prev, profile]))
+      setQuery("")
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "נכשל בחיפוש לפי מייל")
+    } finally {
+      setBusy(false)
+    }
   }
 
   const handleCreate = async () => {
     if (!groupName.trim() || selected.length === 0 || busy) return
     setBusy(true)
+    setActionError(null)
     try {
       const convId = await createGroupConversation(
         currentUserId,
@@ -50,6 +85,8 @@ export function NewGroupDialog({ open, currentUserId, onClose, onCreated }: Prop
         selected.map((s) => s.id),
       )
       onCreated(convId)
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "נכשל ביצירת קבוצה")
     } finally {
       setBusy(false)
     }
@@ -80,11 +117,43 @@ export function NewGroupDialog({ open, currentUserId, onClose, onCreated }: Prop
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="חיפוש אנשי קשר"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && showEmailAdd) {
+                    e.preventDefault()
+                    void handleAddByEmail()
+                  }
+                }}
+                placeholder="חיפוש אנשי קשר או הזנת מייל"
                 className="flex-1 bg-transparent text-sm outline-none placeholder:text-[#667781]"
               />
             </div>
+            <p className="mt-2 px-1 text-xs leading-relaxed text-[#667781]">
+              אפשר לבחור מאנשי קשר קיימים, או להוסיף מישהו חדש לפי המייל שלו.
+            </p>
           </div>
+
+          {actionError && (
+            <div className="mx-4 mb-3 flex gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{actionError}</span>
+            </div>
+          )}
+
+          {showEmailAdd && (
+            <button
+              onClick={() => void handleAddByEmail()}
+              disabled={busy}
+              className="flex w-full items-center gap-3 px-5 py-3 text-right transition hover:bg-[#f5f6f6] disabled:opacity-60"
+            >
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#e7fce3] text-[#008069]">
+                <Mail className="h-6 w-6" />
+              </div>
+              <div className="min-w-0 flex-1 text-right">
+                <div className="font-medium text-[#111b21]">הוסף לפי מייל</div>
+                <div className="truncate text-sm text-[#667781]">{query.trim()}</div>
+              </div>
+            </button>
+          )}
 
           {filtered.map((u) => {
             const isSel = selected.some((p) => p.id === u.id)
@@ -109,6 +178,12 @@ export function NewGroupDialog({ open, currentUserId, onClose, onCreated }: Prop
               </button>
             )
           })}
+
+          {!busy && filtered.length === 0 && !showEmailAdd && (
+            <div className="p-6 text-center text-sm text-[#667781]">
+              {query ? "לא נמצאו אנשי קשר תואמים" : "אין אנשי קשר עדיין — הוסף חברים לפי מייל"}
+            </div>
+          )}
 
           {selected.length > 0 && (
             <div className="sticky bottom-0 flex justify-start bg-white p-4">
@@ -143,6 +218,11 @@ export function NewGroupDialog({ open, currentUserId, onClose, onCreated }: Prop
             className="w-full border-b-2 border-[#00a884] bg-transparent py-2 text-[#111b21] outline-none"
           />
           <div className="mt-2 text-sm text-[#667781]">{selected.length} חברים נבחרו</div>
+          {actionError && (
+            <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {actionError}
+            </div>
+          )}
           <button
             onClick={handleCreate}
             disabled={!groupName.trim() || busy}

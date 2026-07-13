@@ -1,7 +1,7 @@
 "use client"
 
 import { avatarColor, initials } from "@/lib/format"
-import { Users } from "lucide-react"
+import { Bookmark, Users } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 type AvatarProps = {
@@ -9,11 +9,26 @@ type AvatarProps = {
   url?: string | null
   size?: number
   isGroup?: boolean
+  isSelf?: boolean
   className?: string
 }
 
-export function Avatar({ name, url, size = 40, isGroup = false, className }: AvatarProps) {
+export function Avatar({ name, url, size = 40, isGroup = false, isSelf = false, className }: AvatarProps) {
   const dimension = { width: size, height: size }
+
+  if (isSelf) {
+    return (
+      <div
+        style={dimension}
+        className={cn(
+          "flex shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white",
+          className,
+        )}
+      >
+        <Bookmark style={{ width: size * 0.45, height: size * 0.45 }} fill="currentColor" />
+      </div>
+    )
+  }
 
   if (url) {
     return (

@@ -18,7 +18,7 @@ export function formatChatListTime(date: string | Date) {
   return d.toLocaleDateString("he-IL", { day: "2-digit", month: "2-digit", year: "2-digit" })
 }
 
-/** WhatsApp-style status timestamp: "היום בשעה 13:16" */
+/** WHACHAT status timestamp: "היום בשעה 13:16" */
 export function formatStatusTime(date: string | Date) {
   const d = typeof date === "string" ? new Date(date) : date
   const now = new Date()

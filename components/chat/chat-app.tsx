@@ -33,7 +33,7 @@ import {
   ensureNotificationPermission,
   showIncomingMessageNotification,
 } from "@/lib/browser-notifications"
-import { messagePreview, convDisplayName } from "@/lib/conversation-display"
+import { messagePreview, convDisplayName, isSelfConversation } from "@/lib/conversation-display"
 import { LoadingScreen } from "./loading-screen"
 
 type Props = {
@@ -150,6 +150,18 @@ export function ChatApp({ currentUser: initialUser }: Props) {
     },
     [currentUser.id],
   )
+
+  // Keep "message yourself" permanently pinned at the top
+  useEffect(() => {
+    const selfIds = conversations
+      .filter((c) => isSelfConversation(c, currentUser.id))
+      .map((c) => c.id)
+    if (!selfIds.length) return
+    const currentPinned = prefsRef.current.pinned
+    const missing = selfIds.filter((id) => !currentPinned.includes(id))
+    if (!missing.length) return
+    updatePrefs({ ...prefsRef.current, pinned: [...currentPinned, ...missing] })
+  }, [conversations, currentUser.id, updatePrefs])
 
   useEffect(() => {
     let cancelled = false
@@ -310,8 +322,10 @@ export function ChatApp({ currentUser: initialUser }: Props) {
                   onStartCall={(video) => handleStartCall(activeConversation, video)}
                   onToggleArchive={() => updatePrefs(toggleArchived(prefs, activeConversation.id))}
                   onToggleFavorite={() => updatePrefs(toggleFavorite(prefs, activeConversation.id))}
+                  onTogglePinned={() => updatePrefs(togglePinned(prefs, activeConversation.id))}
                   isArchived={prefs.archived.includes(activeConversation.id)}
                   isFavorite={prefs.favorites.includes(activeConversation.id)}
+                  isPinned={prefs.pinned.includes(activeConversation.id)}
                   initialGalleryMessageId={infoGalleryMessageId}
                   onGalleryOpened={() => setInfoGalleryMessageId(null)}
                 />
@@ -324,9 +338,11 @@ export function ChatApp({ currentUser: initialUser }: Props) {
                 onToggleArchive={() => updatePrefs(toggleArchived(prefs, activeConversation.id))}
                 onToggleFavorite={() => updatePrefs(toggleFavorite(prefs, activeConversation.id))}
                 onToggleMute={() => updatePrefs(toggleMuted(prefs, activeConversation.id))}
+                onTogglePinned={() => updatePrefs(togglePinned(prefs, activeConversation.id))}
                 isArchived={prefs.archived.includes(activeConversation.id)}
                 isFavorite={prefs.favorites.includes(activeConversation.id)}
                 isMuted={prefs.muted.includes(activeConversation.id)}
+                isPinned={prefs.pinned.includes(activeConversation.id)}
                 onOpenMedia={(messageId) => {
                   setInfoGalleryMessageId(messageId)
                   setShowInfo(false)

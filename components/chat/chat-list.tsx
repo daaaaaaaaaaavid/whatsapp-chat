@@ -3,7 +3,12 @@
 import type { Conversation, Profile } from "@/lib/types"
 import type { ChatPrefs } from "@/lib/chat-prefs"
 import { Avatar } from "./avatar"
-import { convAvatarUrl, convDisplayName, messagePreview } from "@/lib/conversation-display"
+import {
+  convAvatarUrl,
+  convDisplayName,
+  isSelfConversation,
+  messagePreview,
+} from "@/lib/conversation-display"
 import { formatChatListTime } from "@/lib/format"
 import { MessageTicks } from "./message-ticks"
 import { Archive, Laptop, Pin, Search, Star, X } from "lucide-react"
@@ -71,8 +76,11 @@ export function ChatList({
     }
 
     return [...list].sort((a, b) => {
-      const ap = pinnedSet.has(a.id) ? 1 : 0
-      const bp = pinnedSet.has(b.id) ? 1 : 0
+      const aSelf = isSelfConversation(a, currentUser.id) ? 1 : 0
+      const bSelf = isSelfConversation(b, currentUser.id) ? 1 : 0
+      if (aSelf !== bSelf) return bSelf - aSelf
+      const ap = pinnedSet.has(a.id) || aSelf ? 1 : 0
+      const bp = pinnedSet.has(b.id) || bSelf ? 1 : 0
       if (ap !== bp) return bp - ap
       const at = a.last_message?.created_at ?? a.updated_at
       const bt = b.last_message?.created_at ?? b.updated_at
@@ -179,7 +187,8 @@ export function ChatList({
             const last = conv.last_message
             const isMine = last?.sender_id === currentUser.id
             const isActive = conv.id === activeId
-            const isPinned = pinnedSet.has(conv.id)
+            const isSelf = isSelfConversation(conv, currentUser.id)
+            const isPinned = isSelf || pinnedSet.has(conv.id)
             const isFav = favoriteSet.has(conv.id)
             return (
               <div key={conv.id} className="relative">
@@ -199,6 +208,7 @@ export function ChatList({
                     name={name}
                     url={convAvatarUrl(conv, currentUser.id)}
                     isGroup={conv.is_group}
+                    isSelf={isSelf}
                     size={49}
                   />
                   <div className="flex min-w-0 flex-1 flex-col border-b border-[#e9edef] pb-3">
@@ -246,16 +256,18 @@ export function ChatList({
                       onClick={() => setMenuId(null)}
                     />
                     <div className="absolute left-3 top-12 z-40 w-44 overflow-hidden rounded-md bg-white py-1 shadow-lg ring-1 ring-black/5">
-                      <button
-                        type="button"
-                        className="block w-full px-4 py-2 text-right text-sm text-[#3b4a54] hover:bg-[#f5f6f6]"
-                        onClick={() => {
-                          onTogglePinned(conv.id)
-                          setMenuId(null)
-                        }}
-                      >
-                        {isPinned ? "בטל נעיצה" : "נעץ צ'אט"}
-                      </button>
+                      {!isSelf && (
+                        <button
+                          type="button"
+                          className="block w-full px-4 py-2 text-right text-sm text-[#3b4a54] hover:bg-[#f5f6f6]"
+                          onClick={() => {
+                            onTogglePinned(conv.id)
+                            setMenuId(null)
+                          }}
+                        >
+                          {pinnedSet.has(conv.id) ? "בטל נעיצה" : "נעץ צ'אט"}
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="block w-full px-4 py-2 text-right text-sm text-[#3b4a54] hover:bg-[#f5f6f6]"
@@ -290,7 +302,7 @@ export function ChatList({
           <Laptop className="h-5 w-5" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium text-[#111b21]">הורד את WhatsApp ל-Windows</div>
+          <div className="text-sm font-medium text-[#111b21]">הורד את WHACHAT ל-Windows</div>
           <div className="text-xs text-[#667781]">קבל התראות וגיבוי אוטומטי</div>
         </div>
         <span className="shrink-0 rounded-full bg-[#00a884] px-3 py-1.5 text-xs font-medium text-white">

@@ -104,7 +104,7 @@ export default function SignUpPage() {
       <div className="mx-auto -mt-24 w-full max-w-md px-4 pb-10">
         <div className="mb-6 flex items-center justify-center gap-2 text-white">
           <MessageCircle className="h-6 w-6" />
-          <span className="text-sm font-medium uppercase tracking-wide">WhatsApp</span>
+          <span className="text-sm font-medium uppercase tracking-wide">WHACHAT</span>
         </div>
         <div className="rounded-lg bg-white p-8 shadow-sm">
           <h1 className="text-2xl font-normal text-[#111b21]">יצירת חשבון</h1>

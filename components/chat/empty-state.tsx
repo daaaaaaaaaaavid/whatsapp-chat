@@ -6,7 +6,7 @@ type Props = {
 }
 
 export function EmptyState({
-  title = "WhatsApp Web",
+  title = "WHACHAT Web",
   subtitle = "שלח וקבל הודעות ללא צורך בחיבור הטלפון.\nבחר צ'אט מהרשימה כדי להתחיל לשוחח.",
 }: Props) {
   return (

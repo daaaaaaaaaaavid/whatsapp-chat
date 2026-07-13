@@ -1,4 +1,4 @@
-/** Soft WhatsApp-like incoming message chime via Web Audio API. */
+/** Soft WHACHAT incoming message chime via Web Audio API. */
 let audioCtx: AudioContext | null = null
 let lastPlayedAt = 0
 let unlocked = false
