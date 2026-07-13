@@ -1,4 +1,5 @@
-import { Laptop, Lock } from "lucide-react"
+import { Lock } from "lucide-react"
+import { Logo } from "@/components/brand/logo"
 
 type Props = {
   title?: string
@@ -12,7 +13,7 @@ export function EmptyState({
   return (
     <div className="flex h-full w-full flex-col items-center justify-center border-b-[6px] border-[#25d366] bg-[#f0f2f5] text-center">
       <div className="flex h-44 w-44 items-center justify-center rounded-full bg-[#daf1e4]">
-        <Laptop className="h-24 w-24 text-[#3fbb8d]" strokeWidth={1} />
+        <Logo size={24} />
       </div>
       <h1 className="mt-8 text-3xl font-light text-[#41525d]">{title}</h1>
       <p className="mt-4 max-w-lg whitespace-pre-line text-sm leading-relaxed text-[#667781]">{subtitle}</p>

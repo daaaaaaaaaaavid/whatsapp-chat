@@ -8,7 +8,8 @@ import { GoogleSignInButton } from "@/components/auth/google-sign-in-button"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useState, Suspense } from "react"
-import { MessageCircle, Lock } from "lucide-react"
+import { Lock } from "lucide-react"
+import { Logo } from "@/components/brand/logo"
 
 function LoginForm() {
   const [email, setEmail] = useState("")
@@ -58,9 +59,8 @@ function LoginForm() {
     <div className="flex min-h-svh w-full flex-col bg-[#f0f2f5]">
       <div className="h-32 w-full bg-[#00a884]" />
       <div className="mx-auto -mt-24 w-full max-w-md px-4 pb-10">
-        <div className="mb-6 flex items-center justify-center gap-2 text-white">
-          <MessageCircle className="h-6 w-6" />
-          <span className="text-sm font-medium tracking-wide">WhaChat</span>
+        <div className="mb-6 flex justify-center">
+          <Logo size={8} withWordmark variant="white" wordmarkClassName="text-sm font-medium tracking-wide" />
         </div>
         <div className="rounded-lg bg-white p-8 shadow-sm">
           <h1 className="text-2xl font-normal text-[#111b21]">התחברות</h1>

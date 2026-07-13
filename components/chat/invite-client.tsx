@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { joinConversationByInvite } from "@/lib/chat-actions"
+import { Logo } from "@/components/brand/logo"
 
 type Props = {
   token: string
@@ -44,7 +45,9 @@ export function InviteClient({ token }: Props) {
   return (
     <main className="flex min-h-svh items-center justify-center bg-[#f0f2f5] px-4" dir="rtl">
       <div className="w-full max-w-md rounded-2xl bg-white p-8 text-center shadow-sm">
-        <div className="text-2xl font-semibold text-[#00a884]">WhaChat</div>
+        <div className="flex justify-center">
+          <Logo size={10} withWordmark wordmarkClassName="text-2xl" />
+        </div>
         <p className={`mt-4 text-sm ${status === "error" ? "text-[#ea0038]" : "text-[#54656f]"}`}>{message}</p>
         {status === "error" && (
           <button

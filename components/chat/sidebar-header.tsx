@@ -2,6 +2,7 @@
 
 import { MessageCirclePlus, MoreVertical } from "lucide-react"
 import { useState, useRef, useEffect } from "react"
+import { Logo } from "@/components/brand/logo"
 
 type Props = {
   onNewChat: () => void
@@ -24,7 +25,9 @@ export function SidebarHeader({ onNewChat, onNewGroup, onOpenProfile, onLogout }
 
   return (
     <header className="flex h-[60px] items-center justify-between bg-white px-4 pt-1">
-      <h1 className="text-[22px] font-semibold tracking-tight text-[#00a884]">WhaChat</h1>
+      <h1>
+        <Logo size={7} withWordmark wordmarkClassName="text-[22px]" />
+      </h1>
       <div className="flex items-center gap-1 text-[#54656f]">
         <button
           onClick={onNewChat}
