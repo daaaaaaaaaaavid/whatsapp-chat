@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { RealtimeChannel } from "@supabase/supabase-js"
 import type { Conversation, Message, Profile } from "@/lib/types"
 import { useMessages } from "@/lib/use-messages"
@@ -347,7 +347,7 @@ export function ConversationView({
     )
   }
 
-  const handleTyping = (typing: boolean) => {
+  const handleTyping = useCallback((typing: boolean) => {
     void broadcastTyping(typingChannelRef.current, currentUser.id, typing)
     if (typingClearRef.current) clearTimeout(typingClearRef.current)
     if (typing) {
@@ -355,7 +355,7 @@ export function ConversationView({
         void broadcastTyping(typingChannelRef.current, currentUser.id, false)
       }, 2500)
     }
-  }
+  }, [currentUser.id])
 
   const handleForward = async (conversationIds: string[]) => {
     if (!forwardMessages.length) return

@@ -143,6 +143,8 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
   const chunksRef = useRef<Blob[]>([])
   const pendingRef = useRef(pending)
   pendingRef.current = pending
+  const onTypingRef = useRef(onTyping)
+  onTypingRef.current = onTyping
   const isEditing = Boolean(editingMessage)
 
   const resizeTextarea = useCallback(() => {
@@ -192,8 +194,8 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
       }
     }
     setRecording(false)
-    onTyping?.(false)
-  }, [conversationId, onTyping])
+    onTypingRef.current?.(false)
+  }, [conversationId])
 
   const sendMessage = useCallback(
     async (payload: {
