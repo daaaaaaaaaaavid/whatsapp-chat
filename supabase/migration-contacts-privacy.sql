@@ -2,7 +2,7 @@
 -- New chats with strangers require exact email lookup via RPC.
 -- Run in: Supabase → SQL Editor → Run
 
--- Helper: true if the other user shares at least one conversation with auth.uid()
+-- Helper: shared conversation OR Google contact matched to this profile
 create or replace function public.is_known_contact(p_user_id uuid)
 returns boolean
 language sql
@@ -18,6 +18,12 @@ as $$
         on mine.conversation_id = theirs.conversation_id
       where mine.user_id = auth.uid()
         and theirs.user_id = p_user_id
+    )
+    or exists (
+      select 1
+      from public.google_contacts gc
+      where gc.user_id = auth.uid()
+        and gc.matched_profile_id = p_user_id
     );
 $$;
 
