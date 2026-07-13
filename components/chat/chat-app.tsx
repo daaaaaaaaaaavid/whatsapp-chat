@@ -33,8 +33,8 @@ import {
   ensureNotificationPermission,
   showIncomingMessageNotification,
 } from "@/lib/browser-notifications"
-import { messagePreview } from "@/lib/conversation-display"
-import { convDisplayName } from "@/lib/conversation-display"
+import { messagePreview, convDisplayName } from "@/lib/conversation-display"
+import { LoadingScreen } from "./loading-screen"
 
 type Props = {
   currentUser: Profile
@@ -230,6 +230,10 @@ export function ChatApp({ currentUser: initialUser }: Props) {
   }
 
   const showChatPane = Boolean(activeConversation) && navTab === "chats"
+
+  if (loading) {
+    return <LoadingScreen label="טוען צ'אטים" />
+  }
 
   return (
     <div className="flex h-svh w-full overflow-hidden bg-[#d1d7db]">
