@@ -6,6 +6,8 @@ import { useRef, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import type { Message, MessageType } from "@/lib/types"
 import { parseCallSystemPayload, callSystemLabel } from "@/lib/call-system-message"
+import { notifyOfflineRecipients } from "@/lib/push-client"
+import { messagePreview } from "@/lib/conversation-display"
 import { Plus, SendHorizontal, Smile, X, ImageIcon, FileText, Mic, Reply } from "lucide-react"
 
 type Props = {
@@ -107,6 +109,11 @@ export function MessageInput({
 
     const real = { ...(data as Message), pending: false, reads: [] }
     onSent(real, tempId)
+    notifyOfflineRecipients({
+      conversationId,
+      messageId: real.id,
+      body: messagePreview(real),
+    })
     return real
   }
 

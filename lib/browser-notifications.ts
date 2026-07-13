@@ -36,3 +36,30 @@ export function showIncomingMessageNotification(opts: {
     // ignore
   }
 }
+
+/** Incoming call alert — shown even when the tab is visible (ringtone may be blocked). */
+export function showIncomingCallNotification(opts: {
+  title: string
+  body: string
+  tag?: string
+  onClick?: () => void
+}) {
+  if (typeof window === "undefined" || !("Notification" in window)) return
+  if (Notification.permission !== "granted") return
+
+  try {
+    const n = new Notification(opts.title, {
+      body: opts.body,
+      tag: opts.tag ?? "wa-call",
+      requireInteraction: true,
+      silent: false,
+    })
+    n.onclick = () => {
+      window.focus()
+      opts.onClick?.()
+      n.close()
+    }
+  } catch {
+    // ignore
+  }
+}

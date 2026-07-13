@@ -14,6 +14,15 @@ import {
 } from "@/lib/call-signaling"
 import { insertCallSystemMessage } from "@/lib/call-system-message"
 import { createClient } from "@/lib/supabase/client"
+import {
+  startIncomingCallRingtone,
+  stopAllCallSounds,
+  unlockNotificationSound,
+} from "@/lib/notification-sound"
+import {
+  ensureNotificationPermission,
+  showIncomingCallNotification,
+} from "@/lib/browser-notifications"
 import type { RealtimeChannel } from "@supabase/supabase-js"
 
 export type CallPhase = "idle" | "outgoing" | "incoming" | "connecting" | "connected"
@@ -33,6 +42,8 @@ type Options = {
   conversations: Conversation[]
 }
 
+const RING_TIMEOUT_MS = 45_000
+
 export function useWebRtcCall({ currentUser, conversations }: Options) {
   const [phase, setPhase] = useState<CallPhase>("idle")
   const [call, setCall] = useState<ActiveCallInfo | null>(null)
@@ -48,6 +59,7 @@ export function useWebRtcCall({ currentUser, conversations }: Options) {
 
   const pcRef = useRef<RTCPeerConnection | null>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
+  const remoteStreamRef = useRef<MediaStream | null>(null)
   const roomChannelRef = useRef<RealtimeChannel | null>(null)
   const inboxChannelRef = useRef<RealtimeChannel | null>(null)
   const pendingIceRef = useRef<RTCIceCandidateInit[]>([])
@@ -56,6 +68,8 @@ export function useWebRtcCall({ currentUser, conversations }: Options) {
   const wasConnectedRef = useRef(false)
   const secondsRef = useRef(0)
   const startLoggedRef = useRef(false)
+  const ringTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const endingRef = useRef(false)
 
   useEffect(() => {
     callRef.current = call
@@ -66,6 +80,13 @@ export function useWebRtcCall({ currentUser, conversations }: Options) {
   useEffect(() => {
     secondsRef.current = seconds
   }, [seconds])
+
+  const clearRingTimeout = useCallback(() => {
+    if (ringTimeoutRef.current) {
+      clearTimeout(ringTimeoutRef.current)
+      ringTimeoutRef.current = null
+    }
+  }, [])
 
   const logCallEvent = useCallback(
     async (
@@ -91,6 +112,8 @@ export function useWebRtcCall({ currentUser, conversations }: Options) {
   )
 
   const markConnected = useCallback(async () => {
+    clearRingTimeout()
+    stopAllCallSounds()
     if (wasConnectedRef.current) {
       setPhase("connected")
       return
@@ -104,11 +127,31 @@ export function useWebRtcCall({ currentUser, conversations }: Options) {
         await logCallEvent(active.isCaller ? "outgoing" : "incoming", active)
       }
     }
-  }, [logCallEvent])
+  }, [clearRingTimeout, logCallEvent])
+
+  const attachRemoteMedia = useCallback(() => {
+    const stream = remoteStreamRef.current
+    if (!stream) return
+    const hasVid = stream.getVideoTracks().some((t) => t.readyState === "live" || t.enabled)
+    setHasRemoteVideo(hasVid && stream.getVideoTracks().length > 0)
+    if (remoteVideoRef.current) {
+      if (remoteVideoRef.current.srcObject !== stream) {
+        remoteVideoRef.current.srcObject = stream
+      }
+      void remoteVideoRef.current.play().catch(() => {})
+    }
+    if (remoteAudioRef.current) {
+      if (remoteAudioRef.current.srcObject !== stream) {
+        remoteAudioRef.current.srcObject = stream
+      }
+      void remoteAudioRef.current.play().catch(() => {})
+    }
+  }, [])
 
   const cleanupMedia = useCallback(() => {
     localStreamRef.current?.getTracks().forEach((t) => t.stop())
     localStreamRef.current = null
+    remoteStreamRef.current = null
     if (localVideoRef.current) localVideoRef.current.srcObject = null
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null
     if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null
@@ -127,6 +170,8 @@ export function useWebRtcCall({ currentUser, conversations }: Options) {
   }, [])
 
   const endLocal = useCallback(async () => {
+    clearRingTimeout()
+    stopAllCallSounds()
     cleanupMedia()
     await leaveRoom()
     setCall(null)
@@ -136,9 +181,12 @@ export function useWebRtcCall({ currentUser, conversations }: Options) {
     setSeconds(0)
     wasConnectedRef.current = false
     startLoggedRef.current = false
-  }, [cleanupMedia, leaveRoom])
+    endingRef.current = false
+  }, [cleanupMedia, clearRingTimeout, leaveRoom])
 
   const hangup = useCallback(async () => {
+    if (endingRef.current) return
+    endingRef.current = true
     const active = callRef.current
     const phaseNow = phaseRef.current
     const connected = wasConnectedRef.current
@@ -168,17 +216,34 @@ export function useWebRtcCall({ currentUser, conversations }: Options) {
 
       if (connected) {
         await logCallEvent("ended", active, duration)
-      } else if (phaseNow === "outgoing" || phaseNow === "connecting") {
+      } else if (phaseNow === "outgoing" || phaseNow === "connecting" || phaseNow === "incoming") {
         await logCallEvent("missed", active)
       }
     }
     await endLocal()
   }, [currentUser.id, endLocal, logCallEvent])
 
+  const scheduleRingTimeout = useCallback(() => {
+    clearRingTimeout()
+    ringTimeoutRef.current = setTimeout(() => {
+      const phaseNow = phaseRef.current
+      if (phaseNow === "outgoing" || phaseNow === "incoming") {
+        setError("אין מענה")
+        void hangup()
+      }
+    }, RING_TIMEOUT_MS)
+  }, [clearRingTimeout, hangup])
+
   const attachLocalStream = useCallback(async (video: boolean) => {
     const stream = await navigator.mediaDevices.getUserMedia({
-      audio: true,
-      video: video ? { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } } : false,
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+      video: video
+        ? { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } }
+        : false,
     })
     localStreamRef.current = stream
     if (localVideoRef.current && video) {
@@ -194,6 +259,7 @@ export function useWebRtcCall({ currentUser, conversations }: Options) {
 
       const pc = new RTCPeerConnection(ICE_SERVERS)
       pcRef.current = pc
+      remoteStreamRef.current = new MediaStream()
 
       pc.onicecandidate = (ev) => {
         if (!ev.candidate || !roomChannelRef.current) return
@@ -206,34 +272,39 @@ export function useWebRtcCall({ currentUser, conversations }: Options) {
       }
 
       pc.ontrack = (ev) => {
-        const stream = ev.streams[0]
-        if (!stream) return
-        const hasVid = stream.getVideoTracks().length > 0
-        setHasRemoteVideo(hasVid)
-        if (remoteVideoRef.current && hasVid) {
-          remoteVideoRef.current.srcObject = stream
-          void remoteVideoRef.current.play().catch(() => {})
+        const remote = remoteStreamRef.current ?? new MediaStream()
+        remoteStreamRef.current = remote
+        if (!remote.getTracks().some((t) => t.id === ev.track.id)) {
+          remote.addTrack(ev.track)
         }
-        if (remoteAudioRef.current) {
-          remoteAudioRef.current.srcObject = stream
-          void remoteAudioRef.current.play().catch(() => {})
-        }
+        attachRemoteMedia()
         void markConnected()
       }
 
       pc.onconnectionstatechange = () => {
-        if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
-          setError("השיחה התנתקה")
-          void endLocal()
-        }
         if (pc.connectionState === "connected") {
           void markConnected()
+        }
+        if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
+          if (endingRef.current) return
+          endingRef.current = true
+          setError("השיחה התנתקה")
+          const active = callRef.current
+          if (active && wasConnectedRef.current) {
+            void logCallEvent("ended", active, secondsRef.current)
+            void sendToUser(active.peerUserId, {
+              type: "hangup",
+              callId: active.callId,
+              fromUserId: currentUser.id,
+            }).catch(() => {})
+          }
+          void endLocal()
         }
       }
 
       return pc
     },
-    [currentUser.id, endLocal, markConnected],
+    [attachRemoteMedia, currentUser.id, endLocal, logCallEvent, markConnected],
   )
 
   const flushIce = useCallback(async () => {
@@ -257,7 +328,10 @@ export function useWebRtcCall({ currentUser, conversations }: Options) {
       if (signal.fromUserId === currentUser.id) return
 
       if (signal.type === "hangup") {
-        // Peer ended the call — they already logged "ended" / "missed"
+        const phaseNow = phaseRef.current
+        if (!wasConnectedRef.current && (phaseNow === "incoming" || phaseNow === "outgoing")) {
+          await logCallEvent("missed", active)
+        }
         await endLocal()
         return
       }
@@ -266,6 +340,8 @@ export function useWebRtcCall({ currentUser, conversations }: Options) {
 
       if (signal.type === "offer") {
         setPhase("connecting")
+        clearRingTimeout()
+        stopAllCallSounds()
         await pc.setRemoteDescription(signal.sdp)
         await flushIce()
         const stream = localStreamRef.current ?? (await attachLocalStream(active.video))
@@ -304,7 +380,16 @@ export function useWebRtcCall({ currentUser, conversations }: Options) {
         }
       }
     },
-    [attachLocalStream, currentUser.id, endLocal, ensurePeer, flushIce, markConnected],
+    [
+      attachLocalStream,
+      clearRingTimeout,
+      currentUser.id,
+      endLocal,
+      ensurePeer,
+      flushIce,
+      logCallEvent,
+      markConnected,
+    ],
   )
 
   const joinRoom = useCallback(
@@ -321,6 +406,8 @@ export function useWebRtcCall({ currentUser, conversations }: Options) {
   const startCall = useCallback(
     async (conversation: Conversation, video: boolean) => {
       setError(null)
+      unlockNotificationSound()
+      void ensureNotificationPermission()
       if (phaseRef.current !== "idle") return
 
       if (conversation.is_group) {
@@ -355,14 +442,20 @@ export function useWebRtcCall({ currentUser, conversations }: Options) {
 
       wasConnectedRef.current = false
       startLoggedRef.current = false
+      endingRef.current = false
       setCall(info)
       setPhase("outgoing")
+      scheduleRingTimeout()
 
       try {
         await joinRoom(info)
         const pc = ensurePeer(info)
         const stream = localStreamRef.current!
-        stream.getTracks().forEach((track) => pc.addTrack(track, stream))
+        stream.getTracks().forEach((track) => {
+          if (!pc.getSenders().some((s) => s.track === track)) {
+            pc.addTrack(track, stream)
+          }
+        })
 
         await sendToUser(peerId, {
           type: "ring",
@@ -388,14 +481,18 @@ export function useWebRtcCall({ currentUser, conversations }: Options) {
       endLocal,
       ensurePeer,
       joinRoom,
+      scheduleRingTimeout,
     ],
   )
 
   const acceptCall = useCallback(async () => {
     const active = callRef.current
     if (!active || phaseRef.current !== "incoming") return
+    unlockNotificationSound()
     setError(null)
     setPhase("connecting")
+    clearRingTimeout()
+    stopAllCallSounds()
 
     try {
       await attachLocalStream(active.video)
@@ -406,12 +503,6 @@ export function useWebRtcCall({ currentUser, conversations }: Options) {
         callId: active.callId,
         fromUserId: currentUser.id,
       })
-      // Log incoming as soon as we accept (before WebRTC fully connects)
-      if (!startLoggedRef.current) {
-        startLoggedRef.current = true
-        wasConnectedRef.current = true
-        await logCallEvent("incoming", active)
-      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "נכשל במענה לשיחה")
       wasConnectedRef.current = false
@@ -427,16 +518,19 @@ export function useWebRtcCall({ currentUser, conversations }: Options) {
       }
       await endLocal()
     }
-  }, [attachLocalStream, currentUser.id, endLocal, ensurePeer, joinRoom, logCallEvent])
+  }, [attachLocalStream, clearRingTimeout, currentUser.id, endLocal, ensurePeer, joinRoom])
 
   const rejectCall = useCallback(async () => {
     const active = callRef.current
+    clearRingTimeout()
+    stopAllCallSounds()
     if (active) {
       try {
         await sendToUser(active.peerUserId, {
           type: "reject",
           callId: active.callId,
           fromUserId: currentUser.id,
+          reason: "declined",
         })
       } catch {
         // ignore
@@ -444,20 +538,19 @@ export function useWebRtcCall({ currentUser, conversations }: Options) {
       await logCallEvent("rejected", active)
     }
     await endLocal()
-  }, [currentUser.id, endLocal, logCallEvent])
+  }, [clearRingTimeout, currentUser.id, endLocal, logCallEvent])
 
-  // When callee accepts, caller creates offer
   const onPeerAccepted = useCallback(async () => {
     const active = callRef.current
     if (!active || !active.isCaller) return
     setPhase("connecting")
-    if (!startLoggedRef.current) {
-      startLoggedRef.current = true
-      wasConnectedRef.current = true
-      await logCallEvent("outgoing", active)
-    }
+    clearRingTimeout()
+    stopAllCallSounds()
     const pc = ensurePeer(active)
-    const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: active.video })
+    const offer = await pc.createOffer({
+      offerToReceiveAudio: true,
+      offerToReceiveVideo: active.video,
+    })
     await pc.setLocalDescription(offer)
     if (roomChannelRef.current) {
       await sendSignal(roomChannelRef.current, {
@@ -467,7 +560,7 @@ export function useWebRtcCall({ currentUser, conversations }: Options) {
         sdp: offer,
       })
     }
-  }, [currentUser.id, ensurePeer, logCallEvent])
+  }, [clearRingTimeout, currentUser.id, ensurePeer])
 
   // Inbox: listen for incoming rings / accept / reject / hangup
   useEffect(() => {
@@ -485,23 +578,37 @@ export function useWebRtcCall({ currentUser, conversations }: Options) {
                 type: "reject",
                 callId: signal.callId,
                 fromUserId: currentUser.id,
+                reason: "busy",
               })
               return
             }
             const conv = conversations.find((c) => c.id === signal.conversationId)
             wasConnectedRef.current = false
             startLoggedRef.current = false
-            setCall({
+            endingRef.current = false
+            const info: ActiveCallInfo = {
               callId: signal.callId,
               conversationId: signal.conversationId,
               peerUserId: signal.fromUserId,
-              peerName: signal.fromName || (conv ? convDisplayName(conv, currentUser.id) : "שיחה נכנסת"),
-              peerAvatar: signal.fromAvatar ?? (conv ? convAvatarUrl(conv, currentUser.id) : null),
+              peerName:
+                signal.fromName || (conv ? convDisplayName(conv, currentUser.id) : "שיחה נכנסת"),
+              peerAvatar:
+                signal.fromAvatar ?? (conv ? convAvatarUrl(conv, currentUser.id) : null),
               video: signal.video,
               isCaller: false,
-            })
+            }
+            setCall(info)
             setPhase("incoming")
             setError(null)
+            scheduleRingTimeout()
+            startIncomingCallRingtone()
+            void ensureNotificationPermission().then(() => {
+              showIncomingCallNotification({
+                title: signal.video ? "שיחת וידאו נכנסת" : "שיחה נכנסת",
+                body: info.peerName,
+                tag: `call-${signal.callId}`,
+              })
+            })
           }
 
           if (signal.type === "accept") {
@@ -512,14 +619,22 @@ export function useWebRtcCall({ currentUser, conversations }: Options) {
 
           if (signal.type === "reject") {
             if (callRef.current?.callId === signal.callId) {
-              setError("השיחה נדחתה")
-              // Callee already logged "rejected"
+              setError(signal.reason === "busy" ? "המשתמש בשיחה אחרת" : "השיחה נדחתה")
               void endLocal()
             }
           }
 
           if (signal.type === "hangup") {
             if (callRef.current?.callId === signal.callId) {
+              const phaseNow = phaseRef.current
+              const active = callRef.current
+              if (
+                active &&
+                !wasConnectedRef.current &&
+                (phaseNow === "incoming" || phaseNow === "outgoing")
+              ) {
+                void logCallEvent("missed", active)
+              }
               void endLocal()
             }
           }
@@ -536,13 +651,21 @@ export function useWebRtcCall({ currentUser, conversations }: Options) {
       if (channel) void supabase.removeChannel(channel)
       inboxChannelRef.current = null
     }
-  }, [conversations, currentUser.id, endLocal, onPeerAccepted])
+  }, [
+    conversations,
+    currentUser.id,
+    endLocal,
+    logCallEvent,
+    onPeerAccepted,
+    scheduleRingTimeout,
+  ])
 
   useEffect(() => {
     if (phase !== "connected") return
+    attachRemoteMedia()
     const id = window.setInterval(() => setSeconds((s) => s + 1), 1000)
     return () => window.clearInterval(id)
-  }, [phase])
+  }, [phase, attachRemoteMedia])
 
   const toggleMute = useCallback(() => {
     const next = !muted
@@ -562,12 +685,14 @@ export function useWebRtcCall({ currentUser, conversations }: Options) {
 
   useEffect(() => {
     return () => {
+      clearRingTimeout()
+      stopAllCallSounds()
       cleanupMedia()
       const supabase = createClient()
       if (roomChannelRef.current) void supabase.removeChannel(roomChannelRef.current)
       if (inboxChannelRef.current) void supabase.removeChannel(inboxChannelRef.current)
     }
-  }, [cleanupMedia])
+  }, [cleanupMedia, clearRingTimeout])
 
   return {
     phase,

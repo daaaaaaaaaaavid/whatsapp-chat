@@ -34,8 +34,10 @@ import {
   ensureNotificationPermission,
   showIncomingMessageNotification,
 } from "@/lib/browser-notifications"
+import { registerPushSubscription } from "@/lib/push-client"
 import { messagePreview, convDisplayName, isSelfConversation } from "@/lib/conversation-display"
 import { LoadingScreen } from "./loading-screen"
+import { MessageToastStack, type MessageToastItem } from "./message-toast"
 
 type Props = {
   currentUser: Profile
@@ -56,12 +58,22 @@ export function ChatApp({ currentUser: initialUser }: Props) {
   const [navTab, setNavTab] = useState<NavTab>("chats")
   const [prefs, setPrefs] = useState<ChatPrefs>(() => loadChatPrefs(initialUser.id))
   const [infoGalleryMessageId, setInfoGalleryMessageId] = useState<string | null>(null)
+  const [toasts, setToasts] = useState<MessageToastItem[]>([])
   const prefsRef = useRef(prefs)
   prefsRef.current = prefs
   const activeIdRef = useRef(activeId)
   activeIdRef.current = activeId
   const conversationsRef = useRef(conversations)
   conversationsRef.current = conversations
+
+  const pushToast = useCallback((item: Omit<MessageToastItem, "id">) => {
+    const id = `toast-${crypto.randomUUID()}`
+    setToasts((prev) => [...prev.slice(-2), { ...item, id }])
+  }, [])
+
+  const dismissToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id))
+  }, [])
 
   // Deep link: /chat?c=<conversationId>
   useEffect(() => {
@@ -128,14 +140,42 @@ export function ChatApp({ currentUser: initialUser }: Props) {
     }
   }, [currentUser.id])
 
-  // Incoming message sound + browser notifications
+  // Incoming message sound + in-app toasts + browser / push notifications
   useEffect(() => {
     const unlock = () => {
       unlockNotificationSound()
-      void ensureNotificationPermission()
+      void ensureNotificationPermission().then((perm) => {
+        if (perm === "granted") void registerPushSubscription()
+      })
     }
     window.addEventListener("pointerdown", unlock, { once: true })
     window.addEventListener("keydown", unlock, { once: true })
+
+    const onSwMessage = (event: MessageEvent) => {
+      const data = event.data as
+        | { type?: string; conversationId?: string; title?: string; body?: string }
+        | undefined
+      if (!data?.type) return
+      if (data.type === "open-conversation" && data.conversationId) {
+        setActiveId(data.conversationId)
+        setNavTab("chats")
+        return
+      }
+      if (data.type === "push-message" && data.conversationId) {
+        const isActiveChat =
+          activeIdRef.current === data.conversationId && document.visibilityState === "visible"
+        if (isActiveChat) return
+        if (prefsRef.current.muted.includes(data.conversationId)) return
+        pushToast({
+          title: data.title || "הודעה חדשה",
+          body: data.body || "",
+          conversationId: data.conversationId,
+        })
+      }
+    }
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.addEventListener("message", onSwMessage)
+    }
 
     const supabase = createClient()
     const channel = supabase
@@ -153,18 +193,24 @@ export function ChatApp({ currentUser: initialUser }: Props) {
 
           const isActiveChat =
             activeIdRef.current === msg.conversation_id && document.visibilityState === "visible"
-          if (!isActiveChat) {
-            playIncomingMessageSound()
-          }
+          if (isActiveChat) return
+
+          playIncomingMessageSound()
 
           const conv = conversationsRef.current.find((c) => c.id === msg.conversation_id)
           const title = conv ? convDisplayName(conv, currentUser.id) : "הודעה חדשה"
-          showIncomingMessageNotification({
-            title,
-            body: messagePreview(msg),
-            tag: msg.conversation_id,
-            onClick: () => setActiveId(msg.conversation_id),
-          })
+          const body = messagePreview(msg)
+
+          if (document.visibilityState === "visible") {
+            pushToast({ title, body, conversationId: msg.conversation_id })
+          } else {
+            showIncomingMessageNotification({
+              title,
+              body,
+              tag: msg.conversation_id,
+              onClick: () => setActiveId(msg.conversation_id),
+            })
+          }
         },
       )
       .subscribe()
@@ -172,9 +218,12 @@ export function ChatApp({ currentUser: initialUser }: Props) {
     return () => {
       window.removeEventListener("pointerdown", unlock)
       window.removeEventListener("keydown", unlock)
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.removeEventListener("message", onSwMessage)
+      }
       supabase.removeChannel(channel)
     }
-  }, [currentUser.id])
+  }, [currentUser.id, pushToast])
 
   const updatePrefs = useCallback(
     (next: ChatPrefs) => {
@@ -259,6 +308,7 @@ export function ChatApp({ currentUser: initialUser }: Props) {
 
   const handleStartCall = useCallback(
     (conv: Conversation, video: boolean) => {
+      unlockNotificationSound()
       void startCall(conv, video)
     },
     [startCall],
@@ -434,6 +484,15 @@ export function ChatApp({ currentUser: initialUser }: Props) {
           setStatusOpen(false)
           if (navTab === "status") setNavTab("chats")
         }}
+      />
+
+      <MessageToastStack
+        toasts={toasts}
+        onOpen={(id) => {
+          setActiveId(id)
+          setNavTab("chats")
+        }}
+        onDismiss={dismissToast}
       />
 
       {callError && phase === "idle" && (

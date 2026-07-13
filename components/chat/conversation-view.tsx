@@ -347,7 +347,7 @@ export function ConversationView({
           </div>
         </button>
         <div className="relative flex items-center gap-0.5 text-[#54656f]">
-          {!isSelf && (
+          {!isSelf && !conversation.is_group && (
             <>
               <button
                 onClick={() => onStartCall(true)}

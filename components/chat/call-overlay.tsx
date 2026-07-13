@@ -4,7 +4,12 @@ import { useEffect } from "react"
 import type { RefObject } from "react"
 import { Avatar } from "./avatar"
 import { Mic, MicOff, Phone, PhoneOff, Video, VideoOff } from "lucide-react"
-import { startIncomingCallRingtone, stopIncomingCallRingtone } from "@/lib/notification-sound"
+import {
+  startIncomingCallRingtone,
+  startOutgoingRingback,
+  stopAllCallSounds,
+  unlockNotificationSound,
+} from "@/lib/notification-sound"
 import type { CallPhase, ActiveCallInfo } from "@/lib/use-webrtc-call"
 
 type Props = {
@@ -60,26 +65,35 @@ export function CallOverlay({
           : `${mm}:${ss}`
 
   useEffect(() => {
-    // try to play remote media when connected (autoplay policies)
     if (phase === "connected") {
       void remoteVideoRef.current?.play().catch(() => {})
       void remoteAudioRef.current?.play().catch(() => {})
+      void localVideoRef.current?.play().catch(() => {})
     }
-  }, [phase, remoteAudioRef, remoteVideoRef])
+  }, [phase, remoteAudioRef, remoteVideoRef, localVideoRef])
 
   useEffect(() => {
     if (phase === "incoming") {
+      unlockNotificationSound()
       startIncomingCallRingtone()
-      return () => stopIncomingCallRingtone()
+      return () => stopAllCallSounds()
     }
-    stopIncomingCallRingtone()
+    if (phase === "outgoing") {
+      unlockNotificationSound()
+      startOutgoingRingback()
+      return () => stopAllCallSounds()
+    }
+    stopAllCallSounds()
   }, [phase])
+
+  const showRemoteVideo = call.video && hasRemoteVideo && phase === "connected"
+  const showConnectingAvatar =
+    call.video && (phase === "connecting" || phase === "connected") && !hasRemoteVideo
 
   return (
     <div className="fixed inset-0 z-[70] flex flex-col bg-[#0b141a] text-white">
       <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
 
-      {/* Remote video / avatar */}
       <div className="relative flex flex-1 items-center justify-center overflow-hidden">
         {call.video && (phase === "connected" || phase === "connecting") ? (
           <>
@@ -87,12 +101,18 @@ export function CallOverlay({
               ref={remoteVideoRef}
               autoPlay
               playsInline
-              className={`h-full w-full object-cover ${hasRemoteVideo && !camOff ? "" : "opacity-0 absolute"}`}
+              className={`h-full w-full object-cover ${showRemoteVideo ? "" : "absolute opacity-0"}`}
             />
-            {(!hasRemoteVideo || phase !== "connected") && (
+            {showConnectingAvatar && (
               <div className="flex flex-col items-center">
                 <Avatar name={call.peerName} url={call.peerAvatar} size={120} />
                 <p className="mt-4 text-sm text-white/70">{statusText}</p>
+              </div>
+            )}
+            {showRemoteVideo && (
+              <div className="absolute top-8 inset-x-0 text-center">
+                <h2 className="text-lg font-medium drop-shadow">{call.peerName}</h2>
+                <p className="text-sm text-white/80 drop-shadow">{statusText}</p>
               </div>
             )}
           </>
@@ -104,7 +124,6 @@ export function CallOverlay({
           </div>
         )}
 
-        {/* Local preview (PiP) */}
         {call.video && phase !== "incoming" && (
           <video
             ref={localVideoRef}
@@ -123,13 +142,6 @@ export function CallOverlay({
         )}
       </div>
 
-      {call.video && phase === "connected" && hasRemoteVideo && (
-        <div className="absolute top-8 inset-x-0 text-center">
-          <h2 className="text-lg font-medium drop-shadow">{call.peerName}</h2>
-          <p className="text-sm text-white/80 drop-shadow">{statusText}</p>
-        </div>
-      )}
-
       {error && (
         <div className="absolute top-4 inset-x-4 rounded-md bg-[#ea0038]/90 px-3 py-2 text-center text-sm">
           {error}
@@ -141,7 +153,10 @@ export function CallOverlay({
           <>
             <button
               type="button"
-              onClick={onReject}
+              onClick={() => {
+                unlockNotificationSound()
+                onReject()
+              }}
               className="flex h-16 w-16 items-center justify-center rounded-full bg-[#ea0038]"
               aria-label="דחה"
             >
@@ -149,7 +164,10 @@ export function CallOverlay({
             </button>
             <button
               type="button"
-              onClick={onAccept}
+              onClick={() => {
+                unlockNotificationSound()
+                onAccept()
+              }}
               className="flex h-16 w-16 items-center justify-center rounded-full bg-[#25d366]"
               aria-label="ענה"
             >
