@@ -24,7 +24,7 @@ type Props = {
   messageId: string
   isMine: boolean
   timeLabel: string
-  status: "sent" | "delivered" | "read"
+  status: "sending" | "sent" | "delivered" | "read"
   avatarUrl?: string | null
   avatarName?: string | null
 }

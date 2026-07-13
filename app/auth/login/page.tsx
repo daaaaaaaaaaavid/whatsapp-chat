@@ -6,17 +6,19 @@ import { createClient, ensureSupabaseConfig } from "@/lib/supabase/client"
 import { signInWithGoogle } from "@/lib/auth-google"
 import { GoogleSignInButton } from "@/components/auth/google-sign-in-button"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { useState, Suspense } from "react"
 import { MessageCircle, Lock } from "lucide-react"
 
-export default function LoginPage() {
+function LoginForm() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const nextPath = searchParams.get("next") || "/chat"
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -28,7 +30,7 @@ export default function LoginPage() {
       const supabase = createClient()
       const { error } = await supabase.auth.signInWithPassword({ email, password })
       if (error) throw error
-      router.push("/chat")
+      router.push(nextPath.startsWith("/") ? nextPath : "/chat")
       router.refresh()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "אירעה שגיאה")
@@ -41,7 +43,7 @@ export default function LoginPage() {
     setGoogleLoading(true)
     setError(null)
     try {
-      await signInWithGoogle("/chat")
+      await signInWithGoogle(nextPath.startsWith("/") ? nextPath : "/chat")
     } catch (err: unknown) {
       setError(
         err instanceof Error
@@ -134,5 +136,13 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-svh bg-[#f0f2f5]" />}>
+      <LoginForm />
+    </Suspense>
   )
 }

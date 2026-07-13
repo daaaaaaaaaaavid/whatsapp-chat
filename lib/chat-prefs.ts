@@ -55,6 +55,48 @@ export function loadChatPrefs(userId: string): ChatPrefs {
 export function saveChatPrefs(userId: string, prefs: ChatPrefs) {
   if (typeof window === "undefined") return
   localStorage.setItem(key(userId), JSON.stringify(prefs))
+  // Best-effort sync to Supabase (requires migration-invites-prefs.sql)
+  void import("@/lib/supabase/client")
+    .then(({ createClient }) => {
+      const supabase = createClient()
+      return supabase
+        .from("profiles")
+        .update({
+          chat_prefs: {
+            archived: prefs.archived,
+            favorites: prefs.favorites,
+            pinned: prefs.pinned,
+            muted: prefs.muted,
+            starredMessages: prefs.starredMessages,
+            pinnedMessages: prefs.pinnedMessages,
+            hiddenMessages: prefs.hiddenMessages,
+            reactions: prefs.reactions,
+          },
+        })
+        .eq("id", userId)
+    })
+    .catch(() => {})
+}
+
+/** Merge remote prefs from profiles.chat_prefs over local storage. */
+export function mergeRemoteChatPrefs(userId: string, remote: Partial<ChatPrefs> | null | undefined): ChatPrefs {
+  const local = loadChatPrefs(userId)
+  if (!remote || typeof remote !== "object") return local
+  const merged: ChatPrefs = {
+    archived: Array.isArray(remote.archived) ? remote.archived : local.archived,
+    favorites: Array.isArray(remote.favorites) ? remote.favorites : local.favorites,
+    pinned: Array.isArray(remote.pinned) ? remote.pinned : local.pinned,
+    muted: Array.isArray(remote.muted) ? remote.muted : local.muted,
+    starredMessages: Array.isArray(remote.starredMessages) ? remote.starredMessages : local.starredMessages,
+    pinnedMessages: Array.isArray(remote.pinnedMessages) ? remote.pinnedMessages : local.pinnedMessages,
+    hiddenMessages: Array.isArray(remote.hiddenMessages) ? remote.hiddenMessages : local.hiddenMessages,
+    reactions:
+      remote.reactions && typeof remote.reactions === "object" && !Array.isArray(remote.reactions)
+        ? remote.reactions
+        : local.reactions,
+  }
+  localStorage.setItem(key(userId), JSON.stringify(merged))
+  return merged
 }
 
 function toggleId(list: string[], id: string): string[] {

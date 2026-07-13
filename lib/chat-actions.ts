@@ -245,3 +245,89 @@ export async function startChatByEmail(
   }
   return getOrCreateDirectConversation(currentUserId, profile.id)
 }
+
+/** Leave a group or remove yourself from a chat. */
+export async function leaveConversation(conversationId: string, userId: string): Promise<void> {
+  await ensureSupabaseConfig()
+  const supabase = createClient()
+  const { error } = await supabase
+    .from("conversation_participants")
+    .delete()
+    .eq("conversation_id", conversationId)
+    .eq("user_id", userId)
+  if (error) throw new Error(errMessage(error, "נכשל ביציאה מהשיחה"))
+}
+
+/** Create (or reuse) an invite link token for a conversation. */
+export async function createConversationInvite(conversationId: string, createdBy: string): Promise<string> {
+  await ensureSupabaseConfig()
+  const supabase = createClient()
+
+  const { data: existing } = await supabase
+    .from("conversation_invites")
+    .select("token, expires_at")
+    .eq("conversation_id", conversationId)
+    .eq("created_by", createdBy)
+    .gt("expires_at", new Date().toISOString())
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (existing?.token) return existing.token
+
+  const token = crypto.randomUUID().replace(/-/g, "").slice(0, 16)
+  const { error } = await supabase.from("conversation_invites").insert({
+    conversation_id: conversationId,
+    created_by: createdBy,
+    token,
+  })
+  if (error) {
+    const msg = error.message.toLowerCase()
+    if (msg.includes("conversation_invites") || msg.includes("does not exist")) {
+      throw new Error("חסרה טבלת הזמנות. הרץ את supabase/migration-invites-prefs.sql ב־Supabase.")
+    }
+    throw new Error(errMessage(error, "נכשל ביצירת קישור הזמנה"))
+  }
+  return token
+}
+
+export async function joinConversationByInvite(token: string): Promise<string> {
+  await ensureSupabaseConfig()
+  const supabase = createClient()
+  const { data, error } = await supabase.rpc("join_conversation_by_invite", { p_token: token })
+  if (error) {
+    const msg = error.message.toLowerCase()
+    if (msg.includes("function") && msg.includes("does not exist")) {
+      throw new Error("חסרה פונקציית הזמנה. הרץ את supabase/migration-invites-prefs.sql ב־Supabase.")
+    }
+    throw new Error(errMessage(error, "נכשל בהצטרפות דרך הקישור"))
+  }
+  return data as string
+}
+
+export async function blockUser(currentUserId: string, blockedUserId: string): Promise<void> {
+  await ensureSupabaseConfig()
+  const supabase = createClient()
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("blocked_user_ids")
+    .eq("id", currentUserId)
+    .maybeSingle()
+
+  const current = (profile?.blocked_user_ids as string[] | null) ?? []
+  if (current.includes(blockedUserId)) return
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({ blocked_user_ids: [...current, blockedUserId] })
+    .eq("id", currentUserId)
+
+  if (error) {
+    const msg = error.message.toLowerCase()
+    if (msg.includes("blocked_user_ids") || msg.includes("does not exist")) {
+      throw new Error("חסרה עמודת חסימה. הרץ את supabase/migration-invites-prefs.sql ב־Supabase.")
+    }
+    throw new Error(errMessage(error, "נכשל בחסימת המשתמש"))
+  }
+}
+

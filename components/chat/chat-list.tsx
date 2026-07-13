@@ -11,6 +11,7 @@ import {
 } from "@/lib/conversation-display"
 import { formatChatListTime } from "@/lib/format"
 import { MessageTicks } from "./message-ticks"
+import { messageTickStatus } from "@/lib/message-status"
 import { Archive, Laptop, Pin, Search, Star, X } from "lucide-react"
 import { useMemo, useState } from "react"
 import { cn } from "@/lib/utils"
@@ -190,6 +191,8 @@ export function ChatList({
             const isSelf = isSelfConversation(conv, currentUser.id)
             const isPinned = isSelf || pinnedSet.has(conv.id)
             const isFav = favoriteSet.has(conv.id)
+            const othersCount = (conv.participants ?? []).filter((p) => p.user_id !== currentUser.id).length
+            const tickStatus = isMine && last ? messageTickStatus(last, othersCount) : null
             return (
               <div key={conv.id} className="relative">
                 <button
@@ -230,7 +233,7 @@ export function ChatList({
                     </div>
                     <div className="mt-0.5 flex items-center justify-between gap-2">
                       <span className="flex min-w-0 items-center gap-1 truncate text-sm text-[#667781]">
-                        {isMine && last && !last.deleted_at && <MessageTicks status="delivered" />}
+                        {tickStatus && last && !last.deleted_at && <MessageTicks status={tickStatus} />}
                         <span className="truncate">
                           {last?.deleted_at ? "ההודעה נמחקה" : messagePreview(last)}
                         </span>

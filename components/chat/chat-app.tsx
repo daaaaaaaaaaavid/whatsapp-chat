@@ -7,6 +7,7 @@ import { useConversations } from "@/lib/use-conversations"
 import type { Conversation, Message, Profile } from "@/lib/types"
 import {
   loadChatPrefs,
+  mergeRemoteChatPrefs,
   saveChatPrefs,
   toggleArchived,
   toggleFavorite,
@@ -43,7 +44,8 @@ type Props = {
 export function ChatApp({ currentUser: initialUser }: Props) {
   const router = useRouter()
   const [currentUser, setCurrentUser] = useState<Profile>(initialUser)
-  const { conversations, loading, reload } = useConversations(currentUser.id)
+  const { conversations, loading, reload, upsertLastMessage, clearUnread, removeConversation } =
+    useConversations(currentUser.id)
 
   const [activeId, setActiveId] = useState<string | null>(null)
   const [showInfo, setShowInfo] = useState(false)
@@ -60,6 +62,19 @@ export function ChatApp({ currentUser: initialUser }: Props) {
   activeIdRef.current = activeId
   const conversationsRef = useRef(conversations)
   conversationsRef.current = conversations
+
+  // Deep link: /chat?c=<conversationId>
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const params = new URLSearchParams(window.location.search)
+    const c = params.get("c")
+    if (!c) return
+    setActiveId(c)
+    setNavTab("chats")
+    const url = new URL(window.location.href)
+    url.searchParams.delete("c")
+    window.history.replaceState({}, "", url.pathname)
+  }, [])
 
   const {
     phase,
@@ -93,6 +108,24 @@ export function ChatApp({ currentUser: initialUser }: Props) {
 
   useEffect(() => {
     setPrefs(loadChatPrefs(currentUser.id))
+    let cancelled = false
+    ;(async () => {
+      try {
+        const supabase = createClient()
+        const { data } = await supabase
+          .from("profiles")
+          .select("chat_prefs")
+          .eq("id", currentUser.id)
+          .maybeSingle()
+        if (cancelled || !data?.chat_prefs) return
+        setPrefs(mergeRemoteChatPrefs(currentUser.id, data.chat_prefs as Partial<ChatPrefs>))
+      } catch {
+        // column may not exist yet
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
   }, [currentUser.id])
 
   // Incoming message sound + browser notifications
@@ -323,6 +356,13 @@ export function ChatApp({ currentUser: initialUser }: Props) {
                   onToggleArchive={() => updatePrefs(toggleArchived(prefs, activeConversation.id))}
                   onToggleFavorite={() => updatePrefs(toggleFavorite(prefs, activeConversation.id))}
                   onTogglePinned={() => updatePrefs(togglePinned(prefs, activeConversation.id))}
+                  onMessageActivity={(msg) => {
+                    upsertLastMessage(msg)
+                    if (msg.sender_id === currentUser.id || activeIdRef.current === msg.conversation_id) {
+                      clearUnread(msg.conversation_id)
+                    }
+                  }}
+                  onConversationOpened={clearUnread}
                   isArchived={prefs.archived.includes(activeConversation.id)}
                   isFavorite={prefs.favorites.includes(activeConversation.id)}
                   isPinned={prefs.pinned.includes(activeConversation.id)}
@@ -345,6 +385,11 @@ export function ChatApp({ currentUser: initialUser }: Props) {
                 isPinned={prefs.pinned.includes(activeConversation.id)}
                 onOpenMedia={(messageId) => {
                   setInfoGalleryMessageId(messageId)
+                  setShowInfo(false)
+                }}
+                onLeftOrDeleted={() => {
+                  removeConversation(activeConversation.id)
+                  setActiveId(null)
                   setShowInfo(false)
                 }}
               />

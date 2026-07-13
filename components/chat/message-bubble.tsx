@@ -210,8 +210,9 @@ export function MessageBubble({
   const callPayload = parseCallSystemPayload(message.content)
 
   const readCount = (message.reads ?? []).filter((r) => r.user_id !== message.sender_id).length
-  let status: "sent" | "delivered" | "read" = "sent"
-  if (readCount > 0) status = readCount >= totalOthers && totalOthers > 0 ? "read" : "delivered"
+  let status: "sending" | "sent" | "delivered" | "read" = "sent"
+  if (message.pending || message.id.startsWith("temp-")) status = "sending"
+  else if (readCount > 0) status = readCount >= totalOthers && totalOthers > 0 ? "read" : "delivered"
 
   useEffect(() => {
     if (!menuOpen) return

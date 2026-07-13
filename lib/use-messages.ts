@@ -30,7 +30,6 @@ export function useMessages(conversationId: string | null, currentUserId: string
     }
     const forId = conversationId
     setLoading(true)
-    setMessages([])
     const supabase = createClient()
 
     const { data: msgs } = await supabase
@@ -49,15 +48,37 @@ export function useMessages(conversationId: string | null, currentUserId: string
     }
 
     if (conversationIdRef.current !== forId) return
-    setMessages(attachReads((msgs ?? []) as Message[], reads))
+    setMessages((prev) => {
+      const pending = prev.filter(
+        (m) => m.pending && m.conversation_id === forId && !(msgs ?? []).some((s) => s.id === m.id),
+      )
+      return [...attachReads((msgs ?? []) as Message[], reads), ...pending]
+    })
     setLoading(false)
   }, [conversationId, attachReads])
+
+  const addOptimistic = useCallback((message: Message) => {
+    setMessages((prev) => {
+      if (prev.some((m) => m.id === message.id)) return prev
+      return [...prev, message]
+    })
+  }, [])
+
+  const confirmOptimistic = useCallback((tempId: string, real: Message) => {
+    setMessages((prev) => {
+      const withoutDup = prev.filter((m) => m.id !== real.id && m.id !== tempId)
+      return [...withoutDup, { ...real, pending: false, reads: real.reads ?? [] }]
+    })
+  }, [])
+
+  const failOptimistic = useCallback((tempId: string) => {
+    setMessages((prev) => prev.filter((m) => m.id !== tempId))
+  }, [])
 
   useEffect(() => {
     load()
   }, [load])
 
-  // realtime subscription for this conversation
   useEffect(() => {
     if (!conversationId) return
     const supabase = createClient()
@@ -70,7 +91,25 @@ export function useMessages(conversationId: string | null, currentUserId: string
         (payload) => {
           const newMsg = payload.new as Message
           setMessages((prev) => {
-            if (prev.some((m) => m.id === newMsg.id)) return prev
+            if (prev.some((m) => m.id === newMsg.id)) {
+              return prev.map((m) =>
+                m.id === newMsg.id ? { ...newMsg, reads: m.reads ?? [], pending: false } : m,
+              )
+            }
+            // Replace matching optimistic bubble from the same sender
+            const tempIdx = prev.findIndex(
+              (m) =>
+                m.pending &&
+                m.sender_id === newMsg.sender_id &&
+                m.type === newMsg.type &&
+                (m.content ?? null) === (newMsg.content ?? null) &&
+                (m.file_url ?? null) === (newMsg.file_url ?? null),
+            )
+            if (tempIdx >= 0) {
+              const next = [...prev]
+              next[tempIdx] = { ...newMsg, reads: [], pending: false }
+              return next
+            }
             return [...prev, { ...newMsg, reads: [] }]
           })
         },
@@ -100,5 +139,13 @@ export function useMessages(conversationId: string | null, currentUserId: string
     }
   }, [conversationId])
 
-  return { messages, loading, reload: load, setMessages }
+  return {
+    messages,
+    loading,
+    reload: load,
+    setMessages,
+    addOptimistic,
+    confirmOptimistic,
+    failOptimistic,
+  }
 }

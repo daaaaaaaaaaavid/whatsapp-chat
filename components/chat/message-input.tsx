@@ -11,7 +11,9 @@ import { Plus, SendHorizontal, Smile, X, ImageIcon, FileText, Mic, Reply } from 
 type Props = {
   conversationId: string
   currentUserId: string
-  onSent: () => void
+  onOptimistic?: (message: Message) => void
+  onSent: (message: Message, tempId: string) => void
+  onSendFailed?: (tempId: string) => void
   replyTo?: Message | null
   replyAuthor?: string | null
   onCancelReply?: () => void
@@ -34,7 +36,9 @@ function replyPreview(message: Message) {
 export function MessageInput({
   conversationId,
   currentUserId,
+  onOptimistic,
   onSent,
+  onSendFailed,
   replyTo,
   replyAuthor,
   onCancelReply,
@@ -46,6 +50,7 @@ export function MessageInput({
   const [showEmoji, setShowEmoji] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<string | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
+  const [sendError, setSendError] = useState<string | null>(null)
   const [recording, setRecording] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
@@ -60,8 +65,10 @@ export function MessageInput({
     file_name?: string
     file_size?: number
   }) => {
-    const supabase = createClient()
-    const { error } = await supabase.from("messages").insert({
+    const tempId = `temp-${crypto.randomUUID()}`
+    const createdAt = new Date().toISOString()
+    const optimistic: Message = {
+      id: tempId,
       conversation_id: conversationId,
       sender_id: currentUserId,
       content: payload.content ?? null,
@@ -69,13 +76,38 @@ export function MessageInput({
       file_url: payload.file_url ?? null,
       file_name: payload.file_name ?? null,
       file_size: payload.file_size ?? null,
-    })
-    if (error) throw error
+      created_at: createdAt,
+      pending: true,
+      reads: [],
+    }
+    onOptimistic?.(optimistic)
+
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from("messages")
+      .insert({
+        conversation_id: conversationId,
+        sender_id: currentUserId,
+        content: payload.content ?? null,
+        type: payload.type ?? "text",
+        file_url: payload.file_url ?? null,
+        file_name: payload.file_name ?? null,
+        file_size: payload.file_size ?? null,
+      })
+      .select("*")
+      .single()
+    if (error) {
+      onSendFailed?.(tempId)
+      throw error
+    }
     await supabase
       .from("conversations")
       .update({ updated_at: new Date().toISOString() })
       .eq("id", conversationId)
-    onSent()
+
+    const real = { ...(data as Message), pending: false, reads: [] }
+    onSent(real, tempId)
+    return real
   }
 
   const handleSendText = async (e?: React.FormEvent) => {
@@ -83,14 +115,19 @@ export function MessageInput({
     const trimmed = text.trim()
     if (!trimmed || sending) return
     setSending(true)
+    setSendError(null)
     setText("")
     setShowEmoji(false)
     const quoted = replyTo
       ? `↩ ${replyAuthor ?? "משתמש"}: ${replyPreview(replyTo)}\n${trimmed}`
       : trimmed
     onCancelReply?.()
+    onTyping?.(false)
     try {
       await sendMessage({ content: quoted, type: "text" })
+    } catch (err) {
+      setSendError(err instanceof Error ? err.message : "שליחה נכשלה")
+      setText(trimmed)
     } finally {
       setSending(false)
     }
@@ -203,10 +240,17 @@ export function MessageInput({
         </div>
       )}
 
-      {uploadError && (
+      {(uploadError || sendError) && (
         <div className="absolute -top-12 inset-x-4 z-30 rounded-md bg-[#fde8e8] px-3 py-2 text-center text-xs text-[#ea0038] shadow">
-          {uploadError}
-          <button type="button" className="mr-2 underline" onClick={() => setUploadError(null)}>
+          {uploadError || sendError}
+          <button
+            type="button"
+            className="mr-2 underline"
+            onClick={() => {
+              setUploadError(null)
+              setSendError(null)
+            }}
+          >
             סגור
           </button>
         </div>

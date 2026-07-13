@@ -3,10 +3,15 @@
 import { useMemo, useState } from "react"
 import type { Conversation, Profile } from "@/lib/types"
 import { useMessages } from "@/lib/use-messages"
+import {
+  blockUser,
+  createConversationInvite,
+  leaveConversation,
+} from "@/lib/chat-actions"
 import { Avatar } from "./avatar"
-import { convAvatarUrl, convDisplayName, isSelfConversation } from "@/lib/conversation-display"
+import { convAvatarUrl, convDisplayName, isSelfConversation, otherParticipantId } from "@/lib/conversation-display"
 import { mediaItemsFromMessages, type GalleryItem } from "./media-gallery"
-import { X, Bell, BellOff, Ban, Trash2, Users, Archive, Star, ImageIcon, Pin } from "lucide-react"
+import { X, Bell, BellOff, Ban, Trash2, Users, Archive, Star, ImageIcon, Pin, Link2, Check } from "lucide-react"
 
 type Props = {
   open: boolean
@@ -22,6 +27,7 @@ type Props = {
   isMuted?: boolean
   isPinned?: boolean
   onOpenMedia?: (messageId: string) => void
+  onLeftOrDeleted?: () => void
 }
 
 export function ConversationInfo({
@@ -38,8 +44,12 @@ export function ConversationInfo({
   isMuted,
   isPinned,
   onOpenMedia,
+  onLeftOrDeleted,
 }: Props) {
   const [mediaTab, setMediaTab] = useState<"all" | "image" | "video" | "file">("all")
+  const [busy, setBusy] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [inviteCopied, setInviteCopied] = useState(false)
   const { messages } = useMessages(open ? conversation.id : null, currentUser.id)
 
   const isSelf = isSelfConversation(conversation, currentUser.id)
@@ -53,6 +63,59 @@ export function ConversationInfo({
     if (mediaTab === "all") return mediaItems
     return mediaItems.filter((m) => m.type === mediaTab)
   }, [mediaItems, mediaTab])
+
+  const handleLeaveOrDelete = async () => {
+    if (busy || isSelf) return
+    const label = conversation.is_group ? "לצאת מהקבוצה" : "למחוק את הצ'אט"
+    if (!window.confirm(`האם אתה בטוח שברצונך ${label}?`)) return
+    setBusy(true)
+    setActionError(null)
+    try {
+      await leaveConversation(conversation.id, currentUser.id)
+      onLeftOrDeleted?.()
+      onClose()
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "הפעולה נכשלה")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleBlock = async () => {
+    if (busy || conversation.is_group || isSelf) return
+    const otherId = otherParticipantId(conversation, currentUser.id)
+    if (!otherId) return
+    if (!window.confirm("לחסום את איש הקשר ולהסיר את השיחה?")) return
+    setBusy(true)
+    setActionError(null)
+    try {
+      await blockUser(currentUser.id, otherId)
+      await leaveConversation(conversation.id, currentUser.id)
+      onLeftOrDeleted?.()
+      onClose()
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "החסימה נכשלה")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleInvite = async () => {
+    if (busy) return
+    setBusy(true)
+    setActionError(null)
+    try {
+      const token = await createConversationInvite(conversation.id, currentUser.id)
+      const url = `${window.location.origin}/invite/${token}`
+      await navigator.clipboard.writeText(url)
+      setInviteCopied(true)
+      window.setTimeout(() => setInviteCopied(false), 2500)
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "יצירת הקישור נכשלה")
+    } finally {
+      setBusy(false)
+    }
+  }
 
   if (!open) return null
 
@@ -180,6 +243,17 @@ export function ConversationInfo({
         </div>
 
         <div className="mt-2 bg-white shadow-sm">
+          {!isSelf && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void handleInvite()}
+              className="flex w-full items-center gap-4 px-6 py-4 text-right text-[#111b21] transition hover:bg-[#f5f6f6] disabled:opacity-50"
+            >
+              {inviteCopied ? <Check className="h-5 w-5 text-[#00a884]" /> : <Link2 className="h-5 w-5 text-[#54656f]" />}
+              {inviteCopied ? "הקישור הועתק" : "העתק קישור הזמנה"}
+            </button>
+          )}
           {!isSelf && onTogglePinned && (
             <button
               type="button"
@@ -224,20 +298,42 @@ export function ConversationInfo({
               {isMuted ? "ביטול השתקת התראות" : "השתקת התראות"}
             </button>
           )}
-          <button
-            type="button"
-            className="flex w-full items-center gap-4 px-6 py-4 text-right text-[#ea0038] transition hover:bg-[#f5f6f6]"
-          >
-            <Ban className="h-5 w-5" />
-            {conversation.is_group ? "יציאה מהקבוצה" : "חסימת איש קשר"}
-          </button>
-          <button
-            type="button"
-            className="flex w-full items-center gap-4 px-6 py-4 text-right text-[#ea0038] transition hover:bg-[#f5f6f6]"
-          >
-            <Trash2 className="h-5 w-5" />
-            מחיקת הצ&apos;אט
-          </button>
+          {!isSelf && !conversation.is_group && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void handleBlock()}
+              className="flex w-full items-center gap-4 px-6 py-4 text-right text-[#ea0038] transition hover:bg-[#f5f6f6] disabled:opacity-50"
+            >
+              <Ban className="h-5 w-5" />
+              חסימת איש קשר
+            </button>
+          )}
+          {!isSelf && conversation.is_group && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void handleLeaveOrDelete()}
+              className="flex w-full items-center gap-4 px-6 py-4 text-right text-[#ea0038] transition hover:bg-[#f5f6f6] disabled:opacity-50"
+            >
+              <Ban className="h-5 w-5" />
+              יציאה מהקבוצה
+            </button>
+          )}
+          {!isSelf && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void handleLeaveOrDelete()}
+              className="flex w-full items-center gap-4 px-6 py-4 text-right text-[#ea0038] transition hover:bg-[#f5f6f6] disabled:opacity-50"
+            >
+              <Trash2 className="h-5 w-5" />
+              מחיקת הצ&apos;אט
+            </button>
+          )}
+          {actionError && (
+            <p className="px-6 py-3 text-sm text-[#ea0038]">{actionError}</p>
+          )}
         </div>
       </div>
     </aside>

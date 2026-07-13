@@ -37,6 +37,8 @@ type Props = {
   onToggleArchive: () => void
   onToggleFavorite: () => void
   onTogglePinned: () => void
+  onMessageActivity?: (message: Message) => void
+  onConversationOpened?: (conversationId: string) => void
   isArchived: boolean
   isFavorite: boolean
   isPinned: boolean
@@ -61,13 +63,16 @@ export function ConversationView({
   onToggleArchive,
   onToggleFavorite,
   onTogglePinned,
+  onMessageActivity,
+  onConversationOpened,
   isArchived,
   isFavorite,
   isPinned,
   initialGalleryMessageId,
   onGalleryOpened,
 }: Props) {
-  const { messages, loading, reload, setMessages } = useMessages(conversation.id, currentUser.id)
+  const { messages, loading, setMessages, addOptimistic, confirmOptimistic, failOptimistic } =
+    useMessages(conversation.id, currentUser.id)
   const bottomRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const typingChannelRef = useRef<RealtimeChannel | null>(null)
@@ -217,6 +222,7 @@ export function ConversationView({
       setUnreadCountAtOpen(unread.length)
     }
     markedRef.current = conversation.id
+    onConversationOpened?.(conversation.id)
 
     if (unread.length === 0) return
     const supabase = createClient()
@@ -227,7 +233,7 @@ export function ConversationView({
         { onConflict: "message_id,user_id" },
       )
       .then(() => {})
-  }, [messages, currentUser.id, conversation.id, loading])
+  }, [messages, currentUser.id, conversation.id, loading, onConversationOpened])
 
   const mediaItems = useMemo(() => mediaItemsFromMessages(visibleMessages), [visibleMessages])
 
@@ -303,18 +309,22 @@ export function ConversationView({
     const supabase = createClient()
     const src = forwardMessage
     for (const cid of conversationIds) {
-      await supabase.from("messages").insert({
-        conversation_id: cid,
-        sender_id: currentUser.id,
-        type: src.type === "system" ? "text" : src.type,
-        content: src.type === "text" || src.type === "system" ? (src.content ?? messagePreview(src)) : src.content,
-        file_url: src.file_url,
-        file_name: src.file_name,
-        file_size: src.file_size,
-      })
+      const { data } = await supabase
+        .from("messages")
+        .insert({
+          conversation_id: cid,
+          sender_id: currentUser.id,
+          type: src.type === "system" ? "text" : src.type,
+          content: src.type === "text" || src.type === "system" ? (src.content ?? messagePreview(src)) : src.content,
+          file_url: src.file_url,
+          file_name: src.file_name,
+          file_size: src.file_size,
+        })
+        .select("*")
+        .single()
       await supabase.from("conversations").update({ updated_at: new Date().toISOString() }).eq("id", cid)
+      if (data) onMessageActivity?.(data as Message)
     }
-    if (conversationIds.includes(conversation.id)) await reload()
   }
 
   return (
@@ -560,7 +570,15 @@ export function ConversationView({
         <MessageInput
           conversationId={conversation.id}
           currentUserId={currentUser.id}
-          onSent={reload}
+          onOptimistic={(msg) => {
+            addOptimistic(msg)
+            onMessageActivity?.(msg)
+          }}
+          onSent={(msg, tempId) => {
+            confirmOptimistic(tempId, msg)
+            onMessageActivity?.(msg)
+          }}
+          onSendFailed={failOptimistic}
           replyTo={replyTo}
           replyAuthor={
             replyTo

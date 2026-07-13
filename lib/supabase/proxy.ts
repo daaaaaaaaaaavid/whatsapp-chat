@@ -56,6 +56,9 @@ export async function updateSession(request: NextRequest) {
   if (!user && !isPublic) {
     const loginUrl = request.nextUrl.clone()
     loginUrl.pathname = "/auth/login"
+    if (pathname.startsWith("/invite/")) {
+      loginUrl.searchParams.set("next", pathname)
+    }
     return NextResponse.redirect(loginUrl)
   }
 
