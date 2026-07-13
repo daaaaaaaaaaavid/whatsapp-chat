@@ -3,6 +3,8 @@
 import type React from "react"
 
 import { createClient, ensureSupabaseConfig } from "@/lib/supabase/client"
+import { signInWithGoogle } from "@/lib/auth-google"
+import { GoogleSignInButton } from "@/components/auth/google-sign-in-button"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
@@ -13,6 +15,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [googleLoading, setGoogleLoading] = useState(false)
   const router = useRouter()
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -34,6 +37,21 @@ export default function LoginPage() {
     }
   }
 
+  const handleGoogle = async () => {
+    setGoogleLoading(true)
+    setError(null)
+    try {
+      await signInWithGoogle("/chat")
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "התחברות עם Google נכשלה. ודא שהפעלת Google ב־Supabase Authentication.",
+      )
+      setGoogleLoading(false)
+    }
+  }
+
   return (
     <div className="flex min-h-svh w-full flex-col bg-[#f0f2f5]">
       <div className="h-32 w-full bg-[#00a884]" />
@@ -46,7 +64,17 @@ export default function LoginPage() {
           <h1 className="text-2xl font-normal text-[#111b21]">התחברות</h1>
           <p className="mt-1 text-sm text-[#667781]">הזן את הפרטים שלך כדי להיכנס לחשבון</p>
 
-          <form onSubmit={handleLogin} className="mt-6 flex flex-col gap-4">
+          <div className="mt-6">
+            <GoogleSignInButton onClick={() => void handleGoogle()} disabled={isLoading || googleLoading} />
+          </div>
+
+          <div className="my-5 flex items-center gap-3">
+            <div className="h-px flex-1 bg-[#e9edef]" />
+            <span className="text-xs text-[#8696a0]">או</span>
+            <div className="h-px flex-1 bg-[#e9edef]" />
+          </div>
+
+          <form onSubmit={handleLogin} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
               <label htmlFor="email" className="text-sm font-medium text-[#3b4a54]">
                 כתובת אימייל
@@ -85,7 +113,7 @@ export default function LoginPage() {
 
             <button
               type="submit"
-              disabled={isLoading}
+              disabled={isLoading || googleLoading}
               className="mt-2 rounded-full bg-[#00a884] px-4 py-2.5 font-medium text-white transition hover:bg-[#008069] disabled:opacity-60"
             >
               {isLoading ? "מתחבר..." : "התחברות"}

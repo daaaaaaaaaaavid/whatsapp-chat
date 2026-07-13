@@ -181,12 +181,9 @@
 
 /* WhatsApp chat area background */
 .wa-chat-bg {
-  background-color: var(--wa-chat-bg);
-  background-image:
-    radial-gradient(circle at 20% 30%, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
-    radial-gradient(circle at 70% 60%, rgba(0, 0, 0, 0.025) 1.5px, transparent 1.5px),
-    radial-gradient(circle at 40% 80%, rgba(0, 0, 0, 0.02) 1px, transparent 1px);
-  background-size: 48px 48px, 72px 72px, 56px 56px;
+  background-color: #efeae2;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260' viewBox='0 0 260 260'%3E%3Cg fill='%23d1c7b7' fill-opacity='0.35'%3E%3Cpath d='M40 30c8 0 12 6 12 12s-4 12-12 12-12-6-12-12 4-12 12-12zm90 40c6 0 10 5 10 10s-4 10-10 10-10-5-10-10 4-10 10-10zm70 20c5 0 8 4 8 8s-3 8-8 8-8-4-8-8 3-8 8-8zM30 120c7 0 11 5 11 11s-4 11-11 11-11-5-11-11 4-11 11-11zm140 50c6 0 10 5 10 10s-4 10-10 10-10-5-10-10 4-10 10-10zM80 180c5 0 9 4 9 9s-4 9-9 9-9-4-9-9 4-9 9-9zm100 40c7 0 11 5 11 11s-4 11-11 11-11-5-11-11 4-11 11-11z'/%3E%3Ccircle cx='200' cy='90' r='3'/%3E%3Ccircle cx='60' cy='200' r='2.5'/%3E%3Ccircle cx='180' cy='200' r='2'/%3E%3Cpath d='M110 20h14v2h-14zm20 80h10v2h-10zm-70 60h12v2H60zm130 30h8v2h-8z'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 260px 260px;
 }
 
 /* Thin WhatsApp-style scrollbar */
@@ -205,24 +202,24 @@
   background-color: rgba(0, 0, 0, 0.3);
 }
 
-/* Message bubble tail */
+/* Message bubble tails — mine on left, theirs on right */
 .bubble-tail-out::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  right: -8px;
-  width: 8px;
-  height: 13px;
-  background: var(--wa-bubble-out);
-  clip-path: polygon(0 0, 0% 100%, 100% 0);
-}
-.bubble-tail-in::before {
   content: "";
   position: absolute;
   top: 0;
   left: -8px;
   width: 8px;
   height: 13px;
-  background: var(--wa-bubble-in);
+  background: var(--wa-bubble-out);
   clip-path: polygon(100% 0, 0 0, 100% 100%);
+}
+.bubble-tail-in::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: -8px;
+  width: 8px;
+  height: 13px;
+  background: var(--wa-bubble-in);
+  clip-path: polygon(0 0, 100% 0, 0 100%);
 }

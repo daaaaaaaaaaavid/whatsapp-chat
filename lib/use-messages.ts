@@ -8,6 +8,8 @@ export function useMessages(conversationId: string | null, currentUserId: string
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(false)
   const readsRef = useRef<Map<string, MessageRead[]>>(new Map())
+  const conversationIdRef = useRef(conversationId)
+  conversationIdRef.current = conversationId
 
   const attachReads = useCallback((msgs: Message[], reads: MessageRead[]) => {
     const map = new Map<string, MessageRead[]>()
@@ -23,16 +25,21 @@ export function useMessages(conversationId: string | null, currentUserId: string
   const load = useCallback(async () => {
     if (!conversationId) {
       setMessages([])
+      setLoading(false)
       return
     }
+    const forId = conversationId
     setLoading(true)
+    setMessages([])
     const supabase = createClient()
 
     const { data: msgs } = await supabase
       .from("messages")
       .select("*")
-      .eq("conversation_id", conversationId)
+      .eq("conversation_id", forId)
       .order("created_at", { ascending: true })
+
+    if (conversationIdRef.current !== forId) return
 
     const msgIds = (msgs ?? []).map((m) => m.id)
     let reads: MessageRead[] = []
@@ -41,6 +48,7 @@ export function useMessages(conversationId: string | null, currentUserId: string
       reads = (data ?? []) as MessageRead[]
     }
 
+    if (conversationIdRef.current !== forId) return
     setMessages(attachReads((msgs ?? []) as Message[], reads))
     setLoading(false)
   }, [conversationId, attachReads])
@@ -65,6 +73,14 @@ export function useMessages(conversationId: string | null, currentUserId: string
             if (prev.some((m) => m.id === newMsg.id)) return prev
             return [...prev, { ...newMsg, reads: [] }]
           })
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` },
+        (payload) => {
+          const updated = payload.new as Message
+          setMessages((prev) => prev.map((m) => (m.id === updated.id ? { ...m, ...updated } : m)))
         },
       )
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "message_reads" }, (payload) => {

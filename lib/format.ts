@@ -18,6 +18,21 @@ export function formatChatListTime(date: string | Date) {
   return d.toLocaleDateString("he-IL", { day: "2-digit", month: "2-digit", year: "2-digit" })
 }
 
+/** WhatsApp-style status timestamp: "היום בשעה 13:16" */
+export function formatStatusTime(date: string | Date) {
+  const d = typeof date === "string" ? new Date(date) : date
+  const now = new Date()
+  const time = formatTime(d)
+  const isToday = d.toDateString() === now.toDateString()
+  const yesterday = new Date(now)
+  yesterday.setDate(now.getDate() - 1)
+  const isYesterday = d.toDateString() === yesterday.toDateString()
+
+  if (isToday) return `היום בשעה ${time}`
+  if (isYesterday) return `אתמול בשעה ${time}`
+  return `${d.toLocaleDateString("he-IL", { day: "2-digit", month: "2-digit" })} בשעה ${time}`
+}
+
 export function formatDateDivider(date: string | Date) {
   const d = typeof date === "string" ? new Date(date) : date
   const now = new Date()
@@ -28,6 +43,8 @@ export function formatDateDivider(date: string | Date) {
 
   if (isToday) return "היום"
   if (isYesterday) return "אתמול"
+  const diffDays = Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24))
+  if (diffDays < 7) return d.toLocaleDateString("he-IL", { weekday: "long" })
   return d.toLocaleDateString("he-IL", { day: "numeric", month: "long", year: "numeric" })
 }
 
@@ -35,6 +52,17 @@ export function formatFileSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+export function formatCallDuration(seconds: number) {
+  const s = Math.max(0, Math.floor(seconds))
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const sec = s % 60
+  if (h > 0) {
+    return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`
+  }
+  return `${m}:${String(sec).padStart(2, "0")}`
 }
 
 const AVATAR_COLORS = [

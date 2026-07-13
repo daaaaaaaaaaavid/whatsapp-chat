@@ -3,16 +3,29 @@
 import type { Conversation, Profile } from "@/lib/types"
 import { Avatar } from "./avatar"
 import { convAvatarUrl, convDisplayName } from "@/lib/conversation-display"
-import { X, Bell, Ban, Trash2, Users } from "lucide-react"
+import { X, Bell, Ban, Trash2, Users, Archive, Star } from "lucide-react"
 
 type Props = {
   open: boolean
   conversation: Conversation
   currentUser: Profile
   onClose: () => void
+  onToggleArchive?: () => void
+  onToggleFavorite?: () => void
+  isArchived?: boolean
+  isFavorite?: boolean
 }
 
-export function ConversationInfo({ open, conversation, currentUser, onClose }: Props) {
+export function ConversationInfo({
+  open,
+  conversation,
+  currentUser,
+  onClose,
+  onToggleArchive,
+  onToggleFavorite,
+  isArchived,
+  isFavorite,
+}: Props) {
   if (!open) return null
 
   const name = convDisplayName(conversation, currentUser.id)
@@ -85,6 +98,26 @@ export function ConversationInfo({ open, conversation, currentUser, onClose }: P
         )}
 
         <div className="mt-2 bg-white shadow-sm">
+          {onToggleFavorite && (
+            <button
+              type="button"
+              onClick={onToggleFavorite}
+              className="flex w-full items-center gap-4 px-6 py-4 text-right text-[#111b21] transition hover:bg-[#f5f6f6]"
+            >
+              <Star className={`h-5 w-5 ${isFavorite ? "fill-[#25d366] text-[#25d366]" : "text-[#54656f]"}`} />
+              {isFavorite ? "הסר ממועדפים" : "הוסף למועדפים"}
+            </button>
+          )}
+          {onToggleArchive && (
+            <button
+              type="button"
+              onClick={onToggleArchive}
+              className="flex w-full items-center gap-4 px-6 py-4 text-right text-[#111b21] transition hover:bg-[#f5f6f6]"
+            >
+              <Archive className="h-5 w-5 text-[#54656f]" />
+              {isArchived ? "הוצא מארכיון" : "העבר לארכיון"}
+            </button>
+          )}
           <button
             type="button"
             className="flex w-full items-center gap-4 px-6 py-4 text-right text-[#111b21] transition hover:bg-[#f5f6f6]"

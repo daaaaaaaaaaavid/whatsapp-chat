@@ -8,7 +8,15 @@ export type Profile = {
   created_at: string
 }
 
-export type MessageType = "text" | "image" | "file" | "audio" | "video"
+export type MessageType = "text" | "image" | "file" | "audio" | "video" | "system"
+
+/** Structured payload for system call messages (stored as JSON in content). */
+export type CallSystemPayload = {
+  kind: "call"
+  event: "incoming" | "outgoing" | "ended" | "missed" | "rejected"
+  video: boolean
+  durationSec?: number
+}
 
 export type Message = {
   id: string
@@ -20,6 +28,7 @@ export type Message = {
   file_name: string | null
   file_size: number | null
   created_at: string
+  deleted_at?: string | null
   sender?: Profile
   reads?: MessageRead[]
 }

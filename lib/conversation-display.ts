@@ -1,4 +1,5 @@
 import type { Conversation, Message } from "@/lib/types"
+import { callSystemLabel, parseCallSystemPayload } from "@/lib/call-system-message"
 
 export function convDisplayName(conv: Conversation, currentUserId: string): string {
   if (conv.is_group) return conv.name ?? "קבוצה"
@@ -19,6 +20,7 @@ export function otherParticipantId(conv: Conversation, currentUserId: string): s
 
 export function messagePreview(msg: Message | null | undefined): string {
   if (!msg) return "אין הודעות עדיין"
+  if (msg.deleted_at) return "ההודעה נמחקה"
   switch (msg.type) {
     case "image":
       return "📷 תמונה"
@@ -28,6 +30,10 @@ export function messagePreview(msg: Message | null | undefined): string {
       return "🎵 הודעה קולית"
     case "file":
       return "📎 " + (msg.file_name ?? "קובץ")
+    case "system": {
+      const payload = parseCallSystemPayload(msg.content)
+      return payload ? callSystemLabel(payload) : (msg.content ?? "הודעת מערכת")
+    }
     default:
       return msg.content ?? ""
   }

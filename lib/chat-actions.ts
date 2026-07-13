@@ -3,15 +3,26 @@
 import { createClient, ensureSupabaseConfig } from "@/lib/supabase/client"
 import type { Profile } from "@/lib/types"
 
+function errMessage(error: unknown, fallback: string) {
+  if (error && typeof error === "object" && "message" in error) {
+    const msg = String((error as { message?: string }).message || "")
+    if (msg) return msg
+  }
+  if (error instanceof Error && error.message) return error.message
+  return fallback
+}
+
 // Find an existing 1-on-1 conversation between two users, or create one.
 export async function getOrCreateDirectConversation(currentUserId: string, otherUserId: string): Promise<string> {
   await ensureSupabaseConfig()
   const supabase = createClient()
 
-  const { data: mine } = await supabase
+  const { data: mine, error: mineErr } = await supabase
     .from("conversation_participants")
     .select("conversation_id")
     .eq("user_id", currentUserId)
+  if (mineErr) throw new Error(errMessage(mineErr, "נכשל בטעינת שיחות"))
+
   const myConvIds = (mine ?? []).map((p) => p.conversation_id)
 
   if (myConvIds.length) {
@@ -32,20 +43,30 @@ export async function getOrCreateDirectConversation(currentUserId: string, other
     }
   }
 
-  const { data: conv, error } = await supabase
-    .from("conversations")
-    .insert({ is_group: false, created_by: currentUserId })
-    .select()
-    .single()
-  if (error || !conv) throw error ?? new Error("נכשל ביצירת שיחה. ודא שהרצת את schema.sql ב־Supabase.")
+  // Generate id client-side so we don't need RETURNING (SELECT RLS blocks before we're a participant)
+  const conversationId = crypto.randomUUID()
+  const { error } = await supabase.from("conversations").insert({
+    id: conversationId,
+    is_group: false,
+    created_by: currentUserId,
+  })
+  if (error) {
+    throw new Error(
+      errMessage(error, "נכשל ביצירת שיחה. ודא שהרצת את schema.sql ב־Supabase."),
+    )
+  }
 
   const { error: partsError } = await supabase.from("conversation_participants").insert([
-    { conversation_id: conv.id, user_id: currentUserId },
-    { conversation_id: conv.id, user_id: otherUserId },
+    { conversation_id: conversationId, user_id: currentUserId },
+    { conversation_id: conversationId, user_id: otherUserId },
   ])
-  if (partsError) throw partsError
+  if (partsError) {
+    // Cleanup orphan conversation if participants failed
+    await supabase.from("conversations").delete().eq("id", conversationId)
+    throw new Error(errMessage(partsError, "נכשל בהוספת משתתפים לשיחה"))
+  }
 
-  return conv.id
+  return conversationId
 }
 
 export async function createGroupConversation(
@@ -55,24 +76,31 @@ export async function createGroupConversation(
 ): Promise<string> {
   await ensureSupabaseConfig()
   const supabase = createClient()
-  const { data: conv, error } = await supabase
-    .from("conversations")
-    .insert({ is_group: true, name, created_by: currentUserId })
-    .select()
-    .single()
-  if (error || !conv) throw error ?? new Error("נכשל ביצירת קבוצה. ודא שהרצת את schema.sql ב־Supabase.")
+  const conversationId = crypto.randomUUID()
+  const { error } = await supabase.from("conversations").insert({
+    id: conversationId,
+    is_group: true,
+    name,
+    created_by: currentUserId,
+  })
+  if (error) {
+    throw new Error(errMessage(error, "נכשל ביצירת קבוצה. ודא שהרצת את schema.sql ב־Supabase."))
+  }
 
   const members = Array.from(new Set([currentUserId, ...memberIds]))
   const { error: partsError } = await supabase.from("conversation_participants").insert(
     members.map((uid) => ({
-      conversation_id: conv.id,
+      conversation_id: conversationId,
       user_id: uid,
       is_admin: uid === currentUserId,
     })),
   )
-  if (partsError) throw partsError
+  if (partsError) {
+    await supabase.from("conversations").delete().eq("id", conversationId)
+    throw new Error(errMessage(partsError, "נכשל בהוספת חברים לקבוצה"))
+  }
 
-  return conv.id
+  return conversationId
 }
 
 export type FetchUsersResult = {

@@ -39,12 +39,16 @@ create table if not exists public.messages (
   conversation_id uuid not null references public.conversations (id) on delete cascade,
   sender_id uuid not null references auth.users (id) on delete cascade,
   content text,
-  type text not null default 'text' check (type in ('text', 'image', 'file', 'audio', 'video')),
+  type text not null default 'text' check (type in ('text', 'image', 'file', 'audio', 'video', 'system')),
   file_url text,
   file_name text,
   file_size bigint,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  deleted_at timestamptz
 );
+
+-- Soft-delete support for existing DBs
+alter table public.messages add column if not exists deleted_at timestamptz;
 
 create index if not exists messages_conversation_created_idx
   on public.messages (conversation_id, created_at);
@@ -142,17 +146,40 @@ create policy "profiles_insert_own"
   to authenticated
   with check (auth.uid() = id);
 
--- Conversations: only participants
+-- Helper: membership check without RLS recursion (must exist before policies)
+create or replace function public.is_conversation_member(p_conversation_id uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1
+    from public.conversation_participants
+    where conversation_id = p_conversation_id
+      and user_id = auth.uid()
+  );
+$$;
+
+revoke all on function public.is_conversation_member(uuid) from public;
+grant execute on function public.is_conversation_member(uuid) to authenticated;
+
+-- Conversations: only participants / creator
 drop policy if exists "conversations_select_participant" on public.conversations;
 create policy "conversations_select_participant"
   on public.conversations for select
   to authenticated
   using (
-    exists (
-      select 1 from public.conversation_participants cp
-      where cp.conversation_id = id and cp.user_id = auth.uid()
-    )
+    created_by = auth.uid()
+    or public.is_conversation_member(id)
   );
+
+drop policy if exists "conversations_delete_creator" on public.conversations;
+create policy "conversations_delete_creator"
+  on public.conversations for delete
+  to authenticated
+  using (created_by = auth.uid());
 
 drop policy if exists "conversations_insert_authenticated" on public.conversations;
 create policy "conversations_insert_authenticated"
@@ -164,42 +191,34 @@ drop policy if exists "conversations_update_participant" on public.conversations
 create policy "conversations_update_participant"
   on public.conversations for update
   to authenticated
-  using (
-    exists (
-      select 1 from public.conversation_participants cp
-      where cp.conversation_id = id and cp.user_id = auth.uid()
-    )
-  );
+  using (public.is_conversation_member(id));
 
 -- Participants
 drop policy if exists "participants_select_member" on public.conversation_participants;
 create policy "participants_select_member"
   on public.conversation_participants for select
   to authenticated
-  using (
-    exists (
-      select 1 from public.conversation_participants me
-      where me.conversation_id = conversation_id and me.user_id = auth.uid()
-    )
-  );
+  using (public.is_conversation_member(conversation_id));
 
 drop policy if exists "participants_insert_authenticated" on public.conversation_participants;
 create policy "participants_insert_authenticated"
   on public.conversation_participants for insert
   to authenticated
-  with check (true);
+  with check (
+    user_id = auth.uid()
+    or public.is_conversation_member(conversation_id)
+    or exists (
+      select 1 from public.conversations c
+      where c.id = conversation_id and c.created_by = auth.uid()
+    )
+  );
 
 -- Messages
 drop policy if exists "messages_select_participant" on public.messages;
 create policy "messages_select_participant"
   on public.messages for select
   to authenticated
-  using (
-    exists (
-      select 1 from public.conversation_participants cp
-      where cp.conversation_id = conversation_id and cp.user_id = auth.uid()
-    )
-  );
+  using (public.is_conversation_member(conversation_id));
 
 drop policy if exists "messages_insert_participant" on public.messages;
 create policy "messages_insert_participant"
@@ -207,11 +226,15 @@ create policy "messages_insert_participant"
   to authenticated
   with check (
     auth.uid() = sender_id
-    and exists (
-      select 1 from public.conversation_participants cp
-      where cp.conversation_id = conversation_id and cp.user_id = auth.uid()
-    )
+    and public.is_conversation_member(conversation_id)
   );
+
+drop policy if exists "messages_update_own" on public.messages;
+create policy "messages_update_own"
+  on public.messages for update
+  to authenticated
+  using (auth.uid() = sender_id)
+  with check (auth.uid() = sender_id);
 
 -- Reads
 drop policy if exists "reads_select_participant" on public.message_reads;
@@ -273,3 +296,41 @@ begin
   exception when duplicate_object then null;
   end;
 end $$;
+
+-- Storage bucket for chat media (images, files, voice)
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('media', 'media', true, 52428800)
+on conflict (id) do update set public = true;
+
+drop policy if exists "media_public_read" on storage.objects;
+create policy "media_public_read"
+  on storage.objects for select
+  to public
+  using (bucket_id = 'media');
+
+drop policy if exists "media_auth_upload" on storage.objects;
+create policy "media_auth_upload"
+  on storage.objects for insert
+  to authenticated
+  with check (
+    bucket_id = 'media'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+drop policy if exists "media_auth_update" on storage.objects;
+create policy "media_auth_update"
+  on storage.objects for update
+  to authenticated
+  using (
+    bucket_id = 'media'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+drop policy if exists "media_auth_delete" on storage.objects;
+create policy "media_auth_delete"
+  on storage.objects for delete
+  to authenticated
+  using (
+    bucket_id = 'media'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );

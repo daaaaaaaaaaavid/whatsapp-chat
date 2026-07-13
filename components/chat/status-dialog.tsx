@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useState } from "react"
 import { Modal } from "./modal"
 import { Avatar } from "./avatar"
+import { StatusViewer, type GroupedStatus } from "./status-viewer"
 import { createClient } from "@/lib/supabase/client"
 import type { Profile, Status } from "@/lib/types"
 import { formatChatListTime } from "@/lib/format"
-import { Plus, Type, X } from "lucide-react"
+import { Plus, Type } from "lucide-react"
 
 type Props = {
   open: boolean
@@ -15,8 +16,6 @@ type Props = {
 }
 
 const BG_COLORS = ["#075E54", "#00a884", "#e542a3", "#f5b800", "#0088cc", "#d9534f", "#845ec2", "#4caf50"]
-
-type GroupedStatus = { profile: Profile; statuses: Status[] }
 
 export function StatusDialog({ open, currentUser, onClose }: Props) {
   const [statuses, setStatuses] = useState<Status[]>([])
@@ -59,6 +58,11 @@ export function StatusDialog({ open, currentUser, onClose }: Props) {
     }
     g?.statuses.push(s)
   }
+
+  const allGroups: GroupedStatus[] = [
+    ...(myStatuses.length ? [{ profile: currentUser, statuses: myStatuses }] : []),
+    ...grouped,
+  ]
 
   const handlePost = async () => {
     if (!text.trim()) return
@@ -121,9 +125,12 @@ export function StatusDialog({ open, currentUser, onClose }: Props) {
         </div>
       ) : (
         <div>
-          {/* my status */}
           <button
-            onClick={() => (myStatuses.length ? openViewer({ profile: currentUser, statuses: myStatuses }) : setCreating(true))}
+            onClick={() =>
+              myStatuses.length
+                ? openViewer({ profile: currentUser, statuses: myStatuses })
+                : setCreating(true)
+            }
             className="flex w-full items-center gap-3 px-5 py-3 text-right transition hover:bg-[#f5f6f6]"
           >
             <div className="relative">
@@ -137,7 +144,9 @@ export function StatusDialog({ open, currentUser, onClose }: Props) {
             <div className="flex-1 border-b border-[#e9edef] pb-3">
               <div className="text-[#111b21]">הסטטוס שלי</div>
               <div className="text-sm text-[#667781]">
-                {myStatuses.length ? formatChatListTime(myStatuses[myStatuses.length - 1].created_at) : "הקש כדי להוסיף עדכון סטטוס"}
+                {myStatuses.length
+                  ? formatChatListTime(myStatuses[myStatuses.length - 1].created_at)
+                  : "הקש כדי להוסיף עדכון סטטוס"}
               </div>
             </div>
           </button>
@@ -181,81 +190,20 @@ export function StatusDialog({ open, currentUser, onClose }: Props) {
         </div>
       )}
 
-      {/* Status viewer overlay */}
       {viewing && (
         <StatusViewer
           group={viewing}
+          groups={allGroups}
           index={viewIndex}
           currentUserId={currentUser.id}
           onIndexChange={setViewIndex}
+          onGroupChange={(g, i) => {
+            setViewing(g)
+            setViewIndex(i)
+          }}
           onClose={() => setViewing(null)}
         />
       )}
     </Modal>
-  )
-}
-
-function StatusViewer({
-  group,
-  index,
-  currentUserId,
-  onIndexChange,
-  onClose,
-}: {
-  group: GroupedStatus
-  index: number
-  currentUserId: string
-  onIndexChange: (i: number) => void
-  onClose: () => void
-}) {
-  const status = group.statuses[index]
-
-  useEffect(() => {
-    if (!status) return
-    // mark viewed
-    if (status.user_id !== currentUserId) {
-      const supabase = createClient()
-      supabase.from("status_views").upsert({ status_id: status.id, viewer_id: currentUserId }, { onConflict: "status_id,viewer_id" }).then(() => {})
-    }
-    const timer = setTimeout(() => {
-      if (index < group.statuses.length - 1) onIndexChange(index + 1)
-      else onClose()
-    }, 5000)
-    return () => clearTimeout(timer)
-  }, [status, index, group.statuses.length, currentUserId, onIndexChange, onClose])
-
-  if (!status) return null
-
-  return (
-    <div className="fixed inset-0 z-[60] flex flex-col bg-black" onClick={onClose}>
-      {/* progress bars */}
-      <div className="flex gap-1 p-2">
-        {group.statuses.map((s, i) => (
-          <div key={s.id} className="h-1 flex-1 overflow-hidden rounded-full bg-white/30">
-            <div className={`h-full bg-white ${i < index ? "w-full" : i === index ? "w-full animate-none" : "w-0"}`} />
-          </div>
-        ))}
-      </div>
-      <div className="flex items-center gap-3 px-4 py-2 text-white">
-        <Avatar name={group.profile.display_name} url={group.profile.avatar_url} size={40} />
-        <div className="flex-1">
-          <div className="font-medium">{group.profile.display_name ?? group.profile.email}</div>
-          <div className="text-xs text-white/70">{formatChatListTime(status.created_at)}</div>
-        </div>
-        <button onClick={onClose} aria-label="סגור">
-          <X className="h-6 w-6" />
-        </button>
-      </div>
-      <div
-        className="flex flex-1 items-center justify-center p-8 text-center"
-        style={{ backgroundColor: status.background_color }}
-      >
-        {status.media_url ? (
-          <img src={status.media_url || "/placeholder.svg"} alt="סטטוס" className="max-h-full max-w-full object-contain" />
-        ) : (
-          <p className="text-3xl font-medium text-white">{status.content}</p>
-        )}
-      </div>
-    </div>
   )
 }
