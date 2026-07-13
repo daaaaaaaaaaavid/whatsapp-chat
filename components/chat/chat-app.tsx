@@ -567,6 +567,7 @@ export function ChatApp({ currentUser: initialUser }: Props) {
           onHangup={() => void hangup()}
           onToggleMute={toggleMute}
           onToggleCamera={toggleCamera}
+          onDismissError={() => setCallError(null)}
         />
       )}
     </div>

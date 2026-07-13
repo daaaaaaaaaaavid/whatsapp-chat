@@ -25,8 +25,17 @@ export type GroupedStatus = { profile: Profile; statuses: Status[] }
 const IMAGE_DURATION_MS = 5000
 const EMOJIS = ["😀", "😂", "😍", "🥰", "😎", "🤔", "😢", "👍", "🙏", "❤️", "🔥", "🎉"]
 
+function isImageUrl(url: string) {
+  return /\.(jpe?g|png|gif|webp|bmp|svg|heic|heif|avif)(\?|#|$)/i.test(url)
+}
+
+/** Prefer video for ambiguous URLs so a 5s image timer never cuts a clip short. */
 function isVideoUrl(url: string) {
-  return /\.(mp4|webm|ogg|mov|m4v|mkv|avi|3gp)(\?|$)/i.test(url)
+  if (/#(?:whachat=)?video\b/i.test(url)) return true
+  if (/#(?:whachat=)?image\b/i.test(url)) return false
+  if (/\.(mp4|webm|ogg|mov|m4v|mkv|avi|3gp)(\?|#|$)/i.test(url)) return true
+  if (isImageUrl(url)) return false
+  return true
 }
 
 /** Split status text into a mid banner (title lines) and a free caption. */
@@ -90,9 +99,11 @@ export function StatusViewer({
   const progressRef = useRef(0)
   const videoRef = useRef<HTMLVideoElement>(null)
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const advancingRef = useRef(false)
 
   useEffect(() => {
     progressRef.current = 0
+    advancingRef.current = false
     setProgress(0)
     setUserPaused(false)
     setHolding(false)
@@ -168,6 +179,8 @@ export function StatusViewer({
   }, [status?.id, isOwn, loadReplies])
 
   const goNext = useCallback(() => {
+    if (advancingRef.current) return
+    advancingRef.current = true
     if (index < group.statuses.length - 1) {
       onIndexChange(index + 1)
       return
@@ -180,6 +193,7 @@ export function StatusViewer({
   }, [index, group.statuses.length, groupIdx, groups, onIndexChange, onGroupChange, onClose])
 
   const goPrev = useCallback(() => {
+    advancingRef.current = false
     if (index > 0) {
       onIndexChange(index - 1)
       return
@@ -190,13 +204,17 @@ export function StatusViewer({
     }
   }, [index, groupIdx, groups, onIndexChange, onGroupChange])
 
-  // Images / text: fixed timer. Videos: progress comes from <video> timeupdate / ended.
+  // Images / text only — never runs while a video slide is active.
   useEffect(() => {
     if (!status || paused || isVideo) return
     if (hasMedia && mediaLoading) return
-    const startedAt = performance.now() - progressRef.current * IMAGE_DURATION_MS
+    let cancelled = false
     let raf = 0
+    const startedAt = performance.now() - progressRef.current * IMAGE_DURATION_MS
     const tick = (now: number) => {
+      if (cancelled) return
+      // Guard against a stale RAF overlapping onto a video after navigation.
+      if (videoRef.current) return
       const p = Math.min(1, (now - startedAt) / IMAGE_DURATION_MS)
       progressRef.current = p
       setProgress(p)
@@ -204,16 +222,45 @@ export function StatusViewer({
       else raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
+    return () => {
+      cancelled = true
+      cancelAnimationFrame(raf)
+    }
   }, [status?.id, paused, isVideo, hasMedia, mediaLoading, goNext])
 
-  const syncVideoProgress = useCallback(() => {
-    const v = videoRef.current
-    if (!v || !Number.isFinite(v.duration) || v.duration <= 0) return
-    const p = Math.min(1, v.currentTime / v.duration)
-    progressRef.current = p
-    setProgress(p)
-  }, [])
+  // Videos: progress + advance come only from the <video> element duration.
+  useEffect(() => {
+    if (!status || !isVideo || paused) return
+    let cancelled = false
+    let raf = 0
+    const tick = () => {
+      if (cancelled) return
+      const v = videoRef.current
+      if (v) {
+        const duration = v.duration
+        if (Number.isFinite(duration) && duration > 0) {
+          const p = Math.min(1, v.currentTime / duration)
+          if (Math.abs(p - progressRef.current) >= 0.002 || p >= 1) {
+            progressRef.current = p
+            setProgress(p)
+          }
+          if (v.ended || v.currentTime >= duration - 0.05) {
+            goNext()
+            return
+          }
+        }
+        if (v.paused && !v.ended && v.readyState >= 2) {
+          void v.play().catch(() => {})
+        }
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => {
+      cancelled = true
+      cancelAnimationFrame(raf)
+    }
+  }, [status?.id, isVideo, paused, goNext])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -489,13 +536,14 @@ export function StatusViewer({
                   className="h-full w-full object-cover"
                   playsInline
                   autoPlay
+                  preload="auto"
                   muted={muted}
                   onLoadedData={() => setMediaLoading(false)}
-                  onLoadedMetadata={syncVideoProgress}
-                  onTimeUpdate={syncVideoProgress}
+                  onCanPlay={() => setMediaLoading(false)}
                   onEnded={goNext}
                   onWaiting={() => setMediaLoading(true)}
                   onPlaying={() => setMediaLoading(false)}
+                  onError={() => setMediaLoading(false)}
                 />
               ) : (
                 // eslint-disable-next-line @next/next/no-img-element

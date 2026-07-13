@@ -172,10 +172,28 @@ export function ConversationView({
     node?.scrollIntoView({ behavior: "smooth", block: "center" })
   }, [searchHit, searchMatches, searchOpen])
 
+  const stickToBottomRef = useRef(true)
+  const prevConvIdRef = useRef(conversation.id)
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const onScroll = () => {
+      const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+      stickToBottomRef.current = distanceFromBottom < 120
+    }
+    el.addEventListener("scroll", onScroll, { passive: true })
+    return () => el.removeEventListener("scroll", onScroll)
+  }, [conversation.id])
+
   useEffect(() => {
     if (loading || searchOpen) return
     const el = scrollRef.current
     if (!el) return
+    const switched = prevConvIdRef.current !== conversation.id
+    prevConvIdRef.current = conversation.id
+    if (switched) stickToBottomRef.current = true
+    if (!switched && !stickToBottomRef.current) return
     requestAnimationFrame(() => {
       el.scrollTop = el.scrollHeight
       bottomRef.current?.scrollIntoView({ behavior: "auto", block: "end" })

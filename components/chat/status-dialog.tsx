@@ -7,7 +7,7 @@ import { StatusViewer, type GroupedStatus } from "./status-viewer"
 import { createClient } from "@/lib/supabase/client"
 import type { Profile, Status } from "@/lib/types"
 import { formatChatListTime } from "@/lib/format"
-import { isAllowedMediaFile, UNSUPPORTED_MEDIA_MESSAGE } from "@/lib/media-mime"
+import { isAllowedMediaFile, resolveFileMime, UNSUPPORTED_MEDIA_MESSAGE } from "@/lib/media-mime"
 import { Camera, ImagePlus, Plus, Type, Video, X } from "lucide-react"
 
 type Props = {
@@ -142,9 +142,33 @@ export function StatusDialog({ open, currentUser, onClose }: Props) {
       let mediaUrl: string | null = null
 
       if (mediaFile) {
-        const ext = mediaFile.name.split(".").pop() || (mediaFile.type.startsWith("video/") ? "mp4" : "jpg")
-        const path = `${currentUser.id}/status/${Date.now()}.${ext}`
-        const { error } = await supabase.storage.from("media").upload(path, mediaFile)
+        const mime = resolveFileMime(mediaFile)
+        const isVideoFile = mime.startsWith("video/") || mediaFile.type.startsWith("video/")
+        const mimeExt: Record<string, string> = {
+          "image/jpeg": "jpg",
+          "image/png": "png",
+          "image/gif": "gif",
+          "image/webp": "webp",
+          "image/bmp": "bmp",
+          "image/heic": "heic",
+          "image/heif": "heif",
+          "image/avif": "avif",
+          "video/mp4": "mp4",
+          "video/webm": "webm",
+          "video/quicktime": "mov",
+          "video/x-msvideo": "avi",
+          "video/3gpp": "3gp",
+          "video/x-matroska": "mkv",
+        }
+        const namedExt = mediaFile.name.split(".").pop()?.toLowerCase()
+        const safeExt =
+          mimeExt[mime] ||
+          (namedExt && /^[a-z0-9]{2,5}$/.test(namedExt) ? namedExt : null) ||
+          (isVideoFile ? "mp4" : "jpg")
+        const path = `${currentUser.id}/status/${Date.now()}.${safeExt}`
+        const { error } = await supabase.storage.from("media").upload(path, mediaFile, {
+          contentType: mime,
+        })
         if (error) {
           const msg = error.message.toLowerCase()
           if (msg.includes("bucket") || msg.includes("not found")) {
@@ -157,7 +181,8 @@ export function StatusDialog({ open, currentUser, onClose }: Props) {
           return
         }
         const { data } = supabase.storage.from("media").getPublicUrl(path)
-        mediaUrl = data.publicUrl
+        // Client-only hash so the viewer classifies media without relying on extension alone.
+        mediaUrl = `${data.publicUrl}#whachat=${isVideoFile ? "video" : "image"}`
       }
 
       const { error: insertError } = await supabase.from("statuses").insert({

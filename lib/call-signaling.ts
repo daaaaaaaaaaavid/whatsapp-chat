@@ -18,28 +18,31 @@ export type CallSignal =
   | { type: "answer"; callId: string; fromUserId: string; sdp: RTCSessionDescriptionInit }
   | { type: "ice"; callId: string; fromUserId: string; candidate: RTCIceCandidateInit }
 
-/** STUN + public TURN so calls work behind restrictive NAT/firewalls. */
-export const ICE_SERVERS: RTCConfiguration = {
-  iceServers: [
+function buildIceServers(): RTCIceServer[] {
+  const servers: RTCIceServer[] = [
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
-    {
-      urls: "turn:openrelay.metered.ca:80",
-      username: "openrelayproject",
-      credential: "openrelayproject",
-    },
-    {
-      urls: "turn:openrelay.metered.ca:443",
-      username: "openrelayproject",
-      credential: "openrelayproject",
-    },
-    {
-      urls: "turn:openrelay.metered.ca:443?transport=tcp",
-      username: "openrelayproject",
-      credential: "openrelayproject",
-    },
-  ],
-  iceCandidatePoolSize: 4,
+    { urls: "stun:stun2.l.google.com:19302" },
+  ]
+
+  const turnUrls = process.env.NEXT_PUBLIC_TURN_URLS?.trim()
+  const turnUser = process.env.NEXT_PUBLIC_TURN_USERNAME?.trim()
+  const turnCred = process.env.NEXT_PUBLIC_TURN_CREDENTIAL?.trim()
+
+  if (turnUrls && turnUser && turnCred) {
+    const urls = turnUrls.split(",").map((u) => u.trim()).filter(Boolean)
+    if (urls.length) {
+      servers.push({ urls, username: turnUser, credential: turnCred })
+    }
+  }
+
+  return servers
+}
+
+/** STUN (+ optional TURN via NEXT_PUBLIC_TURN_* env). */
+export const ICE_SERVERS: RTCConfiguration = {
+  iceServers: buildIceServers(),
+  iceCandidatePoolSize: 8,
 }
 
 export function userCallChannel(userId: string) {
@@ -102,14 +105,14 @@ export async function sendToUser(userId: string, signal: CallSignal) {
 
   try {
     await new Promise<void>((resolve, reject) => {
-      const t = window.setTimeout(() => reject(new Error("שליחת אות נכשלה")), 10000)
+      const t = window.setTimeout(() => reject(new Error("שליחת אות נכשלה")), 12000)
       channel.subscribe(async (status) => {
         if (status === "SUBSCRIBED") {
           window.clearTimeout(t)
           try {
             await sendSignal(channel, signal)
-            // Give Realtime a moment to flush before tearing down
-            await new Promise((r) => setTimeout(r, 200))
+            // Give Realtime enough time to flush before tearing down
+            await new Promise((r) => setTimeout(r, 450))
             resolve()
           } catch (e) {
             reject(e)

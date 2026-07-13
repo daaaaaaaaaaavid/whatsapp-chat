@@ -32,13 +32,20 @@ export function useMessages(conversationId: string | null, currentUserId: string
     setLoading(true)
     const supabase = createClient()
 
-    const { data: msgs } = await supabase
+    const { data: msgs, error } = await supabase
       .from("messages")
       .select("*")
       .eq("conversation_id", forId)
       .order("created_at", { ascending: true })
 
     if (conversationIdRef.current !== forId) return
+
+    if (error) {
+      console.error("Failed to load messages:", error.message)
+      setMessages([])
+      setLoading(false)
+      return
+    }
 
     const msgIds = (msgs ?? []).map((m) => m.id)
     let reads: MessageRead[] = []

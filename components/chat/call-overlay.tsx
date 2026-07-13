@@ -47,6 +47,7 @@ export function CallOverlay({
   onHangup,
   onToggleMute,
   onToggleCamera,
+  onDismissError,
 }: Props) {
   const mm = String(Math.floor(seconds / 60)).padStart(2, "0")
   const ss = String(seconds % 60).padStart(2, "0")
@@ -66,11 +67,15 @@ export function CallOverlay({
 
   useEffect(() => {
     if (phase === "connected") {
-      void remoteVideoRef.current?.play().catch(() => {})
-      void remoteAudioRef.current?.play().catch(() => {})
+      // Only play the element that owns the remote stream (avoids double audio on video calls)
+      if (call.video) {
+        void remoteVideoRef.current?.play().catch(() => {})
+      } else {
+        void remoteAudioRef.current?.play().catch(() => {})
+      }
       void localVideoRef.current?.play().catch(() => {})
     }
-  }, [phase, remoteAudioRef, remoteVideoRef, localVideoRef])
+  }, [phase, call.video, remoteAudioRef, remoteVideoRef, localVideoRef])
 
   useEffect(() => {
     if (phase === "incoming") {
@@ -92,7 +97,8 @@ export function CallOverlay({
 
   return (
     <div className="fixed inset-0 z-[70] flex flex-col bg-[#0b141a] text-white">
-      <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
+      {/* Audio element only for voice calls — video element already outputs remote audio */}
+      {!call.video && <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />}
 
       <div className="relative flex flex-1 items-center justify-center overflow-hidden">
         {call.video && (phase === "connected" || phase === "connecting") ? (
@@ -143,9 +149,13 @@ export function CallOverlay({
       </div>
 
       {error && (
-        <div className="absolute top-4 inset-x-4 rounded-md bg-[#ea0038]/90 px-3 py-2 text-center text-sm">
+        <button
+          type="button"
+          onClick={onDismissError}
+          className="absolute top-4 inset-x-4 rounded-md bg-[#ea0038]/90 px-3 py-2 text-center text-sm"
+        >
           {error}
-        </div>
+        </button>
       )}
 
       <div className="flex items-center justify-center gap-5 pb-10 pt-4">

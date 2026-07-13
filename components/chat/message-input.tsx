@@ -15,7 +15,7 @@ import type { Message, MessageType } from "@/lib/types"
 import { parseCallSystemPayload, callSystemLabel } from "@/lib/call-system-message"
 import { notifyOfflineRecipients } from "@/lib/push-client"
 import { messagePreview } from "@/lib/conversation-display"
-import { isAllowedMediaFile, UNSUPPORTED_MEDIA_MESSAGE } from "@/lib/media-mime"
+import { isAllowedMediaFile, resolveFileMime, UNSUPPORTED_MEDIA_MESSAGE } from "@/lib/media-mime"
 import {
   Plus,
   SendHorizontal,
@@ -225,20 +225,22 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
       onOptimistic?.(optimistic)
 
       const supabase = createClient()
-      const { data, error } = await supabase
-        .from("messages")
-        .insert({
-          conversation_id: conversationId,
-          sender_id: currentUserId,
-          content: payload.content ?? null,
-          type: payload.type ?? "text",
-          file_url: payload.file_url ?? null,
-          file_name: payload.file_name ?? null,
-          file_size: payload.file_size ?? null,
-          reply_to_id: payload.reply_to_id ?? null,
-        })
-        .select("*")
-        .single()
+      const row = {
+        conversation_id: conversationId,
+        sender_id: currentUserId,
+        content: payload.content ?? null,
+        type: payload.type ?? "text",
+        file_url: payload.file_url ?? null,
+        file_name: payload.file_name ?? null,
+        file_size: payload.file_size ?? null,
+        reply_to_id: payload.reply_to_id ?? null,
+      }
+      let { data, error } = await supabase.from("messages").insert(row).select("*").single()
+      // Retry without reply_to_id if the column is not migrated yet
+      if (error && payload.reply_to_id && /reply_to_id/i.test(error.message)) {
+        const { reply_to_id: _omit, ...withoutReply } = row
+        ;({ data, error } = await supabase.from("messages").insert(withoutReply).select("*").single())
+      }
       if (error) {
         onSendFailed?.(tempId)
         throw error
@@ -284,7 +286,11 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
         const ext = file.name.split(".").pop() || "bin"
         const path = `${currentUserId}/${conversationId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
 
-        const { error } = await supabase.storage.from("media").upload(path, file)
+        const contentType = resolveFileMime(file)
+        const { error } = await supabase.storage.from("media").upload(path, file, {
+          contentType,
+          upsert: false,
+        })
         if (error) {
           const msg = error.message.toLowerCase()
           if (msg.includes("bucket") || msg.includes("not found")) {
@@ -521,7 +527,11 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
         const ext = item.file.name.split(".").pop() || "bin"
         const path = `${currentUserId}/${conversationId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
 
-        const { error } = await supabase.storage.from("media").upload(path, item.file)
+        const contentType = resolveFileMime(item.file)
+        const { error } = await supabase.storage.from("media").upload(path, item.file, {
+          contentType,
+          upsert: false,
+        })
         if (error) {
           const msg = error.message.toLowerCase()
           if (msg.includes("bucket") || msg.includes("not found")) {
