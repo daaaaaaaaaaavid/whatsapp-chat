@@ -26,6 +26,36 @@ function errMessage(error: unknown, fallback: string) {
   return fallback
 }
 
+/** True if name or email contains the search query (case-insensitive). Empty query matches all. */
+export function contactMatchesQuery(
+  name: string | null | undefined,
+  email: string | null | undefined,
+  query: string,
+): boolean {
+  const q = query.trim().toLowerCase()
+  if (!q) return true
+  const n = (name ?? "").toLowerCase()
+  const e = (email ?? "").toLowerCase()
+  return n.includes(q) || e.includes(q)
+}
+
+/** Lower score = better match (prefer starts-with, then includes). */
+export function contactMatchScore(
+  name: string | null | undefined,
+  email: string | null | undefined,
+  query: string,
+): number {
+  const q = query.trim().toLowerCase()
+  if (!q) return 50
+  const n = (name ?? "").toLowerCase()
+  const e = (email ?? "").toLowerCase()
+  if (e === q || n === q) return 0
+  if (e.startsWith(q) || n.startsWith(q)) return 1
+  if (n.includes(q)) return 2
+  if (e.includes(q)) return 3
+  return 99
+}
+
 /** Load previously synced Google contacts + matched WhaChat profiles. */
 export async function fetchGoogleContacts(): Promise<GoogleContactsResult> {
   try {
@@ -87,7 +117,6 @@ export async function fetchGoogleContacts(): Promise<GoogleContactsResult> {
       matched = (profiles ?? []) as Profile[]
     }
 
-    // Refresh contact rows after rematch so unmatched reflects latest matched_profile_id
     const { data: refreshed } = await supabase
       .from("google_contacts")
       .select("id, google_resource_name, display_name, email, photo_url, matched_profile_id")
