@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Modal } from "./modal"
 import { Avatar } from "./avatar"
 import {
@@ -8,8 +8,12 @@ import {
   getOrCreateDirectConversation,
   startChatByEmail,
 } from "@/lib/chat-actions"
-import type { Profile } from "@/lib/types"
-import { Search, Users, AlertCircle, Mail } from "lucide-react"
+import {
+  fetchGoogleContacts,
+  syncGoogleContactsOrConnect,
+} from "@/lib/google-contacts-client"
+import type { GoogleContact, Profile } from "@/lib/types"
+import { Search, Users, AlertCircle, Mail, RefreshCw } from "lucide-react"
 
 type Props = {
   open: boolean
@@ -17,39 +21,83 @@ type Props = {
   onClose: () => void
   onCreated: (conversationId: string) => void
   onNewGroup: () => void
+  /** When true, run Google sync as soon as the dialog opens (after OAuth return). */
+  autoSyncGoogle?: boolean
+  onAutoSyncGoogleConsumed?: () => void
 }
 
 function looksLikeEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
 }
 
-export function NewChatDialog({ open, currentUserId, onClose, onCreated, onNewGroup }: Props) {
+export function NewChatDialog({
+  open,
+  currentUserId,
+  onClose,
+  onCreated,
+  onNewGroup,
+  autoSyncGoogle = false,
+  onAutoSyncGoogleConsumed,
+}: Props) {
   const [users, setUsers] = useState<Profile[]>([])
+  const [googleMatched, setGoogleMatched] = useState<Profile[]>([])
+  const [googleUnmatched, setGoogleUnmatched] = useState<GoogleContact[]>([])
   const [query, setQuery] = useState("")
   const [busy, setBusy] = useState(false)
+  const [syncing, setSyncing] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [googleError, setGoogleError] = useState<string | null>(null)
+
+  const loadLists = async () => {
+    setLoading(true)
+    setError(null)
+    setGoogleError(null)
+    const [contactsRes, googleRes] = await Promise.all([
+      fetchContacts(currentUserId),
+      fetchGoogleContacts(),
+    ])
+    setUsers(contactsRes.users)
+    setError(contactsRes.error)
+    setGoogleMatched(googleRes.matched)
+    setGoogleUnmatched(googleRes.unmatched)
+    if (googleRes.error) setGoogleError(googleRes.error)
+    setLoading(false)
+  }
 
   useEffect(() => {
     if (!open) return
     setQuery("")
     setActionError(null)
-    setLoading(true)
-    setError(null)
-    fetchContacts(currentUserId)
-      .then((res) => {
-        setUsers(res.users)
-        setError(res.error)
-      })
-      .finally(() => setLoading(false))
+    void loadLists()
   }, [open, currentUserId])
 
-  const filtered = users.filter((u) =>
+  useEffect(() => {
+    if (!open || !autoSyncGoogle) return
+    onAutoSyncGoogleConsumed?.()
+    void handleSyncGoogle()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once when flagged
+  }, [open, autoSyncGoogle])
+
+  const knownIds = useMemo(() => new Set(users.map((u) => u.id)), [users])
+
+  const filteredKnown = users.filter((u) =>
     (u.display_name ?? u.email ?? "").toLowerCase().includes(query.toLowerCase()),
   )
 
-  const showEmailStart = looksLikeEmail(query) && filtered.length === 0
+  const filteredGoogleMatched = googleMatched.filter(
+    (u) =>
+      !knownIds.has(u.id) &&
+      (u.display_name ?? u.email ?? "").toLowerCase().includes(query.toLowerCase()),
+  )
+
+  const filteredGoogleUnmatched = googleUnmatched.filter((c) =>
+    (c.display_name ?? c.email ?? "").toLowerCase().includes(query.toLowerCase()),
+  )
+
+  const showEmailStart =
+    looksLikeEmail(query) && filteredKnown.length === 0 && filteredGoogleMatched.length === 0
 
   const handleSelect = async (userId: string) => {
     if (busy) return
@@ -79,6 +127,29 @@ export function NewChatDialog({ open, currentUserId, onClose, onCreated, onNewGr
     }
   }
 
+  const handleSyncGoogle = async () => {
+    if (syncing) return
+    setSyncing(true)
+    setGoogleError(null)
+    setActionError(null)
+    try {
+      const result = await syncGoogleContactsOrConnect()
+      if (result === "redirecting") return
+      setGoogleMatched(result.matched)
+      setGoogleUnmatched(result.unmatched)
+    } catch (err) {
+      setGoogleError(err instanceof Error ? err.message : "נכשל בסנכרון מגוגל")
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  const empty =
+    !loading &&
+    filteredKnown.length === 0 &&
+    filteredGoogleMatched.length === 0 &&
+    filteredGoogleUnmatched.length === 0
+
   return (
     <Modal open={open} onClose={onClose} title="צ'אט חדש">
       <div className="p-3">
@@ -98,7 +169,7 @@ export function NewChatDialog({ open, currentUserId, onClose, onCreated, onNewGr
           />
         </div>
         <p className="mt-2 px-1 text-xs leading-relaxed text-[#667781]">
-          מוצגים רק אנשי קשר שיש איתם שיחה. לפתיחת שיחה עם מישהו חדש — הזן את המייל המעודכן שלו.
+          אפשר לסנכרן אנשי קשר מחשבון Google, לבחור משיחות קיימות, או להזין מייל.
         </p>
       </div>
 
@@ -110,6 +181,22 @@ export function NewChatDialog({ open, currentUserId, onClose, onCreated, onNewGr
           <Users className="h-6 w-6" />
         </div>
         <span className="font-medium text-[#111b21]">קבוצה חדשה</span>
+      </button>
+
+      <button
+        onClick={() => void handleSyncGoogle()}
+        disabled={syncing}
+        className="flex w-full items-center gap-3 px-5 py-3 text-right transition hover:bg-[#f5f6f6] disabled:opacity-60"
+      >
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#e8f0fe] text-[#1a73e8]">
+          <RefreshCw className={`h-6 w-6 ${syncing ? "animate-spin" : ""}`} />
+        </div>
+        <div className="min-w-0 flex-1 text-right">
+          <div className="font-medium text-[#111b21]">
+            {syncing ? "מסנכרן מגוגל..." : "סנכרן אנשי קשר מגוגל"}
+          </div>
+          <div className="text-sm text-[#667781]">ייבוא מאנשי הקשר של חשבון Google שלך</div>
+        </div>
       </button>
 
       {showEmailStart && (
@@ -128,12 +215,17 @@ export function NewChatDialog({ open, currentUserId, onClose, onCreated, onNewGr
         </button>
       )}
 
-      <div className="px-5 py-2 text-xs font-medium text-[#008069]">אנשי קשר</div>
-
       {error && (
         <div className="mx-4 mb-3 flex gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
           <span>{error}</span>
+        </div>
+      )}
+
+      {googleError && (
+        <div className="mx-4 mb-3 flex gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{googleError}</span>
         </div>
       )}
 
@@ -145,36 +237,74 @@ export function NewChatDialog({ open, currentUserId, onClose, onCreated, onNewGr
 
       {loading ? (
         <div className="p-6 text-center text-sm text-[#667781]">טוען אנשי קשר...</div>
-      ) : filtered.length === 0 ? (
-        <div className="space-y-2 p-6 text-center text-sm text-[#667781]">
-          <p>
-            {query
-              ? showEmailStart
-                ? "לחץ למעלה כדי לפתוח שיחה עם המייל הזה"
-                : "לא נמצאו אנשי קשר תואמים"
-              : "אין אנשי קשר עדיין"}
-          </p>
-          {!query && !error && (
-            <p className="text-xs leading-relaxed">
-              כדי להתחיל שיחה עם מישהו חדש, הזן את כתובת המייל שלו בשורת החיפוש.
-            </p>
-          )}
-        </div>
       ) : (
-        filtered.map((u) => (
-          <button
-            key={u.id}
-            onClick={() => handleSelect(u.id)}
-            disabled={busy}
-            className="flex w-full items-center gap-3 px-5 py-2.5 text-right transition hover:bg-[#f5f6f6] disabled:opacity-60"
-          >
-            <Avatar name={u.display_name} url={u.avatar_url} size={48} />
-            <div className="min-w-0 flex-1 border-b border-[#e9edef] pb-2.5">
-              <div className="truncate text-[#111b21]">{u.display_name ?? u.email}</div>
-              <div className="truncate text-sm text-[#667781]">{u.about ?? "זמין"}</div>
+        <>
+          {(filteredGoogleMatched.length > 0 || filteredGoogleUnmatched.length > 0) && (
+            <>
+              <div className="px-5 py-2 text-xs font-medium text-[#008069]">מגוגל</div>
+              {filteredGoogleMatched.map((u) => (
+                <button
+                  key={`g-${u.id}`}
+                  onClick={() => void handleSelect(u.id)}
+                  disabled={busy}
+                  className="flex w-full items-center gap-3 px-5 py-2.5 text-right transition hover:bg-[#f5f6f6] disabled:opacity-60"
+                >
+                  <Avatar name={u.display_name} url={u.avatar_url} size={48} />
+                  <div className="min-w-0 flex-1 border-b border-[#e9edef] pb-2.5">
+                    <div className="truncate text-[#111b21]">{u.display_name ?? u.email}</div>
+                    <div className="truncate text-sm text-[#667781]">{u.email ?? "ב-WhaChat"}</div>
+                  </div>
+                </button>
+              ))}
+              {filteredGoogleUnmatched.map((c) => (
+                <div
+                  key={c.id}
+                  className="flex w-full items-center gap-3 px-5 py-2.5 text-right opacity-70"
+                >
+                  <Avatar name={c.display_name ?? c.email} url={c.photo_url} size={48} />
+                  <div className="min-w-0 flex-1 border-b border-[#e9edef] pb-2.5">
+                    <div className="truncate text-[#111b21]">{c.display_name ?? c.email}</div>
+                    <div className="truncate text-sm text-[#667781]">לא ב-WhaChat</div>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+
+          <div className="px-5 py-2 text-xs font-medium text-[#008069]">אנשי קשר</div>
+
+          {filteredKnown.map((u) => (
+            <button
+              key={u.id}
+              onClick={() => void handleSelect(u.id)}
+              disabled={busy}
+              className="flex w-full items-center gap-3 px-5 py-2.5 text-right transition hover:bg-[#f5f6f6] disabled:opacity-60"
+            >
+              <Avatar name={u.display_name} url={u.avatar_url} size={48} />
+              <div className="min-w-0 flex-1 border-b border-[#e9edef] pb-2.5">
+                <div className="truncate text-[#111b21]">{u.display_name ?? u.email}</div>
+                <div className="truncate text-sm text-[#667781]">{u.about ?? "זמין"}</div>
+              </div>
+            </button>
+          ))}
+
+          {empty && (
+            <div className="space-y-2 p-6 text-center text-sm text-[#667781]">
+              <p>
+                {query
+                  ? showEmailStart
+                    ? "לחץ למעלה כדי לפתוח שיחה עם המייל הזה"
+                    : "לא נמצאו אנשי קשר תואמים"
+                  : "אין אנשי קשר עדיין"}
+              </p>
+              {!query && !error && (
+                <p className="text-xs leading-relaxed">
+                  סנכרן מגוגל או הזן כתובת מייל בשורת החיפוש כדי להתחיל שיחה.
+                </p>
+              )}
             </div>
-          </button>
-        ))
+          )}
+        </>
       )}
     </Modal>
   )

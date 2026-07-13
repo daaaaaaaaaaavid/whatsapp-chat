@@ -1,8 +1,8 @@
 "use client"
 
-import { useMemo, useState } from "react"
-import type { Conversation, Profile } from "@/lib/types"
-import { useMessages } from "@/lib/use-messages"
+import { useEffect, useMemo, useState } from "react"
+import type { Conversation, Message, Profile } from "@/lib/types"
+import { createClient } from "@/lib/supabase/client"
 import {
   blockUser,
   createConversationInvite,
@@ -11,10 +11,9 @@ import {
 import { Avatar } from "./avatar"
 import { convAvatarUrl, convDisplayName, isSelfConversation, otherParticipantId } from "@/lib/conversation-display"
 import { mediaItemsFromMessages, type GalleryItem } from "./media-gallery"
-import { X, Bell, BellOff, Ban, Trash2, Users, Archive, Star, ImageIcon, Pin, Link2, Check } from "lucide-react"
+import { X, Bell, BellOff, Ban, Trash2, Users, Archive, Star, ImageIcon, Pin, Link2, Check, Play } from "lucide-react"
 
 type Props = {
-  open: boolean
   conversation: Conversation
   currentUser: Profile
   onClose: () => void
@@ -31,7 +30,6 @@ type Props = {
 }
 
 export function ConversationInfo({
-  open,
   conversation,
   currentUser,
   onClose,
@@ -50,7 +48,30 @@ export function ConversationInfo({
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [inviteCopied, setInviteCopied] = useState(false)
-  const { messages } = useMessages(open ? conversation.id : null, currentUser.id)
+  const [messages, setMessages] = useState<Message[]>([])
+
+  // One-shot media load — do NOT reuse useMessages (same realtime channel as the open chat).
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const supabase = createClient()
+        const { data } = await supabase
+          .from("messages")
+          .select("*")
+          .eq("conversation_id", conversation.id)
+          .not("file_url", "is", null)
+          .order("created_at", { ascending: false })
+          .limit(120)
+        if (!cancelled) setMessages((data ?? []) as Message[])
+      } catch {
+        if (!cancelled) setMessages([])
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [conversation.id])
 
   const isSelf = isSelfConversation(conversation, currentUser.id)
   const name = convDisplayName(conversation, currentUser.id)
@@ -117,12 +138,10 @@ export function ConversationInfo({
     }
   }
 
-  if (!open) return null
-
   return (
-    <aside className="absolute inset-y-0 left-0 z-30 flex w-full max-w-md flex-col border-r border-[#e9edef] bg-white shadow-xl md:relative md:inset-auto md:z-auto md:w-[360px] md:shrink-0 md:shadow-none">
-      <header className="flex h-16 items-center gap-4 bg-[#00a884] px-4 text-white">
-        <button onClick={onClose} aria-label="סגור" className="rounded-full p-1 transition hover:bg-white/10">
+    <aside className="flex h-full min-h-0 w-full max-w-md shrink-0 flex-col border-r border-[#e9edef] bg-white lg:w-[360px]">
+      <header className="flex h-16 shrink-0 items-center gap-4 bg-[#00a884] px-4 text-white">
+        <button type="button" onClick={onClose} aria-label="סגור" className="rounded-full p-1 transition hover:bg-white/10">
           <X className="h-6 w-6" />
         </button>
         <h2 className="text-lg font-medium">
@@ -130,7 +149,7 @@ export function ConversationInfo({
         </h2>
       </header>
 
-      <div className="wa-scroll flex-1 overflow-y-auto bg-[#f0f2f5]">
+      <div className="wa-scroll min-h-0 flex-1 overflow-y-auto bg-[#f0f2f5]">
         <div className="flex flex-col items-center bg-white px-6 py-8 shadow-sm">
           <Avatar name={name} url={avatar} isGroup={conversation.is_group} isSelf={isSelf} size={200} />
           <h3 className="mt-4 text-2xl font-light text-[#111b21]">{name}</h3>
@@ -228,9 +247,12 @@ export function ConversationInfo({
                   className="relative aspect-square overflow-hidden bg-[#e9edef]"
                 >
                   {item.type === "image" ? (
-                    <img src={item.url} alt="" className="h-full w-full object-cover" />
+                    <img src={item.url} alt="" className="h-full w-full object-cover" loading="lazy" />
                   ) : item.type === "video" ? (
-                    <video src={item.url} muted preload="metadata" className="h-full w-full object-cover" />
+                    <div className="flex h-full w-full flex-col items-center justify-center gap-1 bg-[#111b21] text-white">
+                      <Play className="h-6 w-6 fill-white" />
+                      <span className="text-[10px] text-white/70">סרטון</span>
+                    </div>
                   ) : (
                     <div className="flex h-full w-full items-center justify-center text-xs text-[#54656f]">
                       קובץ

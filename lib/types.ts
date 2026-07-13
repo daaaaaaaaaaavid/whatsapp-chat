@@ -6,6 +6,17 @@ export type Profile = {
   about: string | null
   last_seen: string | null
   created_at: string
+  google_contacts_synced_at?: string | null
+}
+
+/** Imported Google contact row (private to the signed-in user). */
+export type GoogleContact = {
+  id: string
+  google_resource_name: string
+  display_name: string | null
+  email: string | null
+  photo_url: string | null
+  matched_profile_id: string | null
 }
 
 export type MessageType = "text" | "image" | "file" | "audio" | "video" | "system"

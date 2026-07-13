@@ -84,7 +84,7 @@ export function useMessages(conversationId: string | null, currentUserId: string
     const supabase = createClient()
 
     const channel = supabase
-      .channel(`messages-${conversationId}`)
+      .channel(`messages-view-${conversationId}`)
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` },

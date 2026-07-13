@@ -19,6 +19,7 @@ import { SidebarHeader } from "./sidebar-header"
 import { ChatList } from "./chat-list"
 import { ConversationView } from "./conversation-view"
 import { ConversationInfo } from "./conversation-info"
+import { ConversationInfoBoundary } from "./conversation-info-boundary"
 import { EmptyState } from "./empty-state"
 import { NewChatDialog } from "./new-chat-dialog"
 import { NewGroupDialog } from "./new-group-dialog"
@@ -52,6 +53,7 @@ export function ChatApp({ currentUser: initialUser }: Props) {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [showInfo, setShowInfo] = useState(false)
   const [newChatOpen, setNewChatOpen] = useState(false)
+  const [autoSyncGoogle, setAutoSyncGoogle] = useState(false)
   const [newGroupOpen, setNewGroupOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
   const [statusOpen, setStatusOpen] = useState(false)
@@ -75,17 +77,34 @@ export function ChatApp({ currentUser: initialUser }: Props) {
     setToasts((prev) => prev.filter((t) => t.id !== id))
   }, [])
 
-  // Deep link: /chat?c=<conversationId>
+  // Deep link: /chat?c=<conversationId> and /chat?google_contacts=1 (post OAuth sync)
   useEffect(() => {
     if (typeof window === "undefined") return
     const params = new URLSearchParams(window.location.search)
     const c = params.get("c")
-    if (!c) return
-    setActiveId(c)
-    setNavTab("chats")
+    const googleContacts = params.get("google_contacts")
     const url = new URL(window.location.href)
-    url.searchParams.delete("c")
-    window.history.replaceState({}, "", url.pathname)
+    let changed = false
+
+    if (c) {
+      setActiveId(c)
+      setNavTab("chats")
+      url.searchParams.delete("c")
+      changed = true
+    }
+
+    if (googleContacts === "1") {
+      setNavTab("chats")
+      setNewChatOpen(true)
+      setAutoSyncGoogle(true)
+      url.searchParams.delete("google_contacts")
+      changed = true
+    }
+
+    if (changed) {
+      const qs = url.searchParams.toString()
+      window.history.replaceState({}, "", qs ? `${url.pathname}?${qs}` : url.pathname)
+    }
   }, [])
 
   const {
@@ -419,29 +438,32 @@ export function ChatApp({ currentUser: initialUser }: Props) {
                   onGalleryOpened={() => setInfoGalleryMessageId(null)}
                 />
               </div>
-              <ConversationInfo
-                open={showInfo}
-                conversation={activeConversation}
-                currentUser={currentUser}
-                onClose={() => setShowInfo(false)}
-                onToggleArchive={() => updatePrefs(toggleArchived(prefs, activeConversation.id))}
-                onToggleFavorite={() => updatePrefs(toggleFavorite(prefs, activeConversation.id))}
-                onToggleMute={() => updatePrefs(toggleMuted(prefs, activeConversation.id))}
-                onTogglePinned={() => updatePrefs(togglePinned(prefs, activeConversation.id))}
-                isArchived={prefs.archived.includes(activeConversation.id)}
-                isFavorite={prefs.favorites.includes(activeConversation.id)}
-                isMuted={prefs.muted.includes(activeConversation.id)}
-                isPinned={prefs.pinned.includes(activeConversation.id)}
-                onOpenMedia={(messageId) => {
-                  setInfoGalleryMessageId(messageId)
-                  setShowInfo(false)
-                }}
-                onLeftOrDeleted={() => {
-                  removeConversation(activeConversation.id)
-                  setActiveId(null)
-                  setShowInfo(false)
-                }}
-              />
+              {showInfo && (
+                <ConversationInfoBoundary onClose={() => setShowInfo(false)}>
+                  <ConversationInfo
+                    conversation={activeConversation}
+                    currentUser={currentUser}
+                    onClose={() => setShowInfo(false)}
+                    onToggleArchive={() => updatePrefs(toggleArchived(prefs, activeConversation.id))}
+                    onToggleFavorite={() => updatePrefs(toggleFavorite(prefs, activeConversation.id))}
+                    onToggleMute={() => updatePrefs(toggleMuted(prefs, activeConversation.id))}
+                    onTogglePinned={() => updatePrefs(togglePinned(prefs, activeConversation.id))}
+                    isArchived={prefs.archived.includes(activeConversation.id)}
+                    isFavorite={prefs.favorites.includes(activeConversation.id)}
+                    isMuted={prefs.muted.includes(activeConversation.id)}
+                    isPinned={prefs.pinned.includes(activeConversation.id)}
+                    onOpenMedia={(messageId) => {
+                      setInfoGalleryMessageId(messageId)
+                      setShowInfo(false)
+                    }}
+                    onLeftOrDeleted={() => {
+                      removeConversation(activeConversation.id)
+                      setActiveId(null)
+                      setShowInfo(false)
+                    }}
+                  />
+                </ConversationInfoBoundary>
+              )}
             </div>
           ) : (
             <div className="flex h-full min-w-0 flex-1 flex-col">
@@ -454,12 +476,18 @@ export function ChatApp({ currentUser: initialUser }: Props) {
       <NewChatDialog
         open={newChatOpen}
         currentUserId={currentUser.id}
-        onClose={() => setNewChatOpen(false)}
+        onClose={() => {
+          setNewChatOpen(false)
+          setAutoSyncGoogle(false)
+        }}
         onCreated={openCreated}
         onNewGroup={() => {
           setNewChatOpen(false)
+          setAutoSyncGoogle(false)
           setNewGroupOpen(true)
         }}
+        autoSyncGoogle={autoSyncGoogle}
+        onAutoSyncGoogleConsumed={() => setAutoSyncGoogle(false)}
       />
       <NewGroupDialog
         open={newGroupOpen}
