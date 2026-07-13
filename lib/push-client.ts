@@ -13,19 +13,33 @@ export function getVapidPublicKey() {
   return process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY?.trim() || ""
 }
 
+/** Register SW early so OS notifications work (even before push subscribe). */
+export async function ensureServiceWorker(): Promise<ServiceWorkerRegistration | null> {
+  if (typeof window === "undefined" || !("serviceWorker" in navigator)) return null
+  try {
+    const reg = await navigator.serviceWorker.register("/sw.js")
+    await navigator.serviceWorker.ready
+    return reg
+  } catch {
+    return null
+  }
+}
+
 export async function registerPushSubscription(): Promise<boolean> {
   if (typeof window === "undefined") return false
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) return false
 
   const vapidKey = getVapidPublicKey()
-  if (!vapidKey) return false
+  if (!vapidKey) {
+    await ensureServiceWorker()
+    return false
+  }
 
   try {
     const permission = await Notification.requestPermission()
     if (permission !== "granted") return false
 
-    const reg = await navigator.serviceWorker.register("/sw.js")
-    await navigator.serviceWorker.ready
+    const reg = (await ensureServiceWorker()) ?? (await navigator.serviceWorker.ready)
 
     let sub = await reg.pushManager.getSubscription()
     if (!sub) {

@@ -603,7 +603,7 @@ export function useWebRtcCall({ currentUser, conversations }: Options) {
             scheduleRingTimeout()
             startIncomingCallRingtone()
             void ensureNotificationPermission().then(() => {
-              showIncomingCallNotification({
+              void showIncomingCallNotification({
                 title: signal.video ? "שיחת וידאו נכנסת" : "שיחה נכנסת",
                 body: info.peerName,
                 tag: `call-${signal.callId}`,

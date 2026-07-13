@@ -34,7 +34,7 @@ import {
   ensureNotificationPermission,
   showIncomingMessageNotification,
 } from "@/lib/browser-notifications"
-import { registerPushSubscription } from "@/lib/push-client"
+import { registerPushSubscription, ensureServiceWorker } from "@/lib/push-client"
 import { messagePreview, convDisplayName, isSelfConversation } from "@/lib/conversation-display"
 import { LoadingScreen } from "./loading-screen"
 import { MessageToastStack, type MessageToastItem } from "./message-toast"
@@ -144,6 +144,7 @@ export function ChatApp({ currentUser: initialUser }: Props) {
   useEffect(() => {
     const unlock = () => {
       unlockNotificationSound()
+      void ensureServiceWorker()
       void ensureNotificationPermission().then((perm) => {
         if (perm === "granted") void registerPushSubscription()
       })
@@ -201,16 +202,14 @@ export function ChatApp({ currentUser: initialUser }: Props) {
           const title = conv ? convDisplayName(conv, currentUser.id) : "הודעה חדשה"
           const body = messagePreview(msg)
 
-          if (document.visibilityState === "visible") {
-            pushToast({ title, body, conversationId: msg.conversation_id })
-          } else {
-            showIncomingMessageNotification({
-              title,
-              body,
-              tag: msg.conversation_id,
-              onClick: () => setActiveId(msg.conversation_id),
-            })
-          }
+          pushToast({ title, body, conversationId: msg.conversation_id })
+          void showIncomingMessageNotification({
+            title,
+            body,
+            tag: msg.conversation_id,
+            conversationId: msg.conversation_id,
+            onClick: () => setActiveId(msg.conversation_id),
+          })
         },
       )
       .subscribe()
