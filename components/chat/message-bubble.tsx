@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useRef, useState, type MouseEvent } from "react"
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent } from "react"
+import { createPortal } from "react-dom"
 import type { Message, Participant } from "@/lib/types"
 import { formatTime, formatFileSize, avatarColor } from "@/lib/format"
 import { callSystemLabel, parseCallSystemPayload } from "@/lib/call-system-message"
@@ -29,8 +30,19 @@ import {
   ThumbsDown,
   Plus,
   EyeOff,
+  Pencil,
+  CheckSquare,
+  Check,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+
+type MenuPlacement = {
+  top?: number
+  bottom?: number
+  left?: number
+  right?: number
+  maxHeight: number
+}
 
 const QUICK_REACTIONS = ["🙏", "😢", "😲", "😂", "❤️", "👍"]
 
@@ -45,10 +57,15 @@ type Props = {
   onDeleteForMe?: () => void
   onReply?: () => void
   onForward?: () => void
+  onEdit?: () => void
   onToggleStar?: () => void
   onTogglePin?: () => void
   onReaction?: (emoji: string | null) => void
   onOpenMedia?: (messageId: string) => void
+  onStartSelect?: () => void
+  onToggleSelect?: () => void
+  selectionMode?: boolean
+  isSelected?: boolean
   currentUserAvatarUrl?: string | null
   currentUserName?: string | null
   reaction?: string | null
@@ -165,9 +182,23 @@ function LinkPreview({ url }: { url: string }) {
   )
 }
 
+function replyPreviewText(message: Message) {
+  if (message.deleted_at) return "הודעה שנמחקה"
+  if (message.type === "image") return "תמונה"
+  if (message.type === "video") return "סרטון"
+  if (message.type === "audio") return "הודעה קולית"
+  if (message.type === "file") return message.file_name ?? "קובץ"
+  const call = parseCallSystemPayload(message.content)
+  if (call) return callSystemLabel(call)
+  const legacy = parseReplyContent(message.content)
+  if (legacy?.body) return legacy.body
+  if (message.content) return message.content
+  return "הודעה"
+}
+
 function copyMessageText(message: Message) {
   const reply = parseReplyContent(message.content)
-  const body = reply?.body ?? message.content
+  const body = message.reply_to_id ? message.content : (reply?.body ?? message.content)
   const parts: string[] = []
   if (body) parts.push(body)
   if (message.file_name) parts.push(message.file_name)
@@ -188,10 +219,15 @@ export function MessageBubble({
   onDeleteForMe,
   onReply,
   onForward,
+  onEdit,
   onToggleStar,
   onTogglePin,
   onReaction,
   onOpenMedia,
+  onStartSelect,
+  onToggleSelect,
+  selectionMode,
+  isSelected,
   currentUserAvatarUrl,
   currentUserName,
   reaction: reactionProp,
@@ -202,7 +238,10 @@ export function MessageBubble({
   const [menuOpen, setMenuOpen] = useState(false)
   const [showMoreEmoji, setShowMoreEmoji] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [menuPlacement, setMenuPlacement] = useState<MenuPlacement | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+  const bubbleRef = useRef<HTMLDivElement>(null)
+  const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const senderProfile = participants.find((p) => p.user_id === message.sender_id)?.profile
   const senderName = senderProfile?.display_name ?? senderProfile?.email ?? "משתמש"
 
@@ -214,18 +253,68 @@ export function MessageBubble({
   if (message.pending || message.id.startsWith("temp-")) status = "sending"
   else if (readCount > 0) status = readCount >= totalOthers && totalOthers > 0 ? "read" : "delivered"
 
-  useEffect(() => {
-    if (!menuOpen) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setMenuOpen(false)
-        setShowMoreEmoji(false)
-        setConfirmDelete(false)
-      }
+  const updateMenuPlacement = () => {
+    const el = bubbleRef.current
+    if (!el || typeof window === "undefined") return
+    const rect = el.getBoundingClientRect()
+    const margin = 8
+    const estimatedHeight = showMoreEmoji ? 520 : 420
+    const spaceBelow = window.innerHeight - rect.bottom - margin
+    const spaceAbove = rect.top - margin
+    const placeAbove = spaceBelow < Math.min(estimatedHeight, 280) && spaceAbove > spaceBelow
+    const maxHeight = Math.max(160, placeAbove ? spaceAbove : spaceBelow)
+    const next: MenuPlacement = {
+      maxHeight,
+      ...(placeAbove
+        ? { bottom: window.innerHeight - rect.top + 4 }
+        : { top: rect.bottom + 4 }),
+      ...(isMine
+        ? { left: Math.min(Math.max(margin, rect.left), window.innerWidth - 240) }
+        : { right: Math.min(Math.max(margin, window.innerWidth - rect.right), window.innerWidth - 240) }),
     }
+    setMenuPlacement(next)
+  }
+
+  const closeMenu = () => {
+    setMenuOpen(false)
+    setShowMoreEmoji(false)
+    setConfirmDelete(false)
+    setMenuPlacement(null)
+  }
+
+  const openMenu = () => {
+    if (selectionMode) return
+    setShowMoreEmoji(false)
+    setConfirmDelete(false)
+    setMenuOpen(true)
+  }
+
+  useLayoutEffect(() => {
+    if (!menuOpen) {
+      setMenuPlacement(null)
+      return
+    }
+    updateMenuPlacement()
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeMenu()
+    }
+    const onReposition = () => updateMenuPlacement()
     window.addEventListener("keydown", onKey)
-    return () => window.removeEventListener("keydown", onKey)
-  }, [menuOpen])
+    window.addEventListener("resize", onReposition)
+    window.addEventListener("scroll", onReposition, true)
+    return () => {
+      window.removeEventListener("keydown", onKey)
+      window.removeEventListener("resize", onReposition)
+      window.removeEventListener("scroll", onReposition, true)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [menuOpen, showMoreEmoji, isMine, selectionMode])
+
+  useEffect(() => {
+    return () => {
+      if (longPressRef.current) clearTimeout(longPressRef.current)
+    }
+  }, [])
 
   if (message.type === "system" || callPayload) {
     return <SystemCallMessage message={message} />
@@ -257,6 +346,10 @@ export function MessageBubble({
   const openMedia = (e?: MouseEvent) => {
     e?.stopPropagation()
     e?.preventDefault()
+    if (selectionMode) {
+      onToggleSelect?.()
+      return
+    }
     if (onOpenMedia && message.file_url) onOpenMedia(message.id)
   }
 
@@ -264,26 +357,48 @@ export function MessageBubble({
     ? resolveMediaKind(message.type, message.file_name, message.file_url)
     : null
 
-  const reply = parseReplyContent(message.content)
-  const bodyText = reply?.body ?? message.content
+  const legacyReply = parseReplyContent(message.content)
+  const structuredTarget = message.reply_to
+  const structuredAuthor = structuredTarget
+    ? (participants.find((p) => p.user_id === structuredTarget.sender_id)?.profile?.display_name ??
+        participants.find((p) => p.user_id === structuredTarget.sender_id)?.profile?.email ??
+        "משתמש")
+    : null
+  const reply = structuredTarget
+    ? {
+        author: structuredAuthor ?? "משתמש",
+        preview: replyPreviewText(structuredTarget),
+        body: message.content ?? "",
+      }
+    : legacyReply
+  const bodyText = structuredTarget ? message.content : (legacyReply?.body ?? message.content)
   const urls = bodyText ? extractUrls(bodyText) : []
-
-  const openMenu = () => {
-    setShowMoreEmoji(false)
-    setConfirmDelete(false)
-    setMenuOpen(true)
-  }
-
-  const closeMenu = () => {
-    setMenuOpen(false)
-    setShowMoreEmoji(false)
-    setConfirmDelete(false)
-  }
+  const canEdit =
+    isMine &&
+    Boolean(onEdit) &&
+    !message.pending &&
+    !message.id.startsWith("temp-") &&
+    (message.type === "text" || Boolean(bodyText?.trim()))
 
   const pickReaction = (emoji: string) => {
     const next = reaction === emoji ? null : emoji
     onReaction?.(next)
     closeMenu()
+  }
+
+  const clearLongPress = () => {
+    if (longPressRef.current) {
+      clearTimeout(longPressRef.current)
+      longPressRef.current = null
+    }
+  }
+
+  const onPointerDownSelect = () => {
+    if (selectionMode || !onStartSelect) return
+    clearLongPress()
+    longPressRef.current = setTimeout(() => {
+      onStartSelect()
+    }, 450)
   }
 
   const menuItems = [
@@ -296,6 +411,19 @@ export function MessageBubble({
         onReply?.()
       },
     },
+    ...(canEdit
+      ? [
+          {
+            id: "edit" as const,
+            label: "עריכה",
+            icon: Pencil,
+            onClick: () => {
+              closeMenu()
+              onEdit?.()
+            },
+          },
+        ]
+      : []),
     {
       id: "copy",
       label: "העתקה",
@@ -321,6 +449,15 @@ export function MessageBubble({
       },
     },
     {
+      id: "select",
+      label: "בחירה",
+      icon: CheckSquare,
+      onClick: () => {
+        closeMenu()
+        onStartSelect?.()
+      },
+    },
+    {
       id: "pin",
       label: isPinned ? "ביטול הצמדה" : "הצמדה",
       icon: Pin,
@@ -338,11 +475,41 @@ export function MessageBubble({
         onToggleStar?.()
       },
     },
-  ] as const
+  ]
 
   return (
-    <div className={cn("group relative flex px-2", isMine ? "justify-start" : "justify-end")} dir="ltr">
+    <div
+      className={cn(
+        "group relative flex items-center gap-2 px-2",
+        isMine ? "justify-start" : "justify-end",
+        selectionMode && isSelected && "rounded-lg bg-[#00a884]/10",
+      )}
+      dir="ltr"
+      onClick={() => {
+        if (selectionMode) onToggleSelect?.()
+      }}
+    >
+      {selectionMode && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggleSelect?.()
+          }}
+          className={cn(
+            "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 transition",
+            isSelected ? "border-[#00a884] bg-[#00a884] text-white" : "border-[#8696a0] bg-white",
+            isMine ? "order-first" : "order-last",
+          )}
+          aria-label={isSelected ? "בטל בחירה" : "בחר הודעה"}
+          aria-pressed={isSelected}
+        >
+          {isSelected && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
+        </button>
+      )}
+
       <div
+        ref={bubbleRef}
         className={cn(
           "relative my-0.5 max-w-[65%] rounded-lg px-2.5 py-1.5 shadow-sm",
           isMine ? "bubble-tail-out rounded-tl-none bg-[#d9fdd3]" : "bubble-tail-in rounded-tr-none bg-white",
@@ -352,8 +519,16 @@ export function MessageBubble({
         dir="rtl"
         onContextMenu={(e) => {
           e.preventDefault()
+          if (selectionMode) {
+            onToggleSelect?.()
+            return
+          }
           openMenu()
         }}
+        onPointerDown={onPointerDownSelect}
+        onPointerUp={clearLongPress}
+        onPointerLeave={clearLongPress}
+        onPointerCancel={clearLongPress}
       >
         {isGroup && !isMine && showSenderName && (
           <div className="mb-0.5 text-xs font-medium" style={{ color: avatarColor(senderName) }}>
@@ -374,6 +549,7 @@ export function MessageBubble({
             onClick={openMedia}
             className="mb-1 block w-full max-w-xs overflow-hidden rounded-md text-right"
           >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={message.file_url || "/placeholder.svg"}
               alt="תמונה"
@@ -444,28 +620,31 @@ export function MessageBubble({
           <span className="float-right ml-2 mt-1 flex items-center gap-1 text-[11px] text-[#667781]" dir="ltr">
             {isStarred && <Star className="h-3 w-3 fill-[#eab308] text-[#eab308]" />}
             {isPinned && <Pin className="h-3 w-3 text-[#00a884]" />}
+            {message.edited_at && <span className="text-[10px]">נערך</span>}
             {formatTime(message.created_at)}
             {isMine && <MessageTicks status={status} />}
           </span>
         )}
 
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation()
-            if (menuOpen) closeMenu()
-            else openMenu()
-          }}
-          className={cn(
-            "absolute top-0.5 rounded-bl-md rounded-tr-md bg-gradient-to-bl from-black/10 to-transparent p-0.5 text-[#54656f] transition",
-            isMine ? "left-0.5" : "right-0.5",
-            menuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100",
-          )}
-          aria-label="אפשרויות הודעה"
-          aria-expanded={menuOpen}
-        >
-          <ChevronDown className="h-4 w-4" />
-        </button>
+        {!selectionMode && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              if (menuOpen) closeMenu()
+              else openMenu()
+            }}
+            className={cn(
+              "absolute top-0.5 rounded-bl-md rounded-tr-md bg-gradient-to-bl from-black/10 to-transparent p-0.5 text-[#54656f] transition",
+              isMine ? "left-0.5" : "right-0.5",
+              menuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+            )}
+            aria-label="אפשרויות הודעה"
+            aria-expanded={menuOpen}
+          >
+            <ChevronDown className="h-4 w-4" />
+          </button>
+        )}
 
         {reaction && (
           <span className="absolute -bottom-2 right-2 z-10 rounded-full bg-white px-1.5 py-0.5 text-sm shadow ring-1 ring-black/5">
@@ -474,131 +653,146 @@ export function MessageBubble({
         )}
       </div>
 
-      {menuOpen && (
-        <>
-          <button type="button" className="fixed inset-0 z-30 cursor-default" aria-label="סגור" onClick={closeMenu} />
-          <div
-            ref={menuRef}
-            className={cn(
-              "absolute z-40 flex flex-col items-stretch gap-1",
-              isMine ? "left-2 top-0" : "right-2 top-0",
-            )}
-            dir="rtl"
-          >
-            <div className="flex items-center gap-0.5 rounded-full bg-white px-1.5 py-1 shadow-lg ring-1 ring-black/5">
-              <button
-                type="button"
-                onClick={() => setShowMoreEmoji((v) => !v)}
-                className="flex h-8 w-8 items-center justify-center rounded-full text-[#54656f] transition hover:bg-[#f0f2f5]"
-                aria-label="עוד תגובות"
-              >
-                <Plus className="h-4 w-4" />
-              </button>
-              {QUICK_REACTIONS.map((emoji) => (
+      {menuOpen &&
+        !selectionMode &&
+        menuPlacement &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <>
+            <button
+              type="button"
+              className="fixed inset-0 z-[90] cursor-default"
+              aria-label="סגור"
+              onClick={closeMenu}
+            />
+            <div
+              ref={menuRef}
+              className="fixed z-[100] flex max-w-[min(92vw,280px)] flex-col items-stretch gap-1 overflow-y-auto"
+              style={
+                {
+                  top: menuPlacement.top,
+                  bottom: menuPlacement.bottom,
+                  left: menuPlacement.left,
+                  right: menuPlacement.right,
+                  maxHeight: menuPlacement.maxHeight,
+                } satisfies CSSProperties
+              }
+              dir="rtl"
+            >
+              <div className="flex shrink-0 items-center gap-0.5 rounded-full bg-white px-1.5 py-1 shadow-lg ring-1 ring-black/5">
                 <button
-                  key={emoji}
                   type="button"
-                  onClick={() => pickReaction(emoji)}
-                  className={cn(
-                    "flex h-8 w-8 items-center justify-center rounded-full text-lg transition hover:scale-110 hover:bg-[#f0f2f5]",
-                    reaction === emoji && "bg-[#e7fce3]",
-                  )}
+                  onClick={() => setShowMoreEmoji((v) => !v)}
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-[#54656f] transition hover:bg-[#f0f2f5]"
+                  aria-label="עוד תגובות"
                 >
-                  {emoji}
+                  <Plus className="h-4 w-4" />
                 </button>
-              ))}
-            </div>
-
-            {showMoreEmoji && (
-              <div className="grid grid-cols-6 gap-0.5 rounded-2xl bg-white p-2 shadow-lg ring-1 ring-black/5">
-                {["😀", "😍", "🥰", "😎", "🤔", "😡", "🔥", "🎉", "💯", "😴", "🤗", "👏", "😮", "🤣", "💔", "✨", "👀", "💪"].map(
-                  (emoji) => (
-                    <button
-                      key={emoji}
-                      type="button"
-                      onClick={() => pickReaction(emoji)}
-                      className="rounded-lg p-1.5 text-lg transition hover:bg-[#f0f2f5]"
-                    >
-                      {emoji}
-                    </button>
-                  ),
-                )}
-              </div>
-            )}
-
-            <div className="min-w-[220px] overflow-hidden rounded-xl bg-white py-1.5 shadow-lg ring-1 ring-black/5">
-              {menuItems.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  className="flex w-full items-center justify-between gap-6 px-4 py-2.5 text-[15px] text-[#111b21] transition hover:bg-[#f5f6f6]"
-                  onClick={item.onClick}
-                >
-                  <span>{item.label}</span>
-                  <item.icon
+                {QUICK_REACTIONS.map((emoji) => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    onClick={() => pickReaction(emoji)}
                     className={cn(
-                      "h-[18px] w-[18px] shrink-0 text-[#54656f]",
-                      item.id === "star" && isStarred && "fill-[#eab308] text-[#eab308]",
-                      item.id === "pin" && isPinned && "text-[#00a884]",
+                      "flex h-8 w-8 items-center justify-center rounded-full text-lg transition hover:scale-110 hover:bg-[#f0f2f5]",
+                      reaction === emoji && "bg-[#e7fce3]",
                     )}
-                    strokeWidth={1.75}
-                  />
-                </button>
-              ))}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
 
-              <div className="my-1 border-t border-[#e9edef]" />
-
-              <button
-                type="button"
-                className="flex w-full items-center justify-between gap-6 px-4 py-2.5 text-[15px] text-[#111b21] transition hover:bg-[#f5f6f6]"
-                onClick={closeMenu}
-              >
-                <span>דיווח</span>
-                <ThumbsDown className="h-[18px] w-[18px] shrink-0 text-[#54656f]" strokeWidth={1.75} />
-              </button>
-
-              {onDeleteForMe && (
-                <button
-                  type="button"
-                  className="flex w-full items-center justify-between gap-6 px-4 py-2.5 text-[15px] text-[#111b21] transition hover:bg-[#f5f6f6]"
-                  onClick={() => {
-                    closeMenu()
-                    onDeleteForMe()
-                  }}
-                >
-                  <span>מחק אצלי</span>
-                  <EyeOff className="h-[18px] w-[18px] shrink-0 text-[#54656f]" strokeWidth={1.75} />
-                </button>
+              {showMoreEmoji && (
+                <div className="grid shrink-0 grid-cols-6 gap-0.5 rounded-2xl bg-white p-2 shadow-lg ring-1 ring-black/5">
+                  {["😀", "😍", "🥰", "😎", "🤔", "😡", "🔥", "🎉", "💯", "😴", "🤗", "👏", "😮", "🤣", "💔", "✨", "👀", "💪"].map(
+                    (emoji) => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        onClick={() => pickReaction(emoji)}
+                        className="rounded-lg p-1.5 text-lg transition hover:bg-[#f0f2f5]"
+                      >
+                        {emoji}
+                      </button>
+                    ),
+                  )}
+                </div>
               )}
 
-              {onDeleteForEveryone && (
-                confirmDelete ? (
+              <div className="min-w-[220px] overflow-hidden rounded-xl bg-white py-1.5 shadow-lg ring-1 ring-black/5">
+                {menuItems.map((item) => (
                   <button
+                    key={item.id}
                     type="button"
-                    className="flex w-full items-center justify-between gap-6 px-4 py-2.5 text-[15px] text-[#ea0038] transition hover:bg-[#f5f6f6]"
-                    onClick={() => {
-                      closeMenu()
-                      onDeleteForEveryone()
-                    }}
+                    className="flex w-full items-center justify-between gap-6 px-4 py-2.5 text-[15px] text-[#111b21] transition hover:bg-[#f5f6f6]"
+                    onClick={item.onClick}
                   >
-                    <span>אשר מחיקה לכולם</span>
-                    <Trash2 className="h-[18px] w-[18px] shrink-0" strokeWidth={1.75} />
+                    <span>{item.label}</span>
+                    <item.icon
+                      className={cn(
+                        "h-[18px] w-[18px] shrink-0 text-[#54656f]",
+                        item.id === "star" && isStarred && "fill-[#eab308] text-[#eab308]",
+                        item.id === "pin" && isPinned && "text-[#00a884]",
+                      )}
+                      strokeWidth={1.75}
+                    />
                   </button>
-                ) : (
+                ))}
+
+                <div className="my-1 border-t border-[#e9edef]" />
+
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between gap-6 px-4 py-2.5 text-[15px] text-[#111b21] transition hover:bg-[#f5f6f6]"
+                  onClick={closeMenu}
+                >
+                  <span>דיווח</span>
+                  <ThumbsDown className="h-[18px] w-[18px] shrink-0 text-[#54656f]" strokeWidth={1.75} />
+                </button>
+
+                {onDeleteForMe && (
                   <button
                     type="button"
                     className="flex w-full items-center justify-between gap-6 px-4 py-2.5 text-[15px] text-[#111b21] transition hover:bg-[#f5f6f6]"
-                    onClick={() => setConfirmDelete(true)}
+                    onClick={() => {
+                      closeMenu()
+                      onDeleteForMe()
+                    }}
                   >
-                    <span>מחק לכולם</span>
-                    <Trash2 className="h-[18px] w-[18px] shrink-0 text-[#54656f]" strokeWidth={1.75} />
+                    <span>מחק אצלי</span>
+                    <EyeOff className="h-[18px] w-[18px] shrink-0 text-[#54656f]" strokeWidth={1.75} />
                   </button>
-                )
-              )}
+                )}
+
+                {onDeleteForEveryone &&
+                  (confirmDelete ? (
+                    <button
+                      type="button"
+                      className="flex w-full items-center justify-between gap-6 px-4 py-2.5 text-[15px] text-[#ea0038] transition hover:bg-[#f5f6f6]"
+                      onClick={() => {
+                        closeMenu()
+                        onDeleteForEveryone()
+                      }}
+                    >
+                      <span>אשר מחיקה לכולם</span>
+                      <Trash2 className="h-[18px] w-[18px] shrink-0" strokeWidth={1.75} />
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="flex w-full items-center justify-between gap-6 px-4 py-2.5 text-[15px] text-[#111b21] transition hover:bg-[#f5f6f6]"
+                      onClick={() => setConfirmDelete(true)}
+                    >
+                      <span>מחק לכולם</span>
+                      <Trash2 className="h-[18px] w-[18px] shrink-0 text-[#54656f]" strokeWidth={1.75} />
+                    </button>
+                  ))}
+              </div>
             </div>
-          </div>
-        </>
-      )}
+          </>,
+          document.body,
+        )}
     </div>
   )
 }

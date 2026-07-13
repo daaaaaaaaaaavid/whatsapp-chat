@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils"
 
 export type GroupedStatus = { profile: Profile; statuses: Status[] }
 
-const DURATION_MS = 5000
+const IMAGE_DURATION_MS = 5000
 const EMOJIS = ["😀", "😂", "😍", "🥰", "😎", "🤔", "😢", "👍", "🙏", "❤️", "🔥", "🎉"]
 
 function isVideoUrl(url: string) {
@@ -79,6 +79,8 @@ export function StatusViewer({
   const [showReplies, setShowReplies] = useState(false)
   const [repliesLoading, setRepliesLoading] = useState(false)
 
+  const hasMedia = Boolean(status?.media_url)
+  const isVideo = hasMedia && status?.media_url ? isVideoUrl(status.media_url) : false
   const paused = userPaused || holding || Boolean(reply.trim()) || showEmoji || showReplies
   const progressRef = useRef(0)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -158,12 +160,14 @@ export function StatusViewer({
     }
   }, [index, groupIdx, groups, onIndexChange, onGroupChange])
 
+  // Images / text: fixed timer. Videos: progress comes from <video> timeupdate / ended.
   useEffect(() => {
-    if (!status || paused) return
-    const startedAt = performance.now() - progressRef.current * DURATION_MS
+    if (!status || paused || isVideo) return
+    if (hasMedia && mediaLoading) return
+    const startedAt = performance.now() - progressRef.current * IMAGE_DURATION_MS
     let raf = 0
     const tick = (now: number) => {
-      const p = Math.min(1, (now - startedAt) / DURATION_MS)
+      const p = Math.min(1, (now - startedAt) / IMAGE_DURATION_MS)
       progressRef.current = p
       setProgress(p)
       if (p >= 1) goNext()
@@ -171,7 +175,15 @@ export function StatusViewer({
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [status?.id, paused, goNext])
+  }, [status?.id, paused, isVideo, hasMedia, mediaLoading, goNext])
+
+  const syncVideoProgress = useCallback(() => {
+    const v = videoRef.current
+    if (!v || !Number.isFinite(v.duration) || v.duration <= 0) return
+    const p = Math.min(1, v.currentTime / v.duration)
+    progressRef.current = p
+    setProgress(p)
+  }, [])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -235,8 +247,6 @@ export function StatusViewer({
 
   if (!status) return null
 
-  const hasMedia = Boolean(status.media_url)
-  const video = hasMedia && status.media_url ? isVideoUrl(status.media_url) : false
   const { bannerLines, caption } = hasMedia
     ? splitOverlayText(status.content)
     : { bannerLines: [] as string[], caption: null }
@@ -315,7 +325,7 @@ export function StatusViewer({
           </div>
 
           <div className="flex shrink-0 items-center gap-1 pt-0.5 text-white">
-            {video && (
+            {isVideo && (
               <button
                 type="button"
                 onClick={() => setMuted((m) => !m)}
@@ -404,7 +414,7 @@ export function StatusViewer({
 
           {hasMedia && status.media_url ? (
             <>
-              {video ? (
+              {isVideo ? (
                 <video
                   ref={videoRef}
                   key={status.id}
@@ -413,8 +423,10 @@ export function StatusViewer({
                   playsInline
                   autoPlay
                   muted={muted}
-                  loop
                   onLoadedData={() => setMediaLoading(false)}
+                  onLoadedMetadata={syncVideoProgress}
+                  onTimeUpdate={syncVideoProgress}
+                  onEnded={goNext}
                   onWaiting={() => setMediaLoading(true)}
                   onPlaying={() => setMediaLoading(false)}
                 />

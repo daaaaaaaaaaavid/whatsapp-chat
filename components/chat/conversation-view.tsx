@@ -35,6 +35,9 @@ import {
   Phone,
   Video,
   ImagePlus,
+  Trash2,
+  Forward,
+  Reply,
 } from "lucide-react"
 
 type Props = {
@@ -100,7 +103,10 @@ export function ConversationView({
   const [unreadCountAtOpen, setUnreadCountAtOpen] = useState(0)
   const [galleryIndex, setGalleryIndex] = useState<number | null>(null)
   const [replyTo, setReplyTo] = useState<Message | null>(null)
-  const [forwardMessage, setForwardMessage] = useState<Message | null>(null)
+  const [editingMessage, setEditingMessage] = useState<Message | null>(null)
+  const [forwardMessages, setForwardMessages] = useState<Message[]>([])
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [typingUsers, setTypingUsers] = useState<Record<string, number>>({})
   const markedRef = useRef<string | null>(null)
 
@@ -177,6 +183,18 @@ export function ConversationView({
   }, [conversation.id, loading, messages.length, searchOpen])
 
   useEffect(() => {
+    if (!selectionMode) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setSelectionMode(false)
+        setSelectedIds([])
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [selectionMode])
+
+  useEffect(() => {
     setSearchOpen(false)
     setSearchQuery("")
     setMenuOpen(false)
@@ -185,7 +203,10 @@ export function ConversationView({
     setUnreadCountAtOpen(0)
     setGalleryIndex(null)
     setReplyTo(null)
-    setForwardMessage(null)
+    setEditingMessage(null)
+    setForwardMessages([])
+    setSelectionMode(false)
+    setSelectedIds([])
     setTypingUsers({})
   }, [conversation.id])
 
@@ -241,13 +262,15 @@ export function ConversationView({
 
     if (unread.length === 0) return
     const supabase = createClient()
-    supabase
+    void supabase
       .from("message_reads")
       .upsert(
         unread.map((m) => ({ message_id: m.id, user_id: currentUser.id })),
         { onConflict: "message_id,user_id" },
       )
-      .then(() => {})
+      .then(({ error }) => {
+        if (error) console.error("mark read failed", error.message)
+      })
   }, [messages, currentUser.id, conversation.id, loading, onConversationOpened])
 
   const mediaItems = useMemo(() => mediaItemsFromMessages(visibleMessages), [visibleMessages])
@@ -294,11 +317,8 @@ export function ConversationView({
       .eq("id", messageId)
       .eq("sender_id", currentUser.id)
     if (error) {
-      await supabase
-        .from("messages")
-        .update({ content: "‎" })
-        .eq("id", messageId)
-        .eq("sender_id", currentUser.id)
+      console.error("delete for everyone failed", error.message)
+      return
     }
     setMessages((prev) =>
       prev.map((m) =>
@@ -320,26 +340,101 @@ export function ConversationView({
   }
 
   const handleForward = async (conversationIds: string[]) => {
-    if (!forwardMessage) return
+    if (!forwardMessages.length) return
     const supabase = createClient()
-    const src = forwardMessage
-    for (const cid of conversationIds) {
-      const { data } = await supabase
-        .from("messages")
-        .insert({
-          conversation_id: cid,
-          sender_id: currentUser.id,
-          type: src.type === "system" ? "text" : src.type,
-          content: src.type === "text" || src.type === "system" ? (src.content ?? messagePreview(src)) : src.content,
-          file_url: src.file_url,
-          file_name: src.file_name,
-          file_size: src.file_size,
-        })
-        .select("*")
-        .single()
-      await supabase.from("conversations").update({ updated_at: new Date().toISOString() }).eq("id", cid)
-      if (data) onMessageActivity?.(data as Message)
+    for (const src of forwardMessages) {
+      for (const cid of conversationIds) {
+        const { data, error } = await supabase
+          .from("messages")
+          .insert({
+            conversation_id: cid,
+            sender_id: currentUser.id,
+            type: src.type === "system" ? "text" : src.type,
+            content: src.type === "text" || src.type === "system" ? (src.content ?? messagePreview(src)) : src.content,
+            file_url: src.file_url,
+            file_name: src.file_name,
+            file_size: src.file_size,
+            reply_to_id: null,
+          })
+          .select("*")
+          .single()
+        if (error) {
+          console.error("forward failed", error.message)
+          continue
+        }
+        const { error: touchError } = await supabase
+          .from("conversations")
+          .update({ updated_at: new Date().toISOString() })
+          .eq("id", cid)
+        if (touchError) console.error("forward touch failed", touchError.message)
+        if (data) onMessageActivity?.(data as Message)
+      }
     }
+  }
+
+  const selectedMessages = useMemo(
+    () => visibleMessages.filter((m) => selectedIds.includes(m.id)),
+    [visibleMessages, selectedIds],
+  )
+
+  const exitSelection = () => {
+    setSelectionMode(false)
+    setSelectedIds([])
+  }
+
+  const toggleSelect = (messageId: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(messageId) ? prev.filter((id) => id !== messageId) : [...prev, messageId],
+    )
+  }
+
+  const startSelect = (messageId: string) => {
+    setEditingMessage(null)
+    setReplyTo(null)
+    setSelectionMode(true)
+    setSelectedIds([messageId])
+  }
+
+  const handleBulkDeleteForMe = () => {
+    let next = prefs
+    for (const id of selectedIds) {
+      next = hideMessageForMe(next, id)
+    }
+    onPrefsChange(next)
+    exitSelection()
+  }
+
+  const handleBulkDeleteForEveryone = async () => {
+    const mine = selectedMessages.filter(
+      (m) => m.sender_id === currentUser.id && m.type !== "system" && !parseCallSystemPayload(m.content),
+    )
+    for (const m of mine) {
+      await handleDeleteForEveryone(m.id)
+    }
+    const others = selectedIds.filter((id) => !mine.some((m) => m.id === id))
+    if (others.length) {
+      let next = prefs
+      for (const id of others) {
+        next = hideMessageForMe(next, id)
+      }
+      onPrefsChange(next)
+    }
+    exitSelection()
+  }
+
+  const handleBulkReply = () => {
+    const target = selectedMessages[selectedMessages.length - 1]
+    if (!target) return
+    exitSelection()
+    setEditingMessage(null)
+    setReplyTo(target)
+  }
+
+  const handleBulkForward = () => {
+    const msgs = selectedMessages.filter((m) => !m.deleted_at)
+    if (!msgs.length) return
+    setForwardMessages(msgs)
+    exitSelection()
   }
 
   const onDragEnter = (e: React.DragEvent) => {
@@ -392,6 +487,65 @@ export function ConversationView({
       )}
 
       <header className="flex h-16 items-center gap-3 bg-[#f0f2f5] px-4">
+        {selectionMode ? (
+          <>
+            <button
+              type="button"
+              onClick={exitSelection}
+              className="flex h-10 w-10 items-center justify-center rounded-full text-[#54656f] transition hover:bg-black/5"
+              aria-label="ביטול בחירה"
+            >
+              <X className="h-6 w-6" />
+            </button>
+            <div className="min-w-0 flex-1 text-right font-medium text-[#111b21]">
+              {selectedIds.length} נבחרו
+            </div>
+            <button
+              type="button"
+              disabled={selectedIds.length === 0}
+              onClick={handleBulkReply}
+              className="flex h-10 w-10 items-center justify-center rounded-full text-[#54656f] transition hover:bg-black/5 disabled:opacity-30"
+              aria-label="תגובה"
+              title="תגובה"
+            >
+              <Reply className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              disabled={selectedIds.length === 0}
+              onClick={handleBulkForward}
+              className="flex h-10 w-10 items-center justify-center rounded-full text-[#54656f] transition hover:bg-black/5 disabled:opacity-30"
+              aria-label="העברה"
+              title="העברה"
+            >
+              <Forward className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              disabled={selectedIds.length === 0}
+              onClick={() => {
+                const hasMine = selectedMessages.some(
+                  (m) => m.sender_id === currentUser.id && m.type !== "system",
+                )
+                if (hasMine) {
+                  if (window.confirm("למחוק לכולם את ההודעות שלך שנבחרו? (השאר יוסתרו אצלך בלבד)")) {
+                    void handleBulkDeleteForEveryone()
+                  } else {
+                    handleBulkDeleteForMe()
+                  }
+                } else {
+                  handleBulkDeleteForMe()
+                }
+              }}
+              className="flex h-10 w-10 items-center justify-center rounded-full text-[#54656f] transition hover:bg-black/5 disabled:opacity-30"
+              aria-label="מחיקה"
+              title="מחיקה"
+            >
+              <Trash2 className="h-5 w-5" />
+            </button>
+          </>
+        ) : (
+          <>
         <button onClick={onBack} className="text-[#54656f] md:hidden" aria-label="חזרה">
           <ArrowRight className="h-6 w-6" />
         </button>
@@ -501,6 +655,8 @@ export function ConversationView({
             </>
           )}
         </div>
+          </>
+        )}
       </header>
 
       {searchOpen && (
@@ -569,7 +725,7 @@ export function ConversationView({
         <div className="mx-auto flex max-w-3xl flex-col">
           <div className="mx-auto mb-4 flex items-center gap-1.5 rounded-lg bg-[#fdf4c5] px-3 py-1.5 text-center text-xs text-[#54656f] shadow-sm">
             <Lock className="h-3 w-3" />
-            ההודעות מוצפנות מקצה לקצה
+            הודעות פרטיות — רק משתתפי השיחה יכולים לקרוא אותן
           </div>
 
           {loading ? (
@@ -608,12 +764,29 @@ export function ConversationView({
                       : undefined
                   }
                   onDeleteForMe={() => onPrefsChange(hideMessageForMe(prefs, message.id))}
-                  onReply={() => setReplyTo(message)}
-                  onForward={() => setForwardMessage(message)}
+                  onReply={() => {
+                    setEditingMessage(null)
+                    setReplyTo(message)
+                  }}
+                  onForward={() => setForwardMessages([message])}
+                  onEdit={
+                    message.sender_id === currentUser.id &&
+                    message.type !== "system" &&
+                    !message.deleted_at
+                      ? () => {
+                          setReplyTo(null)
+                          setEditingMessage(message)
+                        }
+                      : undefined
+                  }
                   onToggleStar={() => onPrefsChange(toggleStarredMessage(prefs, message.id))}
                   onTogglePin={() => onPrefsChange(togglePinnedMessage(prefs, message.id))}
                   onReaction={(emoji) => onPrefsChange(setMessageReaction(prefs, message.id, emoji))}
                   onOpenMedia={openMedia}
+                  onStartSelect={() => startSelect(message.id)}
+                  onToggleSelect={() => toggleSelect(message.id)}
+                  selectionMode={selectionMode}
+                  isSelected={selectedIds.includes(message.id)}
                   currentUserAvatarUrl={currentUser.avatar_url}
                   currentUserName={currentUser.display_name}
                   reaction={prefs.reactions[message.id] ?? null}
@@ -628,7 +801,7 @@ export function ConversationView({
         </div>
       </div>
 
-      {!searchOpen && (
+      {!searchOpen && !selectionMode && (
         <MessageInput
           ref={messageInputRef}
           conversationId={conversation.id}
@@ -652,6 +825,12 @@ export function ConversationView({
               : null
           }
           onCancelReply={() => setReplyTo(null)}
+          editingMessage={editingMessage}
+          onCancelEdit={() => setEditingMessage(null)}
+          onEdited={(msg) => {
+            setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, ...msg } : m)))
+            onMessageActivity?.(msg)
+          }}
           onTyping={handleTyping}
         />
       )}
@@ -677,11 +856,11 @@ export function ConversationView({
       )}
 
       <ForwardDialog
-        open={Boolean(forwardMessage)}
-        message={forwardMessage}
+        open={forwardMessages.length > 0}
+        messages={forwardMessages}
         conversations={conversations}
         currentUser={currentUser}
-        onClose={() => setForwardMessage(null)}
+        onClose={() => setForwardMessages([])}
         onForward={handleForward}
       />
     </div>

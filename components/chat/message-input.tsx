@@ -15,6 +15,7 @@ import type { Message, MessageType } from "@/lib/types"
 import { parseCallSystemPayload, callSystemLabel } from "@/lib/call-system-message"
 import { notifyOfflineRecipients } from "@/lib/push-client"
 import { messagePreview } from "@/lib/conversation-display"
+import { isAllowedMediaFile, UNSUPPORTED_MEDIA_MESSAGE } from "@/lib/media-mime"
 import {
   Plus,
   SendHorizontal,
@@ -26,7 +27,10 @@ import {
   Reply,
   Play,
   Trash2,
+  Pencil,
+  Check,
 } from "lucide-react"
+import { parseReplyContent } from "@/lib/message-content"
 
 type Props = {
   conversationId: string
@@ -37,6 +41,9 @@ type Props = {
   replyTo?: Message | null
   replyAuthor?: string | null
   onCancelReply?: () => void
+  editingMessage?: Message | null
+  onCancelEdit?: () => void
+  onEdited?: (message: Message) => void
   onTyping?: (typing: boolean) => void
 }
 
@@ -109,6 +116,9 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
     replyTo,
     replyAuthor,
     onCancelReply,
+    editingMessage,
+    onCancelEdit,
+    onEdited,
     onTyping,
   },
   ref,
@@ -128,10 +138,62 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
   const imageInputRef = useRef<HTMLInputElement>(null)
   const audioInputRef = useRef<HTMLInputElement>(null)
   const captionInputRef = useRef<HTMLInputElement>(null)
+  const textInputRef = useRef<HTMLTextAreaElement>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const pendingRef = useRef(pending)
   pendingRef.current = pending
+  const isEditing = Boolean(editingMessage)
+
+  const resizeTextarea = useCallback(() => {
+    const el = textInputRef.current
+    if (!el) return
+    el.style.height = "auto"
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`
+  }, [])
+
+  useEffect(() => {
+    if (!editingMessage) return
+    const parsed = parseReplyContent(editingMessage.content)
+    const body = editingMessage.reply_to_id
+      ? (editingMessage.content ?? "")
+      : (parsed?.body ?? editingMessage.content ?? "")
+    setText(body)
+    onCancelReply?.()
+    requestAnimationFrame(() => {
+      textInputRef.current?.focus()
+      resizeTextarea()
+    })
+  }, [editingMessage, onCancelReply, resizeTextarea])
+
+  useEffect(() => {
+    resizeTextarea()
+  }, [text, resizeTextarea])
+
+  useEffect(() => {
+    setText("")
+    setSending(false)
+    setShowAttach(false)
+    setShowEmoji(false)
+    setUploadProgress(null)
+    setUploadError(null)
+    setSendError(null)
+    setSendingMedia(false)
+    setActiveIndex(0)
+    setPending((prev) => {
+      revokePending(prev)
+      return []
+    })
+    if (mediaRecorderRef.current?.state === "recording") {
+      try {
+        mediaRecorderRef.current.stop()
+      } catch {
+        // ignore
+      }
+    }
+    setRecording(false)
+    onTyping?.(false)
+  }, [conversationId, onTyping])
 
   const sendMessage = useCallback(
     async (payload: {
@@ -140,6 +202,8 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
       file_url?: string
       file_name?: string
       file_size?: number
+      reply_to_id?: string | null
+      reply_to?: Message | null
     }) => {
       const tempId = `temp-${crypto.randomUUID()}`
       const createdAt = new Date().toISOString()
@@ -152,6 +216,8 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
         file_url: payload.file_url ?? null,
         file_name: payload.file_name ?? null,
         file_size: payload.file_size ?? null,
+        reply_to_id: payload.reply_to_id ?? null,
+        reply_to: payload.reply_to ?? null,
         created_at: createdAt,
         pending: true,
         reads: [],
@@ -169,6 +235,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
           file_url: payload.file_url ?? null,
           file_name: payload.file_name ?? null,
           file_size: payload.file_size ?? null,
+          reply_to_id: payload.reply_to_id ?? null,
         })
         .select("*")
         .single()
@@ -181,7 +248,12 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
         .update({ updated_at: new Date().toISOString() })
         .eq("id", conversationId)
 
-      const real = { ...(data as Message), pending: false, reads: [] }
+      const real = {
+        ...(data as Message),
+        pending: false,
+        reads: [],
+        reply_to: payload.reply_to ?? null,
+      }
       onSent(real, tempId)
       notifyOfflineRecipients({
         conversationId,
@@ -194,10 +266,20 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
   )
 
   const uploadAndSend = useCallback(
-    async (file: File, kindHint: "image" | "file" | "audio" | "video", caption?: string | null) => {
+    async (
+      file: File,
+      kindHint: "image" | "file" | "audio" | "video",
+      caption?: string | null,
+      reply?: { id: string; message: Message } | null,
+    ) => {
       setUploadProgress("מעלה...")
       setUploadError(null)
       try {
+        if (!isAllowedMediaFile(file)) {
+          setUploadError(UNSUPPORTED_MEDIA_MESSAGE)
+          setUploadProgress(null)
+          throw new Error(UNSUPPORTED_MEDIA_MESSAGE)
+        }
         const supabase = createClient()
         const ext = file.name.split(".").pop() || "bin"
         const path = `${currentUserId}/${conversationId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
@@ -209,6 +291,8 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
             setUploadError("חסר bucket בשם media ב־Supabase. הרץ את migration-media-storage.sql")
           } else if (msg.includes("policy") || msg.includes("row-level") || msg.includes("security")) {
             setUploadError("אין הרשאה להעלות. הרץ את migration-media-storage.sql ב־Supabase")
+          } else if (msg.includes("mime") || msg.includes("type") || msg.includes("not allowed")) {
+            setUploadError(UNSUPPORTED_MEDIA_MESSAGE)
           } else {
             setUploadError(error.message)
           }
@@ -241,19 +325,25 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
           file_name: file.name,
           file_size: file.size,
           content: caption?.trim() || null,
+          reply_to_id: reply?.id ?? null,
+          reply_to: reply?.message ?? null,
         })
         setUploadProgress(null)
       } catch (err) {
         setUploadProgress(null)
-        if (err instanceof Error && !uploadError) {
-          // uploadError may already be set from storage errors
-        } else if (!(err && typeof err === "object" && "message" in err)) {
-          setUploadError(err instanceof Error ? err.message : "העלאה נכשלה")
-        }
+        setUploadError((prev) => {
+          if (prev) return prev
+          if (err instanceof Error && err.message) return err.message
+          if (err && typeof err === "object" && "message" in err) {
+            const msg = String((err as { message?: unknown }).message ?? "")
+            if (msg) return msg
+          }
+          return "העלאה נכשלה"
+        })
         throw err
       }
     },
-    [conversationId, currentUserId, sendMessage, uploadError],
+    [conversationId, currentUserId, sendMessage],
   )
 
   const stageFiles = useCallback(
@@ -261,11 +351,18 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
       const list = Array.from(files)
       if (list.length === 0) return
 
-      const audioFiles = list.filter((f) => detectMediaKind(f) === "audio")
-      const mediaFiles = list.filter((f) => detectMediaKind(f) !== "audio")
+      const unsupported = list.filter((f) => !isAllowedMediaFile(f))
+      if (unsupported.length) {
+        setUploadError(UNSUPPORTED_MEDIA_MESSAGE)
+      }
+      const allowed = list.filter((f) => isAllowedMediaFile(f))
+      if (allowed.length === 0) return
+
+      const audioFiles = allowed.filter((f) => detectMediaKind(f) === "audio")
+      const mediaFiles = allowed.filter((f) => detectMediaKind(f) !== "audio")
 
       for (const file of audioFiles) {
-        void uploadAndSend(file, "audio")
+        void uploadAndSend(file, "audio").catch(() => {})
       }
 
       if (mediaFiles.length === 0) return
@@ -275,7 +372,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
 
       setShowAttach(false)
       setShowEmoji(false)
-      setUploadError(null)
+      if (!unsupported.length) setUploadError(null)
       setPending((prev) => {
         setActiveIndex(prev.length > 0 ? prev.length : 0)
         return [...prev, ...next]
@@ -326,15 +423,70 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
     if (!trimmed || sending) return
     setSending(true)
     setSendError(null)
-    setText("")
     setShowEmoji(false)
-    const quoted = replyTo
-      ? `↩ ${replyAuthor ?? "משתמש"}: ${replyPreview(replyTo)}\n${trimmed}`
-      : trimmed
-    onCancelReply?.()
     onTyping?.(false)
+
+    if (editingMessage) {
+      const editedAt = new Date().toISOString()
+      const parsed = parseReplyContent(editingMessage.content)
+      const nextContent =
+        editingMessage.reply_to_id || !parsed
+          ? trimmed
+          : `↩ ${parsed.author}: ${parsed.preview}\n${trimmed}`
+      const previousText = text
+      setText("")
+      try {
+        const supabase = createClient()
+        const { data, error } = await supabase
+          .from("messages")
+          .update({ content: nextContent, edited_at: editedAt })
+          .eq("id", editingMessage.id)
+          .eq("sender_id", currentUserId)
+          .select("*")
+          .single()
+        if (error) {
+          // Column edited_at may be missing — retry content-only update
+          const fallback = await supabase
+            .from("messages")
+            .update({ content: nextContent })
+            .eq("id", editingMessage.id)
+            .eq("sender_id", currentUserId)
+            .select("*")
+            .single()
+          if (fallback.error) throw fallback.error
+          onEdited?.({
+            ...(fallback.data as Message),
+            edited_at: editedAt,
+            reply_to: editingMessage.reply_to,
+            reply_to_id: editingMessage.reply_to_id,
+          })
+        } else {
+          onEdited?.({
+            ...(data as Message),
+            reply_to: editingMessage.reply_to,
+            reply_to_id: editingMessage.reply_to_id,
+          })
+        }
+        onCancelEdit?.()
+      } catch (err) {
+        setSendError(err instanceof Error ? err.message : "עריכה נכשלה")
+        setText(previousText)
+      } finally {
+        setSending(false)
+      }
+      return
+    }
+
+    setText("")
+    const replySnapshot = replyTo
+    onCancelReply?.()
     try {
-      await sendMessage({ content: quoted, type: "text" })
+      await sendMessage({
+        content: trimmed,
+        type: "text",
+        reply_to_id: replySnapshot?.id ?? null,
+        reply_to: replySnapshot ?? null,
+      })
     } catch (err) {
       setSendError(err instanceof Error ? err.message : "שליחה נכשלה")
       setText(trimmed)
@@ -350,7 +502,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
 
     const items = [...pending]
     const replySnapshot = replyTo
-    const replyAuthorSnapshot = replyAuthor
+    const sent: PendingItem[] = []
 
     setPending([])
     setActiveIndex(0)
@@ -359,6 +511,10 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
     try {
       for (let i = 0; i < items.length; i++) {
         const item = items[i]
+        if (!isAllowedMediaFile(item.file)) {
+          setUploadError(UNSUPPORTED_MEDIA_MESSAGE)
+          throw new Error(UNSUPPORTED_MEDIA_MESSAGE)
+        }
         setUploadProgress(items.length > 1 ? `מעלה ${i + 1}/${items.length}...` : "מעלה...")
 
         const supabase = createClient()
@@ -372,6 +528,8 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
             setUploadError("חסר bucket בשם media ב־Supabase. הרץ את migration-media-storage.sql")
           } else if (msg.includes("policy") || msg.includes("row-level") || msg.includes("security")) {
             setUploadError("אין הרשאה להעלות. הרץ את migration-media-storage.sql ב־Supabase")
+          } else if (msg.includes("mime") || msg.includes("type") || msg.includes("not allowed")) {
+            setUploadError(UNSUPPORTED_MEDIA_MESSAGE)
           } else {
             setUploadError(error.message)
           }
@@ -380,24 +538,25 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
         const { data } = supabase.storage.from("media").getPublicUrl(path)
 
         const captionText = item.caption.trim()
-        let content: string | null = captionText || null
-        if (i === 0 && replySnapshot) {
-          const quote = `↩ ${replyAuthorSnapshot ?? "משתמש"}: ${replyPreview(replySnapshot)}`
-          content = content ? `${quote}\n${content}` : `${quote}\n`
-        }
-
         await sendMessage({
           type: item.kind,
           file_url: data.publicUrl,
           file_name: item.file.name,
           file_size: item.file.size,
-          content,
+          content: captionText || null,
+          reply_to_id: i === 0 ? (replySnapshot?.id ?? null) : null,
+          reply_to: i === 0 ? (replySnapshot ?? null) : null,
         })
+        sent.push(item)
       }
+      revokePending(sent)
     } catch (err) {
+      const remaining = items.filter((item) => !sent.includes(item))
+      setPending(remaining)
+      setActiveIndex(0)
+      revokePending(sent)
       setUploadError((prev) => prev || (err instanceof Error ? err.message : "העלאה נכשלה"))
     } finally {
-      revokePending(items)
       setSendingMedia(false)
       setUploadProgress(null)
     }
@@ -420,7 +579,11 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
         stream.getTracks().forEach((t) => t.stop())
         const blob = new Blob(chunksRef.current, { type: "audio/webm" })
         const file = new File([blob], `voice-${Date.now()}.webm`, { type: "audio/webm" })
-        await uploadAndSend(file, "audio")
+        try {
+          await uploadAndSend(file, "audio")
+        } catch {
+          // uploadAndSend sets uploadError
+        }
       }
       mediaRecorderRef.current = recorder
       recorder.start()
@@ -574,7 +737,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
         </div>
       )}
 
-      {replyTo && (
+      {replyTo && !isEditing && (
         <div className="flex items-stretch gap-2 border-b border-[#e9edef] bg-[#f0f2f5] px-4 pt-2" dir="rtl">
           <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border-r-4 border-[#00a884] bg-white px-3 py-2">
             <Reply className="h-4 w-4 shrink-0 text-[#00a884]" />
@@ -588,6 +751,31 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
             onClick={onCancelReply}
             className="flex h-10 w-10 shrink-0 items-center justify-center self-center rounded-full text-[#54656f] transition hover:bg-black/5"
             aria-label="ביטול תגובה"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+      )}
+
+      {isEditing && editingMessage && (
+        <div className="flex items-stretch gap-2 border-b border-[#e9edef] bg-[#f0f2f5] px-4 pt-2" dir="rtl">
+          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border-r-4 border-[#53bdeb] bg-white px-3 py-2">
+            <Pencil className="h-4 w-4 shrink-0 text-[#53bdeb]" />
+            <div className="min-w-0 flex-1">
+              <div className="text-xs font-medium text-[#53bdeb]">עריכת הודעה</div>
+              <div className="truncate text-sm text-[#667781]">
+                {parseReplyContent(editingMessage.content)?.body ?? editingMessage.content ?? ""}
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setText("")
+              onCancelEdit?.()
+            }}
+            className="flex h-10 w-10 shrink-0 items-center justify-center self-center rounded-full text-[#54656f] transition hover:bg-black/5"
+            aria-label="ביטול עריכה"
           >
             <X className="h-5 w-5" />
           </button>
@@ -692,31 +880,50 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
         }}
       />
 
-      <form onSubmit={handleSendText} className="flex items-center gap-2 bg-[#f0f2f5] px-4 py-2.5">
-        <button
-          type="button"
-          onClick={() => {
-            setShowEmoji((v) => !v)
-            setShowAttach(false)
-          }}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#54656f] transition hover:bg-black/5"
-          aria-label="אמוג'י"
-        >
-          <Smile className="h-6 w-6" />
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setShowAttach((v) => !v)
-            setShowEmoji(false)
-          }}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#54656f] transition hover:bg-black/5"
-          aria-label="צירוף קובץ"
-        >
-          {showAttach ? <X className="h-6 w-6" /> : <Plus className="h-6 w-6" />}
-        </button>
+      <form onSubmit={handleSendText} className="flex items-end gap-2 bg-[#f0f2f5] px-4 py-2.5">
+        {!isEditing && (
+          <>
+            <button
+              type="button"
+              onClick={() => {
+                setShowEmoji((v) => !v)
+                setShowAttach(false)
+              }}
+              className="mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#54656f] transition hover:bg-black/5"
+              aria-label="אמוג'י"
+            >
+              <Smile className="h-6 w-6" />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowAttach((v) => !v)
+                setShowEmoji(false)
+              }}
+              className="mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#54656f] transition hover:bg-black/5"
+              aria-label="צירוף קובץ"
+            >
+              {showAttach ? <X className="h-6 w-6" /> : <Plus className="h-6 w-6" />}
+            </button>
+          </>
+        )}
+        {isEditing && (
+          <button
+            type="button"
+            onClick={() => {
+              setShowEmoji((v) => !v)
+              setShowAttach(false)
+            }}
+            className="mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#54656f] transition hover:bg-black/5"
+            aria-label="אמוג'י"
+          >
+            <Smile className="h-6 w-6" />
+          </button>
+        )}
 
-        <input
+        <textarea
+          ref={textInputRef}
+          rows={1}
           value={text}
           onChange={(e) => {
             setText(e.target.value)
@@ -731,25 +938,34 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
               onTyping?.(false)
               void handleSendText()
             }
+            // Shift+Enter: allow default newline behavior
           }}
-          placeholder="הקלדת הודעה"
-          className="flex-1 rounded-lg bg-white px-4 py-2.5 text-[15px] text-[#111b21] outline-none placeholder:text-[#667781]"
+          placeholder={isEditing ? "ערוך הודעה" : "הקלדת הודעה"}
+          className="max-h-[120px] min-h-[42px] flex-1 resize-none overflow-y-auto rounded-lg bg-white px-4 py-2.5 text-[15px] leading-[22px] text-[#111b21] outline-none placeholder:text-[#667781]"
         />
 
-        {hasText ? (
+        {hasText || isEditing ? (
           <button
             type="submit"
-            disabled={sending}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#54656f] transition hover:bg-black/5 disabled:opacity-40"
-            aria-label="שלח"
+            disabled={sending || !hasText}
+            className={`mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition disabled:opacity-40 ${
+              isEditing
+                ? "bg-[#00a884] text-white hover:bg-[#06cf9c]"
+                : "text-[#54656f] hover:bg-black/5"
+            }`}
+            aria-label={isEditing ? "שמור עריכה" : "שלח"}
           >
-            <SendHorizontal className="h-6 w-6 -scale-x-100" />
+            {isEditing ? (
+              <Check className="h-5 w-5" />
+            ) : (
+              <SendHorizontal className="h-6 w-6 -scale-x-100" />
+            )}
           </button>
         ) : (
           <button
             type="button"
             onClick={() => (recording ? stopRecording() : startRecording())}
-            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition hover:bg-black/5 ${
+            className={`mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition hover:bg-black/5 ${
               recording ? "text-[#ea0038]" : "text-[#54656f]"
             }`}
             aria-label={recording ? "עצור הקלטה" : "הודעה קולית"}

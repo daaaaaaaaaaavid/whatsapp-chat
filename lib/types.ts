@@ -40,6 +40,7 @@ export type Message = {
   file_size: number | null
   created_at: string
   deleted_at?: string | null
+  edited_at?: string | null
   reply_to_id?: string | null
   /** Client-only: optimistic bubble not yet confirmed by the server */
   pending?: boolean

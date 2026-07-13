@@ -48,11 +48,17 @@ export function useMessages(conversationId: string | null, currentUserId: string
     }
 
     if (conversationIdRef.current !== forId) return
+    const withReads = attachReads((msgs ?? []) as Message[], reads)
+    const byId = new Map(withReads.map((m) => [m.id, m]))
+    const withReplies = withReads.map((m) => ({
+      ...m,
+      reply_to: m.reply_to_id ? (byId.get(m.reply_to_id) ?? null) : null,
+    }))
     setMessages((prev) => {
       const pending = prev.filter(
         (m) => m.pending && m.conversation_id === forId && !(msgs ?? []).some((s) => s.id === m.id),
       )
-      return [...attachReads((msgs ?? []) as Message[], reads), ...pending]
+      return [...withReplies, ...pending]
     })
     setLoading(false)
   }, [conversationId, attachReads])
@@ -91,9 +97,14 @@ export function useMessages(conversationId: string | null, currentUserId: string
         (payload) => {
           const newMsg = payload.new as Message
           setMessages((prev) => {
+            const replyTo =
+              newMsg.reply_to_id != null
+                ? (prev.find((m) => m.id === newMsg.reply_to_id) ?? null)
+                : null
+            const hydrated = { ...newMsg, reply_to: replyTo, reads: [] as MessageRead[], pending: false }
             if (prev.some((m) => m.id === newMsg.id)) {
               return prev.map((m) =>
-                m.id === newMsg.id ? { ...newMsg, reads: m.reads ?? [], pending: false } : m,
+                m.id === newMsg.id ? { ...hydrated, reads: m.reads ?? [] } : m,
               )
             }
             // Replace matching optimistic bubble from the same sender
@@ -107,10 +118,10 @@ export function useMessages(conversationId: string | null, currentUserId: string
             )
             if (tempIdx >= 0) {
               const next = [...prev]
-              next[tempIdx] = { ...newMsg, reads: [], pending: false }
+              next[tempIdx] = hydrated
               return next
             }
-            return [...prev, { ...newMsg, reads: [] }]
+            return [...prev, hydrated]
           })
         },
       )

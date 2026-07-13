@@ -8,7 +8,7 @@ import { Search, X } from "lucide-react"
 
 type Props = {
   open: boolean
-  message: Message | null
+  messages: Message[]
   conversations: Conversation[]
   currentUser: Profile
   onClose: () => void
@@ -17,7 +17,7 @@ type Props = {
 
 export function ForwardDialog({
   open,
-  message,
+  messages,
   conversations,
   currentUser,
   onClose,
@@ -43,7 +43,7 @@ export function ForwardDialog({
     })
   }, [conversations, currentUser.id, query])
 
-  if (!open || !message) return null
+  if (!open || messages.length === 0) return null
 
   const toggle = (id: string) => {
     setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
@@ -60,6 +60,11 @@ export function ForwardDialog({
     }
   }
 
+  const preview =
+    messages.length === 1
+      ? messagePreview(messages[0])
+      : `${messages.length} הודעות`
+
   return (
     <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/40 p-4" role="dialog">
       <div className="flex max-h-[80svh] w-full max-w-md flex-col overflow-hidden rounded-xl bg-white shadow-2xl" dir="rtl">
@@ -67,7 +72,9 @@ export function ForwardDialog({
           <button type="button" onClick={onClose} aria-label="סגור" className="text-[#54656f]">
             <X className="h-5 w-5" />
           </button>
-          <h2 className="flex-1 text-base font-medium text-[#111b21]">העברת הודעה</h2>
+          <h2 className="flex-1 text-base font-medium text-[#111b21]">
+            {messages.length > 1 ? "העברת הודעות" : "העברת הודעה"}
+          </h2>
           <button
             type="button"
             disabled={!selected.length || sending}
@@ -79,7 +86,7 @@ export function ForwardDialog({
         </header>
 
         <div className="border-b border-[#e9edef] bg-[#f0f2f5] px-4 py-2 text-sm text-[#667781]">
-          {messagePreview(message)}
+          {preview}
         </div>
 
         <div className="flex items-center gap-2 border-b border-[#e9edef] px-4 py-2">
@@ -110,7 +117,16 @@ export function ForwardDialog({
                 >
                   {checked ? "✓" : ""}
                 </span>
-                <Avatar name={name} url={c.is_group ? c.avatar_url : c.participants?.find((p) => p.user_id !== currentUser.id)?.profile?.avatar_url} isGroup={c.is_group} size={40} />
+                <Avatar
+                  name={name}
+                  url={
+                    c.is_group
+                      ? c.avatar_url
+                      : c.participants?.find((p) => p.user_id !== currentUser.id)?.profile?.avatar_url
+                  }
+                  isGroup={c.is_group}
+                  size={40}
+                />
                 <span className="truncate text-[#111b21]">{name}</span>
               </button>
             )

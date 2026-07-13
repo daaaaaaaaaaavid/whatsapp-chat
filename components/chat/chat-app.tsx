@@ -280,22 +280,30 @@ export function ChatApp({ currentUser: initialUser }: Props) {
     })()
 
     const bump = () => {
+      if (document.visibilityState !== "visible") return
       try {
         const supabase = createClient()
         supabase
           .from("profiles")
           .update({ last_seen: new Date().toISOString() })
           .eq("id", currentUser.id)
-          .then(() => {})
+          .then(({ error }) => {
+            if (error) console.error("last_seen bump failed", error.message)
+          })
       } catch {
         // ignore
       }
     }
     const id = window.setInterval(bump, 60_000)
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") bump()
+    }
+    document.addEventListener("visibilitychange", onVisibility)
     bump()
     return () => {
       cancelled = true
       window.clearInterval(id)
+      document.removeEventListener("visibilitychange", onVisibility)
     }
   }, [currentUser.id, currentUser.email, currentUser.display_name])
 
@@ -410,6 +418,7 @@ export function ChatApp({ currentUser: initialUser }: Props) {
             <div className="flex h-full min-w-0 flex-1">
               <div className={`min-h-0 min-w-0 flex-1 ${showInfo ? "hidden lg:block" : "block"}`}>
                 <ConversationView
+                  key={activeConversation.id}
                   conversation={activeConversation}
                   currentUser={currentUser}
                   conversations={conversations}

@@ -44,11 +44,13 @@ create table if not exists public.messages (
   file_name text,
   file_size bigint,
   created_at timestamptz not null default now(),
-  deleted_at timestamptz
+  deleted_at timestamptz,
+  edited_at timestamptz
 );
 
--- Soft-delete support for existing DBs
+-- Soft-delete / edit support for existing DBs
 alter table public.messages add column if not exists deleted_at timestamptz;
+alter table public.messages add column if not exists edited_at timestamptz;
 
 create index if not exists messages_conversation_created_idx
   on public.messages (conversation_id, created_at);
