@@ -92,21 +92,19 @@ export async function fetchGoogleContacts(): Promise<GoogleContactsResult> {
     const contacts = (rows ?? []) as GoogleContact[]
 
     let matched: Profile[] = []
-    if (contacts.length) {
-      const { data: profiles, error: profilesError } = await supabase.rpc(
-        "match_my_google_contacts",
-      )
+    const matchedIds = Array.from(
+      new Set(
+        contacts
+          .map((c) => c.matched_profile_id)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    )
+    if (matchedIds.length) {
+      const { data: profiles, error: profilesError } = await supabase
+        .from("profiles")
+        .select("*")
+        .in("id", matchedIds)
       if (profilesError) {
-        const msg = profilesError.message.toLowerCase()
-        if (msg.includes("function") && msg.includes("does not exist")) {
-          return {
-            matched: [],
-            unmatched: contacts,
-            syncedAt: null,
-            error:
-              "חסרה פונקציית התאמה. הרץ את supabase/migration-google-contacts.sql ב־Supabase.",
-          }
-        }
         return {
           matched: [],
           unmatched: contacts.filter((c) => !c.matched_profile_id),
@@ -117,15 +115,8 @@ export async function fetchGoogleContacts(): Promise<GoogleContactsResult> {
       matched = (profiles ?? []) as Profile[]
     }
 
-    const { data: refreshed } = await supabase
-      .from("google_contacts")
-      .select("id, google_resource_name, display_name, email, photo_url, matched_profile_id")
-      .eq("user_id", user.id)
-      .order("display_name", { ascending: true })
-
-    const latest = (refreshed ?? contacts) as GoogleContact[]
     const matchedSet = new Set(matched.map((p) => p.id))
-    const unmatched = latest.filter(
+    const unmatched = contacts.filter(
       (c) => !c.matched_profile_id || !matchedSet.has(c.matched_profile_id),
     )
 

@@ -13,7 +13,7 @@ self.addEventListener("push", (event) => {
   event.waitUntil(
     (async () => {
       const clientsList = await self.clients.matchAll({ type: "window", includeUncontrolled: true })
-      const focused = clientsList.some((c) => c.focused || c.visibilityState === "visible")
+      const focused = clientsList.some((c) => c.focused)
       if (focused) {
         for (const client of clientsList) {
           client.postMessage({ type: "push-message", ...data })

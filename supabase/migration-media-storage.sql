@@ -9,8 +9,9 @@ values (
   52428800,
   array[
     'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml',
-    'video/mp4', 'video/webm', 'video/quicktime',
-    'audio/mpeg', 'audio/webm', 'audio/ogg', 'audio/wav', 'audio/mp4',
+    'image/bmp', 'image/heic', 'image/heif', 'image/avif',
+    'video/mp4', 'video/webm', 'video/quicktime', 'video/x-msvideo', 'video/3gpp', 'video/x-matroska',
+    'audio/mpeg', 'audio/webm', 'audio/ogg', 'audio/wav', 'audio/mp4', 'audio/aac',
     'application/pdf',
     'application/msword',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -19,7 +20,8 @@ values (
 )
 on conflict (id) do update
 set public = true,
-    file_size_limit = excluded.file_size_limit;
+    file_size_limit = excluded.file_size_limit,
+    allowed_mime_types = excluded.allowed_mime_types;
 
 drop policy if exists "media_public_read" on storage.objects;
 create policy "media_public_read"

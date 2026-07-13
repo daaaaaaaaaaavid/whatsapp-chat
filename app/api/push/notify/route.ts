@@ -5,7 +5,7 @@ import { createServiceClient } from "@/lib/supabase/admin"
 import { messagePreview } from "@/lib/conversation-display"
 import type { Message } from "@/lib/types"
 
-const OFFLINE_MS = 2 * 60 * 1000
+const OFFLINE_MS = 5 * 60 * 1000
 
 type Body = {
   conversationId?: string

@@ -26,7 +26,7 @@ const IMAGE_DURATION_MS = 5000
 const EMOJIS = ["😀", "😂", "😍", "🥰", "😎", "🤔", "😢", "👍", "🙏", "❤️", "🔥", "🎉"]
 
 function isVideoUrl(url: string) {
-  return /\.(mp4|webm|ogg|mov|m4v)(\?|$)/i.test(url)
+  return /\.(mp4|webm|ogg|mov|m4v|mkv|avi|3gp)(\?|$)/i.test(url)
 }
 
 /** Split status text into a mid banner (title lines) and a free caption. */
@@ -50,6 +50,7 @@ type Props = {
   onIndexChange: (i: number) => void
   onGroupChange: (group: GroupedStatus, index: number) => void
   onClose: () => void
+  onStatusDeleted?: (statusId: string) => void
 }
 
 export function StatusViewer({
@@ -60,6 +61,7 @@ export function StatusViewer({
   onIndexChange,
   onGroupChange,
   onClose,
+  onStatusDeleted,
 }: Props) {
   const status = group.statuses[index]
   const groupIdx = groups.findIndex((g) => g.profile.id === group.profile.id)
@@ -75,13 +77,16 @@ export function StatusViewer({
   const [showEmoji, setShowEmoji] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [replySent, setReplySent] = useState(false)
+  const [replyError, setReplyError] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
   const [replies, setReplies] = useState<StatusReply[]>([])
   const [showReplies, setShowReplies] = useState(false)
   const [repliesLoading, setRepliesLoading] = useState(false)
 
   const hasMedia = Boolean(status?.media_url)
   const isVideo = hasMedia && status?.media_url ? isVideoUrl(status.media_url) : false
-  const paused = userPaused || holding || Boolean(reply.trim()) || showEmoji || showReplies
+  const paused = userPaused || holding || Boolean(reply.trim()) || showEmoji || showReplies || Boolean(replyError)
   const progressRef = useRef(0)
   const videoRef = useRef<HTMLVideoElement>(null)
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -96,6 +101,8 @@ export function StatusViewer({
     setShowEmoji(false)
     setMenuOpen(false)
     setReplySent(false)
+    setReplyError(null)
+    setDeleteError(null)
     setShowReplies(false)
     setReplies([])
   }, [status?.id])
@@ -135,6 +142,29 @@ export function StatusViewer({
   useEffect(() => {
     if (!status || !isOwn) return
     void loadReplies(status.id)
+  }, [status?.id, isOwn, loadReplies])
+
+  useEffect(() => {
+    if (!status || !isOwn) return
+    const supabase = createClient()
+    const channel = supabase
+      .channel(`status-replies-${status.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "status_replies",
+          filter: `status_id=eq.${status.id}`,
+        },
+        () => {
+          void loadReplies(status.id)
+        },
+      )
+      .subscribe()
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [status?.id, isOwn, loadReplies])
 
   const goNext = useCallback(() => {
@@ -225,6 +255,7 @@ export function StatusViewer({
     const trimmed = reply.trim()
     if (!trimmed || sending || isOwn || !status) return
     setSending(true)
+    setReplyError(null)
     try {
       const supabase = createClient()
       const { error } = await supabase.from("status_replies").insert({
@@ -233,15 +264,41 @@ export function StatusViewer({
         content: trimmed,
       })
       if (error) {
-        console.error("status reply failed", error.message)
+        setReplyError(error.message || "שליחת התגובה נכשלה")
         return
       }
       setReply("")
       setReplySent(true)
       setShowEmoji(false)
       setTimeout(() => setReplySent(false), 1500)
+    } catch (err) {
+      setReplyError(err instanceof Error ? err.message : "שליחת התגובה נכשלה")
     } finally {
       setSending(false)
+    }
+  }
+
+  const deleteStatus = async () => {
+    if (!status || !isOwn || deleting) return
+    setDeleting(true)
+    setDeleteError(null)
+    setMenuOpen(false)
+    try {
+      const supabase = createClient()
+      const { error } = await supabase
+        .from("statuses")
+        .delete()
+        .eq("id", status.id)
+        .eq("user_id", currentUserId)
+      if (error) {
+        setDeleteError(error.message || "מחיקת הסטטוס נכשלה")
+        return
+      }
+      onStatusDeleted?.(status.id)
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "מחיקת הסטטוס נכשלה")
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -354,6 +411,16 @@ export function StatusViewer({
               </button>
               {menuOpen && (
                 <div className="absolute top-full left-0 mt-1 min-w-[140px] overflow-hidden rounded-md bg-white py-1 text-sm text-[#111b21] shadow-lg">
+                  {isOwn && (
+                    <button
+                      type="button"
+                      disabled={deleting}
+                      className="block w-full px-4 py-2.5 text-right text-[#ea0038] hover:bg-[#f5f6f6] disabled:opacity-50"
+                      onClick={() => void deleteStatus()}
+                    >
+                      {deleting ? "מוחק..." : "מחק סטטוס"}
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="block w-full px-4 py-2.5 text-right hover:bg-[#f5f6f6]"
@@ -488,6 +555,14 @@ export function StatusViewer({
         {/* Own status: view replies */}
         {isOwn && (
           <div className="absolute inset-x-0 bottom-0 z-30 bg-gradient-to-t from-black/70 to-transparent px-3 pb-4 pt-10">
+            {deleteError && (
+              <div className="mb-2 rounded-lg bg-[#fde8e8] px-3 py-2 text-center text-xs text-[#ea0038]">
+                {deleteError}
+                <button type="button" className="mr-2 underline" onClick={() => setDeleteError(null)}>
+                  סגור
+                </button>
+              </div>
+            )}
             {showReplies ? (
               <div className="max-h-56 overflow-y-auto rounded-xl bg-[#1f2c34]/95 p-3" dir="rtl">
                 <div className="mb-2 flex items-center justify-between">
@@ -549,7 +624,23 @@ export function StatusViewer({
                 התגובה נוספה לסטטוס
               </div>
             ) : (
-              <div className="relative flex items-center gap-2">
+              <div className="relative flex flex-col gap-2">
+                {(replyError || deleteError) && (
+                  <div className="rounded-lg bg-[#fde8e8] px-3 py-2 text-center text-xs text-[#ea0038]">
+                    {replyError || deleteError}
+                    <button
+                      type="button"
+                      className="mr-2 underline"
+                      onClick={() => {
+                        setReplyError(null)
+                        setDeleteError(null)
+                      }}
+                    >
+                      סגור
+                    </button>
+                  </div>
+                )}
+                <div className="relative flex items-center gap-2">
                 {showEmoji && (
                   <div className="absolute bottom-full mb-2 grid w-full grid-cols-6 gap-1 rounded-xl bg-[#1f2c34] p-2 shadow-lg">
                     {EMOJIS.map((e) => (
@@ -579,7 +670,10 @@ export function StatusViewer({
                 <div className="flex min-w-0 flex-1 items-center gap-1 rounded-full bg-[#1f2c34]/85 px-2 py-1.5 ring-1 ring-white/10">
                   <input
                     value={reply}
-                    onChange={(e) => setReply(e.target.value)}
+                    onChange={(e) => {
+                      setReply(e.target.value)
+                      if (replyError) setReplyError(null)
+                    }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
                         e.preventDefault()
@@ -598,6 +692,7 @@ export function StatusViewer({
                   >
                     <Smile className="h-5 w-5" />
                   </button>
+                </div>
                 </div>
               </div>
             )}

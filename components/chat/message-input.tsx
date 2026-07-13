@@ -764,7 +764,9 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
             <div className="min-w-0 flex-1">
               <div className="text-xs font-medium text-[#53bdeb]">עריכת הודעה</div>
               <div className="truncate text-sm text-[#667781]">
-                {parseReplyContent(editingMessage.content)?.body ?? editingMessage.content ?? ""}
+                {editingMessage.reply_to_id
+                  ? (editingMessage.content ?? "")
+                  : (parseReplyContent(editingMessage.content)?.body ?? editingMessage.content ?? "")}
               </div>
             </div>
           </div>

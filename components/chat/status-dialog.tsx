@@ -7,6 +7,7 @@ import { StatusViewer, type GroupedStatus } from "./status-viewer"
 import { createClient } from "@/lib/supabase/client"
 import type { Profile, Status } from "@/lib/types"
 import { formatChatListTime } from "@/lib/format"
+import { isAllowedMediaFile, UNSUPPORTED_MEDIA_MESSAGE } from "@/lib/media-mime"
 import { Camera, ImagePlus, Plus, Type, Video, X } from "lucide-react"
 
 type Props = {
@@ -111,6 +112,10 @@ export function StatusDialog({ open, currentUser, onClose }: Props) {
     const isVideo = file.type.startsWith("video/")
     if (!isImage && !isVideo) {
       setUploadError("ניתן להעלות רק תמונות או סרטונים")
+      return
+    }
+    if (!isAllowedMediaFile(file)) {
+      setUploadError(UNSUPPORTED_MEDIA_MESSAGE)
       return
     }
     if (file.size > MAX_MEDIA_BYTES) {
@@ -382,6 +387,17 @@ export function StatusDialog({ open, currentUser, onClose }: Props) {
             setViewIndex(i)
           }}
           onClose={() => setViewing(null)}
+          onStatusDeleted={(statusId) => {
+            setStatuses((prev) => prev.filter((s) => s.id !== statusId))
+            setViewing((current) => {
+              if (!current) return null
+              const nextStatuses = current.statuses.filter((s) => s.id !== statusId)
+              if (nextStatuses.length === 0) return null
+              const nextIndex = Math.min(viewIndex, nextStatuses.length - 1)
+              setViewIndex(nextIndex)
+              return { ...current, statuses: nextStatuses }
+            })
+          }}
         />
       )}
     </Modal>

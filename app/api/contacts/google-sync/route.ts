@@ -52,10 +52,45 @@ export async function POST(req: Request) {
 
   const syncedAt = new Date().toISOString()
 
+  if (contacts.length > 0) {
+    const rows = contacts.map((c) => ({
+      user_id: user.id,
+      google_resource_name: c.google_resource_name,
+      display_name: c.display_name,
+      email: c.email,
+      photo_url: c.photo_url,
+      matched_profile_id: null as string | null,
+      synced_at: syncedAt,
+    }))
+
+    const { error: upsertError } = await supabase
+      .from("google_contacts")
+      .upsert(rows, { onConflict: "user_id,google_resource_name" })
+
+    if (upsertError) {
+      const msg = upsertError.message.toLowerCase()
+      if (msg.includes("google_contacts") || msg.includes("does not exist")) {
+        return NextResponse.json(
+          {
+            error: "missing_table",
+            message:
+              "חסרה טבלת אנשי קשר. הרץ את supabase/migration-google-contacts.sql ב־SQL Editor של Supabase.",
+          },
+          { status: 500 },
+        )
+      }
+      return NextResponse.json(
+        { error: "upsert_failed", message: upsertError.message },
+        { status: 500 },
+      )
+    }
+  }
+
   const { error: deleteError } = await supabase
     .from("google_contacts")
     .delete()
     .eq("user_id", user.id)
+    .lt("synced_at", syncedAt)
 
   if (deleteError) {
     const msg = deleteError.message.toLowerCase()
@@ -70,26 +105,6 @@ export async function POST(req: Request) {
       )
     }
     return NextResponse.json({ error: "delete_failed", message: deleteError.message }, { status: 500 })
-  }
-
-  if (contacts.length > 0) {
-    const rows = contacts.map((c) => ({
-      user_id: user.id,
-      google_resource_name: c.google_resource_name,
-      display_name: c.display_name,
-      email: c.email,
-      photo_url: c.photo_url,
-      matched_profile_id: null as string | null,
-      synced_at: syncedAt,
-    }))
-
-    const { error: insertError } = await supabase.from("google_contacts").insert(rows)
-    if (insertError) {
-      return NextResponse.json(
-        { error: "insert_failed", message: insertError.message },
-        { status: 500 },
-      )
-    }
   }
 
   const { data: matchedRows, error: matchError } = await supabase.rpc("match_my_google_contacts")

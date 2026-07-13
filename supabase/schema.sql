@@ -9,8 +9,13 @@ create table if not exists public.profiles (
   avatar_url text,
   about text default 'זמין',
   last_seen timestamptz,
+  chat_prefs jsonb not null default '{}'::jsonb,
+  google_contacts_synced_at timestamptz,
   created_at timestamptz not null default now()
 );
+
+alter table public.profiles add column if not exists chat_prefs jsonb not null default '{}'::jsonb;
+alter table public.profiles add column if not exists google_contacts_synced_at timestamptz;
 
 -- Conversations
 create table if not exists public.conversations (
@@ -45,12 +50,14 @@ create table if not exists public.messages (
   file_size bigint,
   created_at timestamptz not null default now(),
   deleted_at timestamptz,
-  edited_at timestamptz
+  edited_at timestamptz,
+  reply_to_id uuid references public.messages (id) on delete set null
 );
 
--- Soft-delete / edit support for existing DBs
+-- Soft-delete / edit / reply support for existing DBs
 alter table public.messages add column if not exists deleted_at timestamptz;
 alter table public.messages add column if not exists edited_at timestamptz;
+alter table public.messages add column if not exists reply_to_id uuid references public.messages (id) on delete set null;
 
 create index if not exists messages_conversation_created_idx
   on public.messages (conversation_id, created_at);
@@ -333,12 +340,53 @@ create policy "statuses_insert_own"
   to authenticated
   with check (auth.uid() = user_id);
 
-drop policy if exists "status_views_all" on public.status_views;
-create policy "status_views_all"
-  on public.status_views for all
+drop policy if exists "statuses_delete_own" on public.statuses;
+create policy "statuses_delete_own"
+  on public.statuses for delete
   to authenticated
-  using (true)
-  with check (true);
+  using (auth.uid() = user_id);
+
+drop policy if exists "status_views_all" on public.status_views;
+drop policy if exists "status_views_select" on public.status_views;
+drop policy if exists "status_views_insert" on public.status_views;
+drop policy if exists "status_views_delete" on public.status_views;
+
+create policy "status_views_select"
+  on public.status_views for select
+  to authenticated
+  using (
+    viewer_id = auth.uid()
+    or exists (
+      select 1 from public.statuses s
+      where s.id = status_id
+        and s.user_id = auth.uid()
+    )
+  );
+
+create policy "status_views_insert"
+  on public.status_views for insert
+  to authenticated
+  with check (
+    viewer_id = auth.uid()
+    and exists (
+      select 1 from public.statuses s
+      where s.id = status_id
+        and s.expires_at > now()
+        and public.is_known_contact(s.user_id)
+    )
+  );
+
+create policy "status_views_delete"
+  on public.status_views for delete
+  to authenticated
+  using (
+    viewer_id = auth.uid()
+    or exists (
+      select 1 from public.statuses s
+      where s.id = status_id
+        and s.user_id = auth.uid()
+    )
+  );
 
 drop policy if exists "status_replies_select" on public.status_replies;
 create policy "status_replies_select"
@@ -400,9 +448,27 @@ begin
 end $$;
 
 -- Storage bucket for chat media (images, files, voice)
-insert into storage.buckets (id, name, public, file_size_limit)
-values ('media', 'media', true, 52428800)
-on conflict (id) do update set public = true;
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'media',
+  'media',
+  true,
+  52428800,
+  array[
+    'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml',
+    'image/bmp', 'image/heic', 'image/heif', 'image/avif',
+    'video/mp4', 'video/webm', 'video/quicktime', 'video/x-msvideo', 'video/3gpp', 'video/x-matroska',
+    'audio/mpeg', 'audio/webm', 'audio/ogg', 'audio/wav', 'audio/mp4', 'audio/aac',
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/octet-stream'
+  ]
+)
+on conflict (id) do update
+set public = excluded.public,
+    file_size_limit = excluded.file_size_limit,
+    allowed_mime_types = excluded.allowed_mime_types;
 
 drop policy if exists "media_public_read" on storage.objects;
 create policy "media_public_read"
@@ -436,3 +502,144 @@ create policy "media_auth_delete"
     bucket_id = 'media'
     and (storage.foldername(name))[1] = auth.uid()::text
   );
+-- Google Contacts sync: private imported contacts + email match to WhaChat profiles.
+-- Run in: Supabase ג†’ SQL Editor ג†’ Run
+-- Also enable People API + contacts.readonly on the Google Cloud OAuth consent screen.
+
+alter table public.profiles
+  add column if not exists google_contacts_synced_at timestamptz;
+
+create table if not exists public.google_contacts (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  google_resource_name text not null,
+  display_name text,
+  email text,
+  photo_url text,
+  matched_profile_id uuid references public.profiles (id) on delete set null,
+  synced_at timestamptz not null default now(),
+  unique (user_id, google_resource_name)
+);
+
+create index if not exists google_contacts_user_idx
+  on public.google_contacts (user_id);
+
+create index if not exists google_contacts_email_idx
+  on public.google_contacts (user_id, lower(trim(email)))
+  where email is not null;
+
+create index if not exists google_contacts_matched_idx
+  on public.google_contacts (matched_profile_id)
+  where matched_profile_id is not null;
+
+alter table public.google_contacts enable row level security;
+
+drop policy if exists "google_contacts_select_own" on public.google_contacts;
+create policy "google_contacts_select_own"
+  on public.google_contacts for select
+  to authenticated
+  using (user_id = auth.uid());
+
+drop policy if exists "google_contacts_insert_own" on public.google_contacts;
+create policy "google_contacts_insert_own"
+  on public.google_contacts for insert
+  to authenticated
+  with check (user_id = auth.uid());
+
+drop policy if exists "google_contacts_update_own" on public.google_contacts;
+create policy "google_contacts_update_own"
+  on public.google_contacts for update
+  to authenticated
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
+drop policy if exists "google_contacts_delete_own" on public.google_contacts;
+create policy "google_contacts_delete_own"
+  on public.google_contacts for delete
+  to authenticated
+  using (user_id = auth.uid());
+
+-- Match imported emails to registered profiles (exact, case-insensitive).
+-- Does not expose the full user directory ג€” only emails the caller already imported.
+create or replace function public.match_my_google_contacts()
+returns setof public.profiles
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'not authenticated';
+  end if;
+
+  update public.google_contacts
+  set matched_profile_id = null
+  where user_id = auth.uid();
+
+  update public.google_contacts gc
+  set matched_profile_id = p.id
+  from public.profiles p
+  where gc.user_id = auth.uid()
+    and gc.email is not null
+    and p.email is not null
+    and lower(trim(gc.email)) = lower(trim(p.email))
+    and p.id is distinct from auth.uid();
+
+  update public.profiles
+  set google_contacts_synced_at = now()
+  where id = auth.uid();
+
+  return query
+    select distinct on (p.id) p.*
+    from public.profiles p
+    inner join public.google_contacts gc on gc.matched_profile_id = p.id
+    where gc.user_id = auth.uid()
+    order by p.id, p.display_name nulls last;
+end;
+$$;
+
+revoke all on function public.match_my_google_contacts() from public;
+grant execute on function public.match_my_google_contacts() to authenticated;
+-- Push subscriptions for Web Push notifications when users are offline.
+-- Run in: Supabase ג†’ SQL Editor
+
+create table if not exists public.push_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  endpoint text not null,
+  p256dh text not null,
+  auth text not null,
+  user_agent text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (user_id, endpoint)
+);
+
+create index if not exists push_subscriptions_user_id_idx
+  on public.push_subscriptions (user_id);
+
+alter table public.push_subscriptions enable row level security;
+
+drop policy if exists "push_subscriptions_select_own" on public.push_subscriptions;
+create policy "push_subscriptions_select_own"
+  on public.push_subscriptions for select
+  using (auth.uid() = user_id);
+
+drop policy if exists "push_subscriptions_insert_own" on public.push_subscriptions;
+create policy "push_subscriptions_insert_own"
+  on public.push_subscriptions for insert
+  with check (auth.uid() = user_id);
+
+drop policy if exists "push_subscriptions_update_own" on public.push_subscriptions;
+create policy "push_subscriptions_update_own"
+  on public.push_subscriptions for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+drop policy if exists "push_subscriptions_delete_own" on public.push_subscriptions;
+create policy "push_subscriptions_delete_own"
+  on public.push_subscriptions for delete
+  using (auth.uid() = user_id);
+
+-- End of synced migrations (google_contacts + push_subscriptions)
+

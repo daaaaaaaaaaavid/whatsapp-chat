@@ -5,6 +5,7 @@ import { Component, type ErrorInfo, type ReactNode } from "react"
 type Props = {
   children: ReactNode
   onClose?: () => void
+  fallbackTitle?: string
 }
 
 type State = { error: Error | null }
@@ -38,6 +39,41 @@ export class ConversationInfoBoundary extends Component<Props, State> {
             סגור
           </button>
         </aside>
+      )
+    }
+    return this.props.children
+  }
+}
+
+/** Isolates crashes in the main chat pane so the sidebar stays usable. */
+export class ChatPaneBoundary extends Component<Props, State> {
+  state: State = { error: null }
+
+  static getDerivedStateFromError(error: Error): State {
+    return { error }
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error("Chat pane crashed", error, info.componentStack)
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex h-full min-w-0 flex-1 flex-col items-center justify-center gap-3 bg-[#f0f2f5] px-6 text-center">
+          <p className="text-[#111b21]">{this.props.fallbackTitle ?? "משהו השתבש בצ׳אט"}</p>
+          <p className="max-w-md text-sm text-[#667781]">{this.state.error.message || "שגיאה לא צפויה"}</p>
+          <button
+            type="button"
+            className="rounded-lg bg-[#00a884] px-4 py-2 text-sm text-white"
+            onClick={() => {
+              this.setState({ error: null })
+              this.props.onClose?.()
+            }}
+          >
+            נסה שוב
+          </button>
+        </div>
       )
     }
     return this.props.children

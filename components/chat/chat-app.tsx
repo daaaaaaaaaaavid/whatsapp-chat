@@ -19,7 +19,7 @@ import { SidebarHeader } from "./sidebar-header"
 import { ChatList } from "./chat-list"
 import { ConversationView } from "./conversation-view"
 import { ConversationInfo } from "./conversation-info"
-import { ConversationInfoBoundary } from "./conversation-info-boundary"
+import { ConversationInfoBoundary, ChatPaneBoundary } from "./conversation-info-boundary"
 import { EmptyState } from "./empty-state"
 import { NewChatDialog } from "./new-chat-dialog"
 import { NewGroupDialog } from "./new-group-dialog"
@@ -376,7 +376,11 @@ export function ChatApp({ currentUser: initialUser }: Props) {
           {navTab === "calls" ? (
             <CallsPanel conversations={conversations} currentUser={currentUser} onCall={handleStartCall} />
           ) : navTab === "communities" ? (
-            <CommunitiesPanel />
+            <CommunitiesPanel
+              conversations={conversations}
+              currentUser={currentUser}
+              onSelect={selectConversation}
+            />
           ) : (
             <>
               <SidebarHeader
@@ -408,13 +412,18 @@ export function ChatApp({ currentUser: initialUser }: Props) {
         >
           {navTab === "communities" ? (
             <div className="flex h-full min-w-0 flex-1 flex-col">
-              <CommunitiesPanel />
+              <CommunitiesPanel
+                conversations={conversations}
+                currentUser={currentUser}
+                onSelect={selectConversation}
+              />
             </div>
           ) : navTab === "calls" ? (
             <div className="flex h-full min-w-0 flex-1 flex-col">
               <EmptyState title="שיחות" subtitle="בחר שיחה מהרשימה או התחל שיחה מצ'אט." />
             </div>
           ) : activeConversation ? (
+            <ChatPaneBoundary onClose={() => setActiveId(null)}>
             <div className="flex h-full min-w-0 flex-1">
               <div className={`min-h-0 min-w-0 flex-1 ${showInfo ? "hidden lg:block" : "block"}`}>
                 <ConversationView
@@ -474,6 +483,7 @@ export function ChatApp({ currentUser: initialUser }: Props) {
                 </ConversationInfoBoundary>
               )}
             </div>
+            </ChatPaneBoundary>
           ) : (
             <div className="flex h-full min-w-0 flex-1 flex-col">
               <EmptyState />
