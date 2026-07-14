@@ -6,13 +6,14 @@ import { Logo } from "@/components/brand/logo"
 import { ThemeToggle } from "@/components/theme-toggle"
 
 type Props = {
+  currentUserId: string
   onNewChat: () => void
   onNewGroup: () => void
   onOpenProfile: () => void
   onLogout: () => void
 }
 
-export function SidebarHeader({ onNewChat, onNewGroup, onOpenProfile, onLogout }: Props) {
+export function SidebarHeader({ currentUserId, onNewChat, onNewGroup, onOpenProfile, onLogout }: Props) {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -75,7 +76,7 @@ export function SidebarHeader({ onNewChat, onNewGroup, onOpenProfile, onLogout }
               >
                 התנתקות
               </button>
-              <ThemeToggle />
+              <ThemeToggle userId={currentUserId} />
             </div>
           )}
         </div>

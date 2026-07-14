@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils"
 export type ThemePreference = "system" | "light" | "dark"
 
 const STORAGE_KEY = "whachat-theme"
+const THEME_EVENT = "whachat-theme-change"
 
 const themes: { id: ThemePreference; label: string; icon: typeof Sun }[] = [
   { id: "system", label: "מערכת", icon: Monitor },
@@ -24,27 +25,54 @@ function applyTheme(theme: ThemePreference) {
   document.documentElement.style.colorScheme = isDark ? "dark" : "light"
 }
 
-export function ThemeToggle() {
+function isThemePreference(value: string | null): value is ThemePreference {
+  return value === "light" || value === "dark" || value === "system"
+}
+
+function userStorageKey(userId?: string) {
+  return userId ? `${STORAGE_KEY}:${userId}` : STORAGE_KEY
+}
+
+function storedTheme(userId?: string): ThemePreference {
+  const personal = localStorage.getItem(userStorageKey(userId))
+  if (isThemePreference(personal)) return personal
+  const legacy = localStorage.getItem(STORAGE_KEY)
+  return isThemePreference(legacy) ? legacy : "system"
+}
+
+export function ThemeToggle({ userId }: { userId?: string }) {
   const [theme, setTheme] = useState<ThemePreference>("system")
 
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY)
-    const initial = saved === "light" || saved === "dark" || saved === "system" ? saved : "system"
+    const initial = storedTheme(userId)
     setTheme(initial)
     applyTheme(initial)
 
     const media = window.matchMedia("(prefers-color-scheme: dark)")
     const onSystemThemeChange = () => {
-      if ((localStorage.getItem(STORAGE_KEY) ?? "system") === "system") applyTheme("system")
+      if (storedTheme(userId) === "system") applyTheme("system")
+    }
+    const onThemeChange = (event: Event) => {
+      const detail = (event as CustomEvent<{ userId?: string; theme: ThemePreference }>).detail
+      if (detail?.userId !== userId) return
+      setTheme(detail.theme)
+      applyTheme(detail.theme)
     }
     media.addEventListener("change", onSystemThemeChange)
-    return () => media.removeEventListener("change", onSystemThemeChange)
-  }, [])
+    window.addEventListener(THEME_EVENT, onThemeChange)
+    return () => {
+      media.removeEventListener("change", onSystemThemeChange)
+      window.removeEventListener(THEME_EVENT, onThemeChange)
+    }
+  }, [userId])
 
   function chooseTheme(next: ThemePreference) {
     setTheme(next)
+    localStorage.setItem(userStorageKey(userId), next)
+    // Keep the last active choice for the pre-hydration theme script.
     localStorage.setItem(STORAGE_KEY, next)
     applyTheme(next)
+    window.dispatchEvent(new CustomEvent(THEME_EVENT, { detail: { userId, theme: next } }))
   }
 
   return (

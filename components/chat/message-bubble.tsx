@@ -6,6 +6,7 @@ import type { Message, Participant } from "@/lib/types"
 import { formatTime, formatFileSize, avatarColor } from "@/lib/format"
 import { callSystemLabel, parseCallSystemPayload } from "@/lib/call-system-message"
 import { extractUrls, highlightQuery, parseReplyContent, splitTextWithLinks } from "@/lib/message-content"
+import { decodeFormattedMessage, plainMessageText } from "@/lib/message-formatting"
 import { MessageTicks } from "./message-ticks"
 import { VoiceMessage } from "./voice-message"
 import { resolveMediaKind } from "./media-gallery"
@@ -128,9 +129,17 @@ function MessageText({
   text: string
   searchQuery?: string
 }) {
-  const parts = splitTextWithLinks(text)
+  const { text: displayText, formatting } = decodeFormattedMessage(text)
+  const parts = splitTextWithLinks(displayText)
   return (
-    <span className="whitespace-pre-wrap break-words text-[15px] leading-[19px] text-[var(--wa-text)]">
+    <span
+      className="whitespace-pre-wrap break-words text-[15px] leading-[19px] text-[var(--wa-text)]"
+      style={{
+        fontWeight: formatting.bold ? 700 : undefined,
+        fontStyle: formatting.italic ? "italic" : undefined,
+        color: formatting.color ?? undefined,
+      }}
+    >
       {parts.map((p, i) => {
         if (p.type === "link") {
           return (
@@ -202,8 +211,8 @@ function replyPreviewText(message: Message) {
   const call = parseCallSystemPayload(message.content)
   if (call) return callSystemLabel(call)
   const legacy = parseReplyContent(message.content)
-  if (legacy?.body) return legacy.body
-  if (message.content) return message.content
+  if (legacy?.body) return plainMessageText(legacy.body)
+  if (message.content) return plainMessageText(message.content)
   return "הודעה"
 }
 
@@ -211,7 +220,7 @@ function copyMessageText(message: Message) {
   const reply = parseReplyContent(message.content)
   const body = message.reply_to_id ? message.content : (reply?.body ?? message.content)
   const parts: string[] = []
-  if (body) parts.push(body)
+  if (body) parts.push(plainMessageText(body))
   if (message.file_name) parts.push(message.file_name)
   if (message.file_url && !body && !message.file_name) parts.push(message.file_url)
   const text = parts.join("\n").trim()
@@ -389,7 +398,7 @@ export function MessageBubble({
       }
     : legacyReply
   const bodyText = structuredTarget ? message.content : (legacyReply?.body ?? message.content)
-  const urls = bodyText ? extractUrls(bodyText) : []
+  const urls = bodyText ? extractUrls(plainMessageText(bodyText)) : []
   const canEdit =
     isMine &&
     Boolean(onEdit) &&

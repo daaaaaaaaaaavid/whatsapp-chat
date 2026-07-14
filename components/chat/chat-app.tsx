@@ -457,6 +457,7 @@ export function ChatApp({ currentUser: initialUser }: Props) {
           ) : (
             <>
               <SidebarHeader
+                currentUserId={currentUser.id}
                 onNewChat={() => setNewChatOpen(true)}
                 onNewGroup={() => setNewGroupOpen(true)}
                 onOpenProfile={() => setProfileOpen(true)}

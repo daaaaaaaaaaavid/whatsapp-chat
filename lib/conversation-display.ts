@@ -1,5 +1,6 @@
 import type { Conversation, Message } from "@/lib/types"
 import { callSystemLabel, parseCallSystemPayload } from "@/lib/call-system-message"
+import { plainMessageText } from "@/lib/message-formatting"
 
 /** Non-group chat with only the current user (notes / message yourself). */
 export function isSelfConversation(conv: Conversation, currentUserId: string): boolean {
@@ -50,6 +51,6 @@ export function messagePreview(msg: Message | null | undefined): string {
     case "file":
       return "📎 " + (msg.file_name ?? "קובץ")
     default:
-      return msg.content ?? ""
+      return plainMessageText(msg.content)
   }
 }

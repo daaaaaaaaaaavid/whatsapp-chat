@@ -2,10 +2,12 @@
 
 import type React from "react"
 
+import dynamic from "next/dynamic"
 import {
   forwardRef,
   useCallback,
   useEffect,
+  useId,
   useImperativeHandle,
   useRef,
   useState,
@@ -29,8 +31,27 @@ import {
   Trash2,
   Pencil,
   Check,
+  Bold,
+  Italic,
+  Palette,
+  LoaderCircle,
 } from "lucide-react"
 import { parseReplyContent } from "@/lib/message-content"
+import {
+  decodeFormattedMessage,
+  DEFAULT_MESSAGE_FORMATTING,
+  encodeFormattedMessage,
+  MESSAGE_COLORS,
+  plainMessageText,
+  type MessageFormatting,
+} from "@/lib/message-formatting"
+
+const EmojiPicker = dynamic(() => import("@/components/chat/emoji-picker"), {
+  ssr: false,
+  loading: () => (
+    <div className="absolute bottom-16 left-2 right-2 z-30 h-[390px] animate-pulse rounded-xl bg-[var(--wa-panel)] shadow-xl ring-1 ring-black/10 sm:left-auto sm:right-4 sm:w-[370px]" />
+  ),
+})
 
 type Props = {
   conversationId: string
@@ -63,7 +84,11 @@ type PendingItem = {
   caption: string
 }
 
-const EMOJIS = ["😀", "😂", "😍", "🥰", "😎", "🤔", "😢", "😡", "👍", "🙏", "❤️", "🔥", "🎉", "💯", "😴", "🤗"]
+type UploadStatus = {
+  fileName: string
+  current: number
+  total: number
+}
 
 function replyPreview(message: Message) {
   if (message.type === "image") return "תמונה"
@@ -72,7 +97,7 @@ function replyPreview(message: Message) {
   if (message.type === "file") return message.file_name ?? "קובץ"
   const call = parseCallSystemPayload(message.content)
   if (call) return callSystemLabel(call)
-  if (message.content) return message.content
+  if (message.content) return plainMessageText(message.content)
   return "הודעה"
 }
 
@@ -129,11 +154,14 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
   },
   ref,
 ) {
+  const emojiPickerId = useId()
   const [text, setText] = useState("")
   const [sending, setSending] = useState(false)
   const [showAttach, setShowAttach] = useState(false)
   const [showEmoji, setShowEmoji] = useState(false)
-  const [uploadProgress, setUploadProgress] = useState<string | null>(null)
+  const [showFormatting, setShowFormatting] = useState(false)
+  const [formatting, setFormatting] = useState<MessageFormatting>({ ...DEFAULT_MESSAGE_FORMATTING })
+  const [uploadStatus, setUploadStatus] = useState<UploadStatus | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [sendError, setSendError] = useState<string | null>(null)
   const [recording, setRecording] = useState(false)
@@ -145,6 +173,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
   const audioInputRef = useRef<HTMLInputElement>(null)
   const captionInputRef = useRef<HTMLInputElement>(null)
   const textInputRef = useRef<HTMLTextAreaElement>(null)
+  const textSelectionRef = useRef({ start: 0, end: 0 })
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const pendingRef = useRef(pending)
@@ -160,16 +189,55 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`
   }, [])
 
+  const rememberTextSelection = useCallback(() => {
+    const input = textInputRef.current
+    if (!input) return
+    textSelectionRef.current = {
+      start: input.selectionStart,
+      end: input.selectionEnd,
+    }
+  }, [])
+
+  const closeEmojiPicker = useCallback(() => setShowEmoji(false), [])
+
+  const insertEmoji = useCallback(
+    (emoji: string) => {
+      setText((current) => {
+        const start = Math.min(textSelectionRef.current.start, current.length)
+        const end = Math.min(textSelectionRef.current.end, current.length)
+        const cursor = start + emoji.length
+        textSelectionRef.current = { start: cursor, end: cursor }
+
+        requestAnimationFrame(() => {
+          const input = textInputRef.current
+          input?.focus()
+          input?.setSelectionRange(cursor, cursor)
+          resizeTextarea()
+        })
+
+        return `${current.slice(0, start)}${emoji}${current.slice(end)}`
+      })
+      onTypingRef.current?.(true)
+    },
+    [resizeTextarea],
+  )
+
   useEffect(() => {
     if (!editingMessage) return
     const parsed = parseReplyContent(editingMessage.content)
     const body = editingMessage.reply_to_id
       ? (editingMessage.content ?? "")
       : (parsed?.body ?? editingMessage.content ?? "")
-    setText(body)
+    const decoded = decodeFormattedMessage(body)
+    setText(decoded.text)
+    setFormatting(decoded.formatting)
     onCancelReply?.()
     requestAnimationFrame(() => {
-      textInputRef.current?.focus()
+      const input = textInputRef.current
+      const cursor = decoded.text.length
+      input?.focus()
+      input?.setSelectionRange(cursor, cursor)
+      textSelectionRef.current = { start: cursor, end: cursor }
       resizeTextarea()
     })
   }, [editingMessage, onCancelReply, resizeTextarea])
@@ -180,10 +248,13 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
 
   useEffect(() => {
     setText("")
+    textSelectionRef.current = { start: 0, end: 0 }
     setSending(false)
     setShowAttach(false)
     setShowEmoji(false)
-    setUploadProgress(null)
+    setShowFormatting(false)
+    setFormatting({ ...DEFAULT_MESSAGE_FORMATTING })
+    setUploadStatus(null)
     setUploadError(null)
     setSendError(null)
     setSendingMedia(false)
@@ -282,12 +353,12 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
       caption?: string | null,
       reply?: { id: string; message: Message } | null,
     ) => {
-      setUploadProgress("מעלה...")
+      setUploadStatus({ fileName: file.name, current: 1, total: 1 })
       setUploadError(null)
       try {
         if (!isAllowedMediaFile(file)) {
           setUploadError(UNSUPPORTED_MEDIA_MESSAGE)
-          setUploadProgress(null)
+          setUploadStatus(null)
           throw new Error(UNSUPPORTED_MEDIA_MESSAGE)
         }
         const supabase = createClient()
@@ -310,7 +381,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
           } else {
             setUploadError(error.message)
           }
-          setUploadProgress(null)
+          setUploadStatus(null)
           throw error
         }
         const { data } = supabase.storage.from("media").getPublicUrl(path)
@@ -342,9 +413,9 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
           reply_to_id: reply?.id ?? null,
           reply_to: reply?.message ?? null,
         })
-        setUploadProgress(null)
+        setUploadStatus(null)
       } catch (err) {
-        setUploadProgress(null)
+        setUploadStatus(null)
         setUploadError((prev) => {
           if (prev) return prev
           if (err instanceof Error && err.message) return err.message
@@ -443,10 +514,11 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
     if (editingMessage) {
       const editedAt = new Date().toISOString()
       const parsed = parseReplyContent(editingMessage.content)
+      const formattedText = encodeFormattedMessage(trimmed, formatting)
       const nextContent =
         editingMessage.reply_to_id || !parsed
-          ? trimmed
-          : `↩ ${parsed.author}: ${parsed.preview}\n${trimmed}`
+          ? formattedText
+          : `↩ ${parsed.author}: ${parsed.preview}\n${formattedText}`
       const previousText = text
       setText("")
       try {
@@ -482,6 +554,8 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
           })
         }
         onCancelEdit?.()
+        setFormatting({ ...DEFAULT_MESSAGE_FORMATTING })
+        setShowFormatting(false)
       } catch (err) {
         setSendError(err instanceof Error ? err.message : "עריכה נכשלה")
         setText(previousText)
@@ -496,11 +570,13 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
     if (!keepReplyAfterSend) onCancelReply?.()
     try {
       await sendMessage({
-        content: trimmed,
+        content: encodeFormattedMessage(trimmed, formatting),
         type: "text",
         reply_to_id: replySnapshot?.id ?? null,
         reply_to: replySnapshot ?? null,
       })
+      setFormatting({ ...DEFAULT_MESSAGE_FORMATTING })
+      setShowFormatting(false)
     } catch (err) {
       setSendError(err instanceof Error ? err.message : "שליחה נכשלה")
       setText(trimmed)
@@ -518,7 +594,6 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
     const replySnapshot = replyTo
     const sent: PendingItem[] = []
 
-    setPending([])
     setActiveIndex(0)
     if (replySnapshot && !keepReplyAfterSend) onCancelReply?.()
 
@@ -529,7 +604,12 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
           setUploadError(UNSUPPORTED_MEDIA_MESSAGE)
           throw new Error(UNSUPPORTED_MEDIA_MESSAGE)
         }
-        setUploadProgress(items.length > 1 ? `מעלה ${i + 1}/${items.length}...` : "מעלה...")
+        setActiveIndex(i)
+        setUploadStatus({
+          fileName: item.file.name,
+          current: i + 1,
+          total: items.length,
+        })
 
         const supabase = createClient()
         const ext = item.file.name.split(".").pop() || "bin"
@@ -567,6 +647,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
         })
         sent.push(item)
       }
+      setPending([])
       revokePending(sent)
     } catch (err) {
       const remaining = items.filter((item) => !sent.includes(item))
@@ -576,7 +657,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
       setUploadError((prev) => prev || (err instanceof Error ? err.message : "העלאה נכשלה"))
     } finally {
       setSendingMedia(false)
-      setUploadProgress(null)
+      setUploadStatus(null)
     }
   }
 
@@ -630,7 +711,8 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
             <button
               type="button"
               onClick={clearPending}
-              className="flex h-10 w-10 items-center justify-center rounded-full transition hover:bg-white/10"
+              disabled={sendingMedia}
+              className="flex h-10 w-10 items-center justify-center rounded-full transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
               aria-label="ביטול"
             >
               <X className="h-6 w-6" />
@@ -646,7 +728,8 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
               <button
                 type="button"
                 onClick={() => removePendingAt(activeIndex)}
-                className="flex h-10 w-10 items-center justify-center rounded-full transition hover:bg-white/10"
+                disabled={sendingMedia}
+                className="flex h-10 w-10 items-center justify-center rounded-full transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
                 aria-label="הסר קובץ"
               >
                 <Trash2 className="h-5 w-5" />
@@ -681,6 +764,34 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
                 </div>
               </div>
             )}
+            {sendingMedia && uploadStatus && (
+              <div
+                className="absolute inset-0 flex items-center justify-center bg-[#0b141a]/75 backdrop-blur-[2px]"
+                role="status"
+                aria-label={`העלאת ${uploadStatus.fileName}`}
+              >
+                <div className="w-[min(86vw,360px)] rounded-2xl border border-white/10 bg-[#1f2c34] p-5 text-center text-white shadow-2xl">
+                  <LoaderCircle className="mx-auto h-11 w-11 animate-spin text-[#00a884]" />
+                  <div className="mt-3 truncate text-sm font-medium">{uploadStatus.fileName}</div>
+                  {uploadStatus.total > 1 && (
+                    <div className="mt-1 text-xs text-white/55">
+                      {uploadStatus.current} / {uploadStatus.total}
+                    </div>
+                  )}
+                  <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/10">
+                    <div
+                      className="h-full rounded-full bg-[#00a884] transition-[width] duration-300"
+                      style={{
+                        width: `${Math.max(
+                          8,
+                          ((uploadStatus.current - 1) / uploadStatus.total) * 100,
+                        )}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {pending.length > 1 && (
@@ -690,6 +801,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
                   key={item.id}
                   type="button"
                   onClick={() => setActiveIndex(i)}
+                  disabled={sendingMedia}
                   className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-lg ring-2 transition ${
                     i === activeIndex ? "ring-[#00a884]" : "ring-transparent opacity-70 hover:opacity-100"
                   }`}
@@ -712,7 +824,8 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
               <button
                 type="button"
                 onClick={() => imageInputRef.current?.click()}
-                className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-white/10 text-white transition hover:bg-white/15"
+                disabled={sendingMedia}
+                className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-white/10 text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
                 aria-label="הוסף עוד"
               >
                 <Plus className="h-6 w-6" />
@@ -749,9 +862,22 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
         </div>
       )}
 
-      {uploadProgress && (
-        <div className="absolute -top-8 right-4 z-30 rounded-full bg-[#00a884] px-3 py-1 text-xs text-white">
-          {uploadProgress}
+      {uploadStatus && pending.length === 0 && (
+        <div
+          className="absolute -top-16 inset-x-4 z-30 flex items-center gap-3 rounded-xl border border-[var(--wa-border)] bg-[var(--wa-panel)] px-4 py-3 shadow-lg"
+          role="status"
+          aria-label={`העלאת ${uploadStatus.fileName}`}
+          dir="rtl"
+        >
+          <LoaderCircle className="h-6 w-6 shrink-0 animate-spin text-[#00a884]" />
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-medium text-[var(--wa-text)]">
+              {uploadStatus.fileName}
+            </div>
+            <div className="mt-1 h-1 overflow-hidden rounded-full bg-[var(--wa-border)]">
+              <div className="h-full w-1/3 animate-pulse rounded-full bg-[#00a884]" />
+            </div>
+          </div>
         </div>
       )}
 
@@ -841,15 +967,57 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
       )}
 
       {showEmoji && (
-        <div className="absolute bottom-16 right-4 z-20 grid grid-cols-8 gap-1 rounded-lg bg-[var(--wa-panel)] p-3 shadow-lg ring-1 ring-black/5">
-          {EMOJIS.map((emoji) => (
+        <EmojiPicker id={emojiPickerId} onSelect={insertEmoji} onClose={closeEmojiPicker} />
+      )}
+
+      {showFormatting && (
+        <div
+          className="absolute bottom-16 left-2 right-2 z-20 flex flex-wrap items-center gap-2 rounded-xl bg-[var(--wa-panel)] p-2.5 shadow-xl ring-1 ring-black/10 sm:left-auto sm:right-4"
+          dir="rtl"
+        >
+          <button
+            type="button"
+            onClick={() => setFormatting((current) => ({ ...current, bold: !current.bold }))}
+            aria-pressed={formatting.bold}
+            className={`flex h-9 w-9 items-center justify-center rounded-lg transition ${
+              formatting.bold
+                ? "bg-[var(--wa-accent-soft)] text-[var(--wa-teal)]"
+                : "text-[var(--wa-text-secondary)] hover:bg-[var(--wa-hover)]"
+            }`}
+            title="מודגש"
+          >
+            <Bold className="h-4.5 w-4.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setFormatting((current) => ({ ...current, italic: !current.italic }))}
+            aria-pressed={formatting.italic}
+            className={`flex h-9 w-9 items-center justify-center rounded-lg transition ${
+              formatting.italic
+                ? "bg-[var(--wa-accent-soft)] text-[var(--wa-teal)]"
+                : "text-[var(--wa-text-secondary)] hover:bg-[var(--wa-hover)]"
+            }`}
+            title="נטוי"
+          >
+            <Italic className="h-4.5 w-4.5" />
+          </button>
+          <span className="mx-0.5 h-6 w-px bg-[var(--wa-border)]" />
+          {MESSAGE_COLORS.map(({ value, label }) => (
             <button
-              key={emoji}
+              key={value ?? "default"}
               type="button"
-              onClick={() => setText((t) => t + emoji)}
-              className="rounded p-1 text-xl transition hover:bg-[var(--wa-header)]"
+              onClick={() => setFormatting((current) => ({ ...current, color: value }))}
+              aria-label={`צבע ${label}`}
+              aria-pressed={formatting.color === value}
+              title={label}
+              className={`flex h-8 w-8 items-center justify-center rounded-full transition ${
+                formatting.color === value ? "ring-2 ring-[var(--wa-teal)] ring-offset-2 ring-offset-[var(--wa-panel)]" : ""
+              }`}
             >
-              {emoji}
+              <span
+                className="h-5 w-5 rounded-full border border-black/15"
+                style={{ backgroundColor: value ?? "var(--wa-text)" }}
+              />
             </button>
           ))}
         </div>
@@ -910,16 +1078,39 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
       />
 
       <form onSubmit={handleSendText} className="flex items-end gap-2 bg-[var(--wa-header)] px-4 py-2.5">
+        <button
+          type="button"
+          onClick={() => {
+            setShowFormatting((value) => !value)
+            setShowEmoji(false)
+            setShowAttach(false)
+          }}
+          className={`mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition hover:bg-black/5 ${
+            showFormatting || formatting.bold || formatting.italic || formatting.color
+              ? "text-[var(--wa-teal)]"
+              : "text-[var(--wa-text-secondary)]"
+          }`}
+          aria-label="עיצוב הודעה"
+          aria-expanded={showFormatting}
+          title="עיצוב הודעה"
+        >
+          <Palette className="h-5.5 w-5.5" />
+        </button>
         {!isEditing && (
           <>
             <button
               type="button"
+              onPointerDown={(event) => event.stopPropagation()}
               onClick={() => {
+                rememberTextSelection()
                 setShowEmoji((v) => !v)
                 setShowAttach(false)
+                setShowFormatting(false)
               }}
               className="mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[var(--wa-text-secondary)] transition hover:bg-black/5"
               aria-label="אמוג'י"
+              aria-expanded={showEmoji}
+              aria-controls={showEmoji ? emojiPickerId : undefined}
             >
               <Smile className="h-6 w-6" />
             </button>
@@ -928,6 +1119,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
               onClick={() => {
                 setShowAttach((v) => !v)
                 setShowEmoji(false)
+                setShowFormatting(false)
               }}
               className="mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[var(--wa-text-secondary)] transition hover:bg-black/5"
               aria-label="צירוף קובץ"
@@ -939,12 +1131,17 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
         {isEditing && (
           <button
             type="button"
+            onPointerDown={(event) => event.stopPropagation()}
             onClick={() => {
+              rememberTextSelection()
               setShowEmoji((v) => !v)
               setShowAttach(false)
+              setShowFormatting(false)
             }}
             className="mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[var(--wa-text-secondary)] transition hover:bg-black/5"
             aria-label="אמוג'י"
+            aria-expanded={showEmoji}
+            aria-controls={showEmoji ? emojiPickerId : undefined}
           >
             <Smile className="h-6 w-6" />
           </button>
@@ -956,8 +1153,15 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
           value={text}
           onChange={(e) => {
             setText(e.target.value)
+            textSelectionRef.current = {
+              start: e.target.selectionStart,
+              end: e.target.selectionEnd,
+            }
             onTyping?.(e.target.value.trim().length > 0)
           }}
+          onClick={rememberTextSelection}
+          onSelect={rememberTextSelection}
+          onKeyUp={rememberTextSelection}
           onBlur={() => onTyping?.(false)}
           onPaste={handlePaste}
           onKeyDown={(e) => {
@@ -971,6 +1175,11 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
           }}
           placeholder={isEditing ? "ערוך הודעה" : "הקלדת הודעה"}
           className="max-h-[120px] min-h-[42px] flex-1 resize-none overflow-y-auto rounded-lg bg-[var(--wa-panel)] px-4 py-2.5 text-[15px] leading-[22px] text-[var(--wa-text)] outline-none placeholder:text-[var(--wa-text-secondary)]"
+          style={{
+            fontWeight: formatting.bold ? 700 : undefined,
+            fontStyle: formatting.italic ? "italic" : undefined,
+            color: formatting.color ?? undefined,
+          }}
         />
 
         {hasText || isEditing ? (

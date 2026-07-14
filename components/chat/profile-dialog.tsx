@@ -6,6 +6,7 @@ import { Avatar } from "./avatar"
 import { createClient } from "@/lib/supabase/client"
 import type { Profile } from "@/lib/types"
 import { Camera, Check, Pencil } from "lucide-react"
+import { ThemeToggle } from "@/components/theme-toggle"
 
 type Props = {
   open: boolean
@@ -152,6 +153,13 @@ export function ProfileDialog({ open, currentUser, onClose, onUpdated }: Props) 
           <div className="mt-1 text-[var(--wa-text)]" dir="ltr">
             {currentUser.email}
           </div>
+        </div>
+
+        <div className="border-t border-[var(--wa-border)]">
+          <ThemeToggle userId={currentUser.id} />
+          <p className="px-3 pb-3 text-xs text-[var(--wa-text-secondary)]">
+            הבחירה נשמרת אישית עבור החשבון הזה במכשיר הנוכחי.
+          </p>
         </div>
       </div>
     </Modal>
