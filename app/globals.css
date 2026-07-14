@@ -96,6 +96,7 @@
   --wa-tick-blue: #53bdeb;
   --wa-border: #e9edef;
   --wa-badge: #25d366;
+  --wa-accent-soft: #e7fce3;
 }
 
 @keyframes wa-loading-bar {
@@ -155,6 +156,23 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+
+  /* WhaChat dark theme */
+  --wa-teal: #00a884;
+  --wa-teal-dark: #06cf9c;
+  --wa-header: #202c33;
+  --wa-panel: #111b21;
+  --wa-hover: #202c33;
+  --wa-active: #2a3942;
+  --wa-chat-bg: #0b141a;
+  --wa-bubble-out: #005c4b;
+  --wa-bubble-in: #202c33;
+  --wa-text: #e9edef;
+  --wa-text-secondary: #8696a0;
+  --wa-tick-blue: #53bdeb;
+  --wa-border: #2a3942;
+  --wa-badge: #00a884;
+  --wa-accent-soft: #103b33;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -203,11 +221,32 @@
   }
 }
 
+html,
+body {
+  background: var(--wa-panel);
+}
+
+body,
+button,
+input,
+textarea {
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
+}
+
 /* WhaChat chat area background */
 .wa-chat-bg {
-  background-color: #efeae2;
+  background-color: var(--wa-chat-bg);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260' viewBox='0 0 260 260'%3E%3Cg fill='%23d1c7b7' fill-opacity='0.35'%3E%3Cpath d='M40 30c8 0 12 6 12 12s-4 12-12 12-12-6-12-12 4-12 12-12zm90 40c6 0 10 5 10 10s-4 10-10 10-10-5-10-10 4-10 10-10zm70 20c5 0 8 4 8 8s-3 8-8 8-8-4-8-8 3-8 8-8zM30 120c7 0 11 5 11 11s-4 11-11 11-11-5-11-11 4-11 11-11zm140 50c6 0 10 5 10 10s-4 10-10 10-10-5-10-10 4-10 10-10zM80 180c5 0 9 4 9 9s-4 9-9 9-9-4-9-9 4-9 9-9zm100 40c7 0 11 5 11 11s-4 11-11 11-11-5-11-11 4-11 11-11z'/%3E%3Ccircle cx='200' cy='90' r='3'/%3E%3Ccircle cx='60' cy='200' r='2.5'/%3E%3Ccircle cx='180' cy='200' r='2'/%3E%3Cpath d='M110 20h14v2h-14zm20 80h10v2h-10zm-70 60h12v2H60zm130 30h8v2h-8z'/%3E%3C/g%3E%3C/svg%3E");
   background-size: 260px 260px;
+}
+
+.dark .wa-chat-bg {
+  background-image:
+    linear-gradient(rgb(11 20 26 / 88%), rgb(11 20 26 / 88%)),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260' viewBox='0 0 260 260'%3E%3Cg fill='%238696a0' fill-opacity='0.3'%3E%3Cpath d='M40 30c8 0 12 6 12 12s-4 12-12 12-12-6-12-12 4-12 12-12zm90 40c6 0 10 5 10 10s-4 10-10 10-10-5-10-10 4-10 10-10zm70 20c5 0 8 4 8 8s-3 8-8 8-8-4-8-8 3-8 8-8zM30 120c7 0 11 5 11 11s-4 11-11 11-11-5-11-11 4-11 11-11zm140 50c6 0 10 5 10 10s-4 10-10 10-10-5-10-10 4-10 10-10zM80 180c5 0 9 4 9 9s-4 9-9 9-9-4-9-9 4-9 9-9zm100 40c7 0 11 5 11 11s-4 11-11 11-11-5-11-11 4-11 11-11z'/%3E%3C/g%3E%3C/svg%3E");
 }
 
 /* Thin WhaChat-style scrollbar */
@@ -216,14 +255,14 @@
   height: 6px;
 }
 .wa-scroll::-webkit-scrollbar-thumb {
-  background-color: rgba(0, 0, 0, 0.2);
+  background-color: color-mix(in srgb, var(--wa-text-secondary) 38%, transparent);
   border-radius: 3px;
 }
 .wa-scroll::-webkit-scrollbar-track {
   background: transparent;
 }
 .wa-scroll:hover::-webkit-scrollbar-thumb {
-  background-color: rgba(0, 0, 0, 0.3);
+  background-color: color-mix(in srgb, var(--wa-text-secondary) 55%, transparent);
 }
 
 /* Message bubble tails — mine on left, theirs on right */

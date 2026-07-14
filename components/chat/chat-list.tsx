@@ -101,19 +101,19 @@ export function ChatList({
   const archiveUnread = archivedConvs.reduce((sum, c) => sum + (c.unread_count ?? 0), 0)
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden bg-white">
+    <div className="flex flex-1 flex-col overflow-hidden bg-[var(--wa-panel)]">
       <div className="px-3 pb-2">
-        <div className="flex flex-1 items-center gap-3 rounded-lg bg-[#f0f2f5] px-4 py-1.5">
-          <Search className="h-4 w-4 text-[#54656f]" />
+        <div className="flex flex-1 items-center gap-3 rounded-lg bg-[var(--wa-header)] px-4 py-1.5">
+          <Search className="h-4 w-4 text-[var(--wa-text-secondary)]" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="חיפוש צ'אט קיים או התחלת צ'אט חדש"
-            className="flex-1 bg-transparent py-1 text-sm text-[#111b21] outline-none placeholder:text-[#667781]"
+            className="flex-1 bg-transparent py-1 text-sm text-[var(--wa-text)] outline-none placeholder:text-[var(--wa-text-secondary)]"
           />
           {query && (
             <button type="button" onClick={() => setQuery("")} aria-label="נקה">
-              <X className="h-4 w-4 text-[#54656f]" />
+              <X className="h-4 w-4 text-[var(--wa-text-secondary)]" />
             </button>
           )}
         </div>
@@ -130,8 +130,8 @@ export function ChatList({
               className={cn(
                 "rounded-full px-3 py-1 text-sm transition",
                 filter === f.id && !showArchive
-                  ? "bg-[#e7fce3] font-medium text-[#008069]"
-                  : "bg-[#f0f2f5] text-[#54656f] hover:bg-[#e9edef]",
+                  ? "bg-[var(--wa-accent-soft)] font-medium text-[#008069]"
+                  : "bg-[var(--wa-header)] text-[var(--wa-text-secondary)] hover:bg-[#e9edef]",
               )}
             >
               {f.label}
@@ -145,18 +145,18 @@ export function ChatList({
           <button
             type="button"
             onClick={() => setShowArchive(true)}
-            className="flex w-full items-center gap-4 px-4 py-3 text-right transition hover:bg-[#f5f6f6]"
+            className="flex w-full items-center gap-4 px-4 py-3 text-right transition hover:bg-[var(--wa-hover)]"
           >
             <div className="flex h-12 w-12 items-center justify-center text-[#00a884]">
               <Archive className="h-5 w-5" />
             </div>
-            <div className="flex flex-1 items-center justify-between border-b border-[#e9edef] pb-3">
-              <span className="font-medium text-[#111b21]">ארכיון</span>
+            <div className="flex flex-1 items-center justify-between border-b border-[var(--wa-border)] pb-3">
+              <span className="font-medium text-[var(--wa-text)]">ארכיון</span>
               {archiveUnread > 0 && (
                 <span className="text-sm font-medium text-[#25d366]">{archiveUnread}</span>
               )}
               {archiveUnread === 0 && archivedConvs.length > 0 && (
-                <span className="text-sm text-[#667781]">{archivedConvs.length}</span>
+                <span className="text-sm text-[var(--wa-text-secondary)]">{archivedConvs.length}</span>
               )}
             </div>
           </button>
@@ -166,16 +166,16 @@ export function ChatList({
           <button
             type="button"
             onClick={() => setShowArchive(false)}
-            className="flex w-full items-center gap-2 border-b border-[#e9edef] px-4 py-3 text-sm text-[#00a884]"
+            className="flex w-full items-center gap-2 border-b border-[var(--wa-border)] px-4 py-3 text-sm text-[#00a884]"
           >
             ← חזרה לצ&apos;אטים
           </button>
         )}
 
         {loading ? (
-          <div className="p-4 text-center text-sm text-[#667781]">טוען צ&apos;אטים...</div>
+          <div className="p-4 text-center text-sm text-[var(--wa-text-secondary)]">טוען צ&apos;אטים...</div>
         ) : filtered.length === 0 ? (
-          <div className="p-8 text-center text-sm text-[#667781]">
+          <div className="p-8 text-center text-sm text-[var(--wa-text-secondary)]">
             {query
               ? "לא נמצאו תוצאות"
               : showArchive
@@ -203,8 +203,8 @@ export function ChatList({
                     setMenuId(conv.id)
                   }}
                   className={cn(
-                    "flex w-full items-center gap-3 px-3 py-3 text-right transition hover:bg-[#f5f6f6]",
-                    isActive && "bg-[#f0f2f5]",
+                    "flex w-full items-center gap-3 px-3 py-3 text-right transition hover:bg-[var(--wa-hover)]",
+                    isActive && "bg-[var(--wa-header)]",
                   )}
                 >
                   <Avatar
@@ -214,16 +214,16 @@ export function ChatList({
                     isSelf={isSelf}
                     size={49}
                   />
-                  <div className="flex min-w-0 flex-1 flex-col border-b border-[#e9edef] pb-3">
+                  <div className="flex min-w-0 flex-1 flex-col border-b border-[var(--wa-border)] pb-3">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="truncate text-[#111b21]">{name}</span>
+                      <span className="truncate text-[var(--wa-text)]">{name}</span>
                       <div className="flex shrink-0 items-center gap-1">
-                        {isPinned && <Pin className="h-3 w-3 text-[#667781]" />}
+                        {isPinned && <Pin className="h-3 w-3 text-[var(--wa-text-secondary)]" />}
                         {last && (
                           <span
                             className={cn(
                               "text-xs",
-                              conv.unread_count ? "text-[#25d366]" : "text-[#667781]",
+                              conv.unread_count ? "text-[#25d366]" : "text-[var(--wa-text-secondary)]",
                             )}
                           >
                             {formatChatListTime(last.created_at)}
@@ -232,7 +232,7 @@ export function ChatList({
                       </div>
                     </div>
                     <div className="mt-0.5 flex items-center justify-between gap-2">
-                      <span className="flex min-w-0 items-center gap-1 truncate text-sm text-[#667781]">
+                      <span className="flex min-w-0 items-center gap-1 truncate text-sm text-[var(--wa-text-secondary)]">
                         {tickStatus && last && !last.deleted_at && <MessageTicks status={tickStatus} />}
                         <span className="truncate">
                           {last?.deleted_at ? "ההודעה נמחקה" : messagePreview(last)}
@@ -258,11 +258,11 @@ export function ChatList({
                       aria-label="סגור תפריט"
                       onClick={() => setMenuId(null)}
                     />
-                    <div className="absolute left-3 top-12 z-40 w-44 overflow-hidden rounded-md bg-white py-1 shadow-lg ring-1 ring-black/5">
+                    <div className="absolute left-3 top-12 z-40 w-44 overflow-hidden rounded-md bg-[var(--wa-panel)] py-1 shadow-lg ring-1 ring-black/5">
                       {!isSelf && (
                         <button
                           type="button"
-                          className="block w-full px-4 py-2 text-right text-sm text-[#3b4a54] hover:bg-[#f5f6f6]"
+                          className="block w-full px-4 py-2 text-right text-sm text-[var(--wa-text)] hover:bg-[var(--wa-hover)]"
                           onClick={() => {
                             onTogglePinned(conv.id)
                             setMenuId(null)
@@ -273,7 +273,7 @@ export function ChatList({
                       )}
                       <button
                         type="button"
-                        className="block w-full px-4 py-2 text-right text-sm text-[#3b4a54] hover:bg-[#f5f6f6]"
+                        className="block w-full px-4 py-2 text-right text-sm text-[var(--wa-text)] hover:bg-[var(--wa-hover)]"
                         onClick={() => {
                           onToggleFavorite(conv.id)
                           setMenuId(null)
@@ -283,7 +283,7 @@ export function ChatList({
                       </button>
                       <button
                         type="button"
-                        className="block w-full px-4 py-2 text-right text-sm text-[#3b4a54] hover:bg-[#f5f6f6]"
+                        className="block w-full px-4 py-2 text-right text-sm text-[var(--wa-text)] hover:bg-[var(--wa-hover)]"
                         onClick={() => {
                           onToggleArchive(conv.id)
                           setMenuId(null)
@@ -300,13 +300,13 @@ export function ChatList({
         )}
       </div>
 
-      <div className="flex items-center gap-3 border-t border-[#e9edef] bg-[#f0f2f5] px-4 py-3">
+      <div className="flex items-center gap-3 border-t border-[var(--wa-border)] bg-[var(--wa-header)] px-4 py-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white">
           <Laptop className="h-5 w-5" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium text-[#111b21]">הורד את WhaChat ל-Windows</div>
-          <div className="text-xs text-[#667781]">קבל התראות וגיבוי אוטומטי</div>
+          <div className="text-sm font-medium text-[var(--wa-text)]">הורד את WhaChat ל-Windows</div>
+          <div className="text-xs text-[var(--wa-text-secondary)]">קבל התראות וגיבוי אוטומטי</div>
         </div>
         <span className="shrink-0 rounded-full bg-[#00a884] px-3 py-1.5 text-xs font-medium text-white">
           התחל

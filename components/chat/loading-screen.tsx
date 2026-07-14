@@ -6,7 +6,7 @@ import { Logo } from "@/components/brand/logo"
 /** Full-screen WhaChat splash while chats load. */
 export function LoadingScreen({ label = "טוען צ'אטים" }: { label?: string }) {
   return (
-    <div className="fixed inset-0 z-[300] flex flex-col items-center justify-center bg-[#f0f2f5]">
+    <div className="fixed inset-0 z-[300] flex flex-col items-center justify-center bg-[var(--wa-header)]">
       <div className="flex flex-1 flex-col items-center justify-center px-6">
         <Logo size={20} className="mb-8" />
 
@@ -16,12 +16,12 @@ export function LoadingScreen({ label = "טוען צ'אטים" }: { label?: stri
           <div className="wa-loading-bar h-full w-1/3 rounded-full bg-[#25d366]" />
         </div>
 
-        <p className="mt-5 text-sm text-[#667781]">{label}</p>
+        <p className="mt-5 text-sm text-[var(--wa-text-secondary)]">{label}</p>
       </div>
 
       <p className="mb-10 flex items-center gap-1.5 text-xs text-[#8696a0]">
         <Lock className="h-3 w-3" />
-        מוצפן מקצה לקצה
+        הפרטיות שלך חשובה לנו
       </p>
     </div>
   )

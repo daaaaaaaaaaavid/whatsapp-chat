@@ -99,12 +99,12 @@ function SystemCallMessage({ message }: { message: Message }) {
     event === "missed" || event === "rejected"
       ? "text-[#ea0038]"
       : event === "ended"
-        ? "text-[#667781]"
+        ? "text-[var(--wa-text-secondary)]"
         : "text-[#00a884]"
 
   return (
     <div className="my-2 flex justify-center px-2">
-      <div className="inline-flex max-w-[90%] items-center gap-2 rounded-lg bg-white/90 px-3 py-1.5 text-xs text-[#54656f] shadow-sm">
+      <div className="inline-flex max-w-[90%] items-center gap-2 rounded-lg bg-white/90 px-3 py-1.5 text-xs text-[var(--wa-text-secondary)] shadow-sm">
         {isVideo ? (
           <Video className={cn("h-3.5 w-3.5 shrink-0", iconColor)} />
         ) : (
@@ -128,7 +128,7 @@ function MessageText({
 }) {
   const parts = splitTextWithLinks(text)
   return (
-    <span className="whitespace-pre-wrap break-words text-[15px] leading-[19px] text-[#111b21]">
+    <span className="whitespace-pre-wrap break-words text-[15px] leading-[19px] text-[var(--wa-text)]">
       {parts.map((p, i) => {
         if (p.type === "link") {
           return (
@@ -182,7 +182,7 @@ function LinkPreview({ url }: { url: string }) {
         <div className="truncate text-xs font-medium text-[#027eb5]" dir="ltr">
           {host}
         </div>
-        <div className="truncate text-[13px] text-[#667781]" dir="ltr">
+        <div className="truncate text-[13px] text-[var(--wa-text-secondary)]" dir="ltr">
           {url}
         </div>
       </div>
@@ -339,15 +339,15 @@ export function MessageBubble({
         <div
           className={cn(
             "relative my-0.5 max-w-[65%] rounded-lg px-2.5 py-1.5 shadow-sm",
-            isMine ? "bubble-tail-out rounded-tl-none bg-[#d9fdd3]" : "bubble-tail-in rounded-tr-none bg-white",
+            isMine ? "bubble-tail-out rounded-tl-none bg-[var(--wa-bubble-out)]" : "bubble-tail-in rounded-tr-none bg-[var(--wa-panel)]",
           )}
           dir="rtl"
         >
-          <span className="flex items-center gap-1.5 italic text-[14px] text-[#667781]">
+          <span className="flex items-center gap-1.5 italic text-[14px] text-[var(--wa-text-secondary)]">
             <Ban className="h-3.5 w-3.5 shrink-0" />
             ההודעה נמחקה
           </span>
-          <span className="float-right ml-2 mt-1 flex items-center gap-1 text-[11px] text-[#667781]" dir="ltr">
+          <span className="float-right ml-2 mt-1 flex items-center gap-1 text-[11px] text-[var(--wa-text-secondary)]" dir="ltr">
             {formatTime(message.created_at)}
             {isMine && <MessageTicks status={status} />}
           </span>
@@ -545,7 +545,7 @@ export function MessageBubble({
           }}
           className={cn(
             "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 transition",
-            isSelected ? "border-[#00a884] bg-[#00a884] text-white" : "border-[#8696a0] bg-white",
+            isSelected ? "border-[#00a884] bg-[#00a884] text-white" : "border-[#8696a0] bg-[var(--wa-panel)]",
             isMine ? "order-first" : "order-last",
           )}
           aria-label={isSelected ? "בטל בחירה" : "בחר הודעה"}
@@ -560,7 +560,7 @@ export function MessageBubble({
         className={cn(
           "relative my-0.5 rounded-lg px-2.5 py-1.5 shadow-sm",
           compact ? "max-w-[95%]" : "max-w-[65%]",
-          isMine ? "bubble-tail-out rounded-tl-none bg-[#d9fdd3]" : "bubble-tail-in rounded-tr-none bg-white",
+          isMine ? "bubble-tail-out rounded-tl-none bg-[var(--wa-bubble-out)]" : "bubble-tail-in rounded-tr-none bg-[var(--wa-panel)]",
           menuOpen && "z-20",
           isPinned && "ring-1 ring-[#00a884]/40",
         )}
@@ -585,7 +585,7 @@ export function MessageBubble({
         )}
 
         {message.is_forwarded && (
-          <div className="mb-0.5 flex items-center gap-1 text-[11px] italic text-[#667781]">
+          <div className="mb-0.5 flex items-center gap-1 text-[11px] italic text-[var(--wa-text-secondary)]">
             <Forward className="h-3 w-3 shrink-0" />
             הועבר
           </div>
@@ -594,7 +594,7 @@ export function MessageBubble({
         {reply && (
           <div className="mb-1 rounded-md border-r-4 border-[#06cf9c] bg-black/[0.06] px-2 py-1.5 text-right">
             <div className="truncate text-xs font-medium text-[#06cf9c]">{reply.author}</div>
-            <div className="truncate text-[12px] text-[#667781]">{reply.preview || "הודעה"}</div>
+            <div className="truncate text-[12px] text-[var(--wa-text-secondary)]">{reply.preview || "הודעה"}</div>
           </div>
         )}
 
@@ -656,12 +656,12 @@ export function MessageBubble({
               <FileText className="h-5 w-5 text-[#00a884]" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="truncate text-sm text-[#111b21]">{message.file_name}</div>
-              <div className="text-xs text-[#667781]">
+              <div className="truncate text-sm text-[var(--wa-text)]">{message.file_name}</div>
+              <div className="text-xs text-[var(--wa-text-secondary)]">
                 {message.file_size ? formatFileSize(message.file_size) : ""}
               </div>
             </div>
-            <Download className="h-4 w-4 shrink-0 text-[#667781]" />
+            <Download className="h-4 w-4 shrink-0 text-[var(--wa-text-secondary)]" />
           </button>
         )}
 
@@ -672,7 +672,7 @@ export function MessageBubble({
         {urls[0] && message.type === "text" && <LinkPreview url={urls[0]} />}
 
         {message.type !== "audio" && (
-          <span className="float-right ml-2 mt-1 flex items-center gap-1 text-[11px] text-[#667781]" dir="ltr">
+          <span className="float-right ml-2 mt-1 flex items-center gap-1 text-[11px] text-[var(--wa-text-secondary)]" dir="ltr">
             {isStarred && <Star className="h-3 w-3 fill-[#eab308] text-[#eab308]" />}
             {isPinned && <Pin className="h-3 w-3 text-[#00a884]" />}
             {message.edited_at && <span className="text-[10px]">נערך</span>}
@@ -690,7 +690,7 @@ export function MessageBubble({
               else openMenu()
             }}
             className={cn(
-              "absolute top-0.5 rounded-bl-md rounded-tr-md bg-gradient-to-bl from-black/10 to-transparent p-0.5 text-[#54656f] transition",
+              "absolute top-0.5 rounded-bl-md rounded-tr-md bg-gradient-to-bl from-black/10 to-transparent p-0.5 text-[var(--wa-text-secondary)] transition",
               isMine ? "left-0.5" : "right-0.5",
               menuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100",
             )}
@@ -702,7 +702,7 @@ export function MessageBubble({
         )}
 
         {reaction && (
-          <span className="absolute -bottom-2 right-2 z-10 rounded-full bg-white px-1.5 py-0.5 text-sm shadow ring-1 ring-black/5">
+          <span className="absolute -bottom-2 right-2 z-10 rounded-full bg-[var(--wa-panel)] px-1.5 py-0.5 text-sm shadow ring-1 ring-black/5">
             {reaction}
           </span>
         )}
@@ -734,11 +734,11 @@ export function MessageBubble({
               }
               dir="rtl"
             >
-              <div className="flex shrink-0 items-center gap-0.5 rounded-full bg-white px-1.5 py-1 shadow-lg ring-1 ring-black/5">
+              <div className="flex shrink-0 items-center gap-0.5 rounded-full bg-[var(--wa-panel)] px-1.5 py-1 shadow-lg ring-1 ring-black/5">
                 <button
                   type="button"
                   onClick={() => setShowMoreEmoji((v) => !v)}
-                  className="flex h-8 w-8 items-center justify-center rounded-full text-[#54656f] transition hover:bg-[#f0f2f5]"
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--wa-text-secondary)] transition hover:bg-[var(--wa-header)]"
                   aria-label="עוד תגובות"
                 >
                   <Plus className="h-4 w-4" />
@@ -749,8 +749,8 @@ export function MessageBubble({
                     type="button"
                     onClick={() => pickReaction(emoji)}
                     className={cn(
-                      "flex h-8 w-8 items-center justify-center rounded-full text-lg transition hover:scale-110 hover:bg-[#f0f2f5]",
-                      reaction === emoji && "bg-[#e7fce3]",
+                      "flex h-8 w-8 items-center justify-center rounded-full text-lg transition hover:scale-110 hover:bg-[var(--wa-header)]",
+                      reaction === emoji && "bg-[var(--wa-accent-soft)]",
                     )}
                   >
                     {emoji}
@@ -759,14 +759,14 @@ export function MessageBubble({
               </div>
 
               {showMoreEmoji && (
-                <div className="grid shrink-0 grid-cols-6 gap-0.5 rounded-2xl bg-white p-2 shadow-lg ring-1 ring-black/5">
+                <div className="grid shrink-0 grid-cols-6 gap-0.5 rounded-2xl bg-[var(--wa-panel)] p-2 shadow-lg ring-1 ring-black/5">
                   {["😀", "😍", "🥰", "😎", "🤔", "😡", "🔥", "🎉", "💯", "😴", "🤗", "👏", "😮", "🤣", "💔", "✨", "👀", "💪"].map(
                     (emoji) => (
                       <button
                         key={emoji}
                         type="button"
                         onClick={() => pickReaction(emoji)}
-                        className="rounded-lg p-1.5 text-lg transition hover:bg-[#f0f2f5]"
+                        className="rounded-lg p-1.5 text-lg transition hover:bg-[var(--wa-header)]"
                       >
                         {emoji}
                       </button>
@@ -775,18 +775,18 @@ export function MessageBubble({
                 </div>
               )}
 
-              <div className="min-w-[220px] overflow-hidden rounded-xl bg-white py-1.5 shadow-lg ring-1 ring-black/5">
+              <div className="min-w-[220px] overflow-hidden rounded-xl bg-[var(--wa-panel)] py-1.5 shadow-lg ring-1 ring-black/5">
                 {menuItems.map((item) => (
                   <button
                     key={item.id}
                     type="button"
-                    className="flex w-full items-center justify-between gap-6 px-4 py-2.5 text-[15px] text-[#111b21] transition hover:bg-[#f5f6f6]"
+                    className="flex w-full items-center justify-between gap-6 px-4 py-2.5 text-[15px] text-[var(--wa-text)] transition hover:bg-[var(--wa-hover)]"
                     onClick={item.onClick}
                   >
                     <span>{item.label}</span>
                     <item.icon
                       className={cn(
-                        "h-[18px] w-[18px] shrink-0 text-[#54656f]",
+                        "h-[18px] w-[18px] shrink-0 text-[var(--wa-text-secondary)]",
                         item.id === "star" && isStarred && "fill-[#eab308] text-[#eab308]",
                         item.id === "pin" && isPinned && "text-[#00a884]",
                       )}
@@ -795,28 +795,28 @@ export function MessageBubble({
                   </button>
                 ))}
 
-                <div className="my-1 border-t border-[#e9edef]" />
+                <div className="my-1 border-t border-[var(--wa-border)]" />
 
                 <button
                   type="button"
-                  className="flex w-full items-center justify-between gap-6 px-4 py-2.5 text-[15px] text-[#111b21] transition hover:bg-[#f5f6f6]"
+                  className="flex w-full items-center justify-between gap-6 px-4 py-2.5 text-[15px] text-[var(--wa-text)] transition hover:bg-[var(--wa-hover)]"
                   onClick={closeMenu}
                 >
                   <span>דיווח</span>
-                  <ThumbsDown className="h-[18px] w-[18px] shrink-0 text-[#54656f]" strokeWidth={1.75} />
+                  <ThumbsDown className="h-[18px] w-[18px] shrink-0 text-[var(--wa-text-secondary)]" strokeWidth={1.75} />
                 </button>
 
                 {onDeleteForMe && (
                   <button
                     type="button"
-                    className="flex w-full items-center justify-between gap-6 px-4 py-2.5 text-[15px] text-[#111b21] transition hover:bg-[#f5f6f6]"
+                    className="flex w-full items-center justify-between gap-6 px-4 py-2.5 text-[15px] text-[var(--wa-text)] transition hover:bg-[var(--wa-hover)]"
                     onClick={() => {
                       closeMenu()
                       onDeleteForMe()
                     }}
                   >
                     <span>מחק אצלי</span>
-                    <EyeOff className="h-[18px] w-[18px] shrink-0 text-[#54656f]" strokeWidth={1.75} />
+                    <EyeOff className="h-[18px] w-[18px] shrink-0 text-[var(--wa-text-secondary)]" strokeWidth={1.75} />
                   </button>
                 )}
 
@@ -824,7 +824,7 @@ export function MessageBubble({
                   (confirmDelete ? (
                     <button
                       type="button"
-                      className="flex w-full items-center justify-between gap-6 px-4 py-2.5 text-[15px] text-[#ea0038] transition hover:bg-[#f5f6f6]"
+                      className="flex w-full items-center justify-between gap-6 px-4 py-2.5 text-[15px] text-[#ea0038] transition hover:bg-[var(--wa-hover)]"
                       onClick={() => {
                         closeMenu()
                         onDeleteForEveryone()
@@ -836,11 +836,11 @@ export function MessageBubble({
                   ) : (
                     <button
                       type="button"
-                      className="flex w-full items-center justify-between gap-6 px-4 py-2.5 text-[15px] text-[#111b21] transition hover:bg-[#f5f6f6]"
+                      className="flex w-full items-center justify-between gap-6 px-4 py-2.5 text-[15px] text-[var(--wa-text)] transition hover:bg-[var(--wa-hover)]"
                       onClick={() => setConfirmDelete(true)}
                     >
                       <span>מחק לכולם</span>
-                      <Trash2 className="h-[18px] w-[18px] shrink-0 text-[#54656f]" strokeWidth={1.75} />
+                      <Trash2 className="h-[18px] w-[18px] shrink-0 text-[var(--wa-text-secondary)]" strokeWidth={1.75} />
                     </button>
                   ))}
               </div>
@@ -858,7 +858,7 @@ export function MessageBubble({
             onOpenThread()
           }}
           className={cn(
-            "mb-1 flex max-w-[min(100%,320px)] items-center gap-2 rounded-lg border border-[#d1d7db] bg-white px-3 py-1.5 text-right shadow-sm transition hover:bg-[#f0f2f5]",
+            "mb-1 flex max-w-[min(100%,320px)] items-center gap-2 rounded-lg border border-[#d1d7db] bg-[var(--wa-panel)] px-3 py-1.5 text-right shadow-sm transition hover:bg-[var(--wa-header)]",
             isMine ? "self-start" : "self-end",
           )}
           dir="rtl"
@@ -867,7 +867,7 @@ export function MessageBubble({
           <span className="min-w-0 flex-1">
             <span className="block text-[13px] font-medium text-[#00a884]">{replyCountLabel}</span>
             {threadPreview && (
-              <span className="block truncate text-[12px] text-[#667781]">{threadPreview}</span>
+              <span className="block truncate text-[12px] text-[var(--wa-text-secondary)]">{threadPreview}</span>
             )}
           </span>
         </button>

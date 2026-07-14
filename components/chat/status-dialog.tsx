@@ -309,22 +309,22 @@ export function StatusDialog({ open, currentUser, onClose }: Props) {
 
       {privacyOpen ? (
         <div className="flex flex-col" dir="rtl">
-          <div className="flex items-center gap-3 border-b border-[#e9edef] px-4 py-3">
+          <div className="flex items-center gap-3 border-b border-[var(--wa-border)] px-4 py-3">
             <button
               type="button"
               onClick={() => setPrivacyOpen(false)}
-              className="rounded-full p-2 text-[#54656f] hover:bg-[#f0f2f5]"
+              className="rounded-full p-2 text-[var(--wa-text-secondary)] hover:bg-[var(--wa-header)]"
               aria-label="חזרה"
             >
               <ChevronLeft className="h-5 w-5 rotate-180" />
             </button>
             <div>
-              <div className="font-medium text-[#111b21]">פרטיות הסטטוס</div>
-              <div className="text-xs text-[#667781]">מי יוכל לראות סטטוסים חדשים</div>
+              <div className="font-medium text-[var(--wa-text)]">פרטיות הסטטוס</div>
+              <div className="text-xs text-[var(--wa-text-secondary)]">מי יוכל לראות סטטוסים חדשים</div>
             </div>
           </div>
 
-          <div className="border-b border-[#e9edef] py-2">
+          <div className="border-b border-[var(--wa-border)] py-2">
             {(
               [
                 {
@@ -359,14 +359,14 @@ export function StatusDialog({ open, currentUser, onClose }: Props) {
                   key={option.mode}
                   type="button"
                   onClick={() => selectAudienceMode(option.mode)}
-                  className="flex w-full items-center gap-3 px-5 py-3 text-right hover:bg-[#f5f6f6]"
+                  className="flex w-full items-center gap-3 px-5 py-3 text-right hover:bg-[var(--wa-hover)]"
                 >
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#e7fce3] text-[#008069]">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--wa-accent-soft)] text-[#008069]">
                     <Icon className="h-5 w-5" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="text-[#111b21]">{option.label}</div>
-                    <div className="text-xs text-[#667781]">{option.detail}</div>
+                    <div className="text-[var(--wa-text)]">{option.label}</div>
+                    <div className="text-xs text-[var(--wa-text-secondary)]">{option.detail}</div>
                   </div>
                   <span
                     className={`flex h-5 w-5 items-center justify-center rounded-full border ${
@@ -382,7 +382,7 @@ export function StatusDialog({ open, currentUser, onClose }: Props) {
 
           {audienceMode !== "contacts" && (
             <div className="max-h-[46vh] overflow-y-auto">
-              <div className="px-5 py-2 text-xs font-medium text-[#667781]">
+              <div className="px-5 py-2 text-xs font-medium text-[var(--wa-text-secondary)]">
                 {audienceMode === "contacts_except" ? "הסתר מ־" : "שתף עם"} ·{" "}
                 {audienceUserIds.length} נבחרו
               </div>
@@ -398,14 +398,14 @@ export function StatusDialog({ open, currentUser, onClose }: Props) {
                     key={contact.id}
                     type="button"
                     onClick={() => toggleAudienceContact(contact.id)}
-                    className="flex w-full items-center gap-3 px-5 py-2.5 text-right hover:bg-[#f5f6f6]"
+                    className="flex w-full items-center gap-3 px-5 py-2.5 text-right hover:bg-[var(--wa-hover)]"
                   >
                     <Avatar name={contact.display_name} url={contact.avatar_url} size={42} />
-                    <div className="min-w-0 flex-1 border-b border-[#e9edef] pb-2">
-                      <div className="truncate text-[#111b21]">
+                    <div className="min-w-0 flex-1 border-b border-[var(--wa-border)] pb-2">
+                      <div className="truncate text-[var(--wa-text)]">
                         {contact.display_name ?? contact.email}
                       </div>
-                      <div className="truncate text-xs text-[#667781]">{contact.email}</div>
+                      <div className="truncate text-xs text-[var(--wa-text-secondary)]">{contact.email}</div>
                     </div>
                     <span
                       className={`flex h-5 w-5 items-center justify-center rounded border ${
@@ -418,12 +418,12 @@ export function StatusDialog({ open, currentUser, onClose }: Props) {
                 )
               })}
               {!contactsError && contacts.length === 0 && (
-                <div className="p-6 text-center text-sm text-[#667781]">אין אנשי קשר לבחירה</div>
+                <div className="p-6 text-center text-sm text-[var(--wa-text-secondary)]">אין אנשי קשר לבחירה</div>
               )}
             </div>
           )}
 
-          <div className="border-t border-[#e9edef] p-4">
+          <div className="border-t border-[var(--wa-border)] p-4">
             <button
               type="button"
               onClick={() => setPrivacyOpen(false)}
@@ -474,12 +474,12 @@ export function StatusDialog({ open, currentUser, onClose }: Props) {
           )}
 
           {createMode === "media" && (
-            <div className="border-b border-[#e9edef] px-4 py-3">
+            <div className="border-b border-[var(--wa-border)] px-4 py-3">
               <input
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 placeholder="הוסף כיתוב (אופציונלי)"
-                className="w-full rounded-lg border border-[#e9edef] bg-[#f0f2f5] px-3 py-2 text-sm text-[#111b21] outline-none focus:border-[#00a884]"
+                className="w-full rounded-lg border border-[var(--wa-border)] bg-[var(--wa-header)] px-3 py-2 text-sm text-[var(--wa-text)] outline-none focus:border-[#00a884]"
                 dir="rtl"
               />
             </div>
@@ -503,13 +503,13 @@ export function StatusDialog({ open, currentUser, onClose }: Props) {
           <button
             type="button"
             onClick={() => setPrivacyOpen(true)}
-            className="mx-4 mb-3 flex items-center gap-3 rounded-lg bg-[#f0f2f5] px-3 py-2.5 text-right"
+            className="mx-4 mb-3 flex items-center gap-3 rounded-lg bg-[var(--wa-header)] px-3 py-2.5 text-right"
             dir="rtl"
           >
             <Settings className="h-5 w-5 text-[#008069]" />
             <div className="min-w-0 flex-1">
-              <div className="text-sm font-medium text-[#111b21]">מי יכול לראות</div>
-              <div className="truncate text-xs text-[#667781]">
+              <div className="text-sm font-medium text-[var(--wa-text)]">מי יכול לראות</div>
+              <div className="truncate text-xs text-[var(--wa-text-secondary)]">
                 {audienceLabel(audienceMode, audienceUserIds.length)}
               </div>
             </div>
@@ -521,7 +521,7 @@ export function StatusDialog({ open, currentUser, onClose }: Props) {
           )}
 
           <div className="flex justify-between p-4">
-            <button type="button" onClick={resetCreate} className="text-sm text-[#667781]" disabled={posting}>
+            <button type="button" onClick={resetCreate} className="text-sm text-[var(--wa-text-secondary)]" disabled={posting}>
               ביטול
             </button>
             <button
@@ -543,7 +543,7 @@ export function StatusDialog({ open, currentUser, onClose }: Props) {
                 ? openViewer({ profile: currentUser, statuses: myStatuses })
                 : startText()
             }
-            className="flex w-full items-center gap-3 px-5 py-3 text-right transition hover:bg-[#f5f6f6]"
+            className="flex w-full items-center gap-3 px-5 py-3 text-right transition hover:bg-[var(--wa-hover)]"
           >
             <div className="relative">
               <Avatar name={currentUser.display_name} url={currentUser.avatar_url} size={49} />
@@ -553,9 +553,9 @@ export function StatusDialog({ open, currentUser, onClose }: Props) {
                 </span>
               )}
             </div>
-            <div className="flex-1 border-b border-[#e9edef] pb-3">
-              <div className="text-[#111b21]">הסטטוס שלי</div>
-              <div className="text-sm text-[#667781]">
+            <div className="flex-1 border-b border-[var(--wa-border)] pb-3">
+              <div className="text-[var(--wa-text)]">הסטטוס שלי</div>
+              <div className="text-sm text-[var(--wa-text-secondary)]">
                 {myStatuses.length
                   ? formatChatListTime(myStatuses[myStatuses.length - 1].created_at)
                   : "הקש כדי להוסיף עדכון סטטוס"}
@@ -566,27 +566,27 @@ export function StatusDialog({ open, currentUser, onClose }: Props) {
           <button
             type="button"
             onClick={startText}
-            className="flex w-full items-center gap-3 px-5 py-3 text-right transition hover:bg-[#f5f6f6]"
+            className="flex w-full items-center gap-3 px-5 py-3 text-right transition hover:bg-[var(--wa-hover)]"
           >
             <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#00a884] text-white">
               <Type className="h-5 w-5" />
             </div>
-            <span className="text-[#111b21]">כתוב סטטוס טקסט חדש</span>
+            <span className="text-[var(--wa-text)]">כתוב סטטוס טקסט חדש</span>
           </button>
 
           <button
             type="button"
             onClick={pickMedia}
-            className="flex w-full items-center gap-3 border-b border-[#e9edef] px-5 py-3 text-right transition hover:bg-[#f5f6f6]"
+            className="flex w-full items-center gap-3 border-b border-[var(--wa-border)] px-5 py-3 text-right transition hover:bg-[var(--wa-hover)]"
           >
             <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#0088cc] text-white">
               <ImagePlus className="h-5 w-5" />
             </div>
             <div className="flex-1 text-right">
-              <div className="text-[#111b21]">תמונה או סרטון</div>
-              <div className="text-xs text-[#667781]">העלה מדיה לסטטוס</div>
+              <div className="text-[var(--wa-text)]">תמונה או סרטון</div>
+              <div className="text-xs text-[var(--wa-text-secondary)]">העלה מדיה לסטטוס</div>
             </div>
-            <div className="flex gap-1 text-[#667781]">
+            <div className="flex gap-1 text-[var(--wa-text-secondary)]">
               <Camera className="h-4 w-4" />
               <Video className="h-4 w-4" />
             </div>
@@ -595,15 +595,15 @@ export function StatusDialog({ open, currentUser, onClose }: Props) {
           <button
             type="button"
             onClick={() => setPrivacyOpen(true)}
-            className="flex w-full items-center gap-3 border-b border-[#e9edef] px-5 py-3 text-right transition hover:bg-[#f5f6f6]"
+            className="flex w-full items-center gap-3 border-b border-[var(--wa-border)] px-5 py-3 text-right transition hover:bg-[var(--wa-hover)]"
             dir="rtl"
           >
-            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#e7fce3] text-[#008069]">
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--wa-accent-soft)] text-[#008069]">
               <Settings className="h-5 w-5" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-[#111b21]">פרטיות הסטטוס</div>
-              <div className="truncate text-xs text-[#667781]">
+              <div className="text-[var(--wa-text)]">פרטיות הסטטוס</div>
+              <div className="truncate text-xs text-[var(--wa-text-secondary)]">
                 {audienceLabel(audienceMode, audienceUserIds.length)}
               </div>
             </div>
@@ -612,20 +612,20 @@ export function StatusDialog({ open, currentUser, onClose }: Props) {
 
           {grouped.length > 0 && (
             <>
-              <div className="px-5 py-2 text-xs font-medium text-[#667781]">עדכונים אחרונים</div>
+              <div className="px-5 py-2 text-xs font-medium text-[var(--wa-text-secondary)]">עדכונים אחרונים</div>
               {grouped.map((g) => (
                 <button
                   key={g.profile.id}
                   type="button"
                   onClick={() => openViewer(g)}
-                  className="flex w-full items-center gap-3 px-5 py-2.5 text-right transition hover:bg-[#f5f6f6]"
+                  className="flex w-full items-center gap-3 px-5 py-2.5 text-right transition hover:bg-[var(--wa-hover)]"
                 >
                   <div className="rounded-full p-0.5 ring-2 ring-[#00a884]">
                     <Avatar name={g.profile.display_name} url={g.profile.avatar_url} size={45} />
                   </div>
                   <div className="flex-1">
-                    <div className="text-[#111b21]">{g.profile.display_name ?? g.profile.email}</div>
-                    <div className="text-sm text-[#667781]">
+                    <div className="text-[var(--wa-text)]">{g.profile.display_name ?? g.profile.email}</div>
+                    <div className="text-sm text-[var(--wa-text-secondary)]">
                       {formatChatListTime(g.statuses[g.statuses.length - 1].created_at)}
                     </div>
                   </div>
@@ -635,7 +635,7 @@ export function StatusDialog({ open, currentUser, onClose }: Props) {
           )}
 
           {grouped.length === 0 && myStatuses.length === 0 && (
-            <div className="p-6 text-center text-sm text-[#667781]">אין עדכוני סטטוס עדיין</div>
+            <div className="p-6 text-center text-sm text-[var(--wa-text-secondary)]">אין עדכוני סטטוס עדיין</div>
           )}
         </div>
       )}

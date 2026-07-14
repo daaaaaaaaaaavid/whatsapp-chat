@@ -235,7 +235,7 @@ export function NewGroupDialog({ open, currentUserId, onClose, onCreated }: Prop
         key={key}
         type="button"
         onClick={() => toggle(u)}
-        className="flex w-full items-center gap-3 px-5 py-2.5 text-right transition hover:bg-[#f5f6f6]"
+        className="flex w-full items-center gap-3 px-5 py-2.5 text-right transition hover:bg-[var(--wa-hover)]"
       >
         <div className="relative">
           <Avatar name={u.display_name} url={u.avatar_url} size={48} />
@@ -245,9 +245,9 @@ export function NewGroupDialog({ open, currentUserId, onClose, onCreated }: Prop
             </span>
           )}
         </div>
-        <div className="min-w-0 flex-1 border-b border-[#e9edef] pb-2.5 text-right">
-          <div className="truncate text-[#111b21]">{u.display_name ?? u.email}</div>
-          <div className="truncate text-sm text-[#667781]">{u.email ?? u.about ?? "זמין"}</div>
+        <div className="min-w-0 flex-1 border-b border-[var(--wa-border)] pb-2.5 text-right">
+          <div className="truncate text-[var(--wa-text)]">{u.display_name ?? u.email}</div>
+          <div className="truncate text-sm text-[var(--wa-text-secondary)]">{u.email ?? u.about ?? "זמין"}</div>
         </div>
       </button>
     )
@@ -258,24 +258,24 @@ export function NewGroupDialog({ open, currentUserId, onClose, onCreated }: Prop
       {step === "members" ? (
         <>
           {selected.length > 0 && (
-            <div className="flex flex-wrap gap-2 border-b border-[#e9edef] p-3">
+            <div className="flex flex-wrap gap-2 border-b border-[var(--wa-border)] p-3">
               {selected.map((u) => (
                 <button
                   key={u.id}
                   type="button"
                   onClick={() => toggle(u)}
-                  className="flex items-center gap-1.5 rounded-full bg-[#f0f2f5] py-1 pl-2 pr-1 text-sm"
+                  className="flex items-center gap-1.5 rounded-full bg-[var(--wa-header)] py-1 pl-2 pr-1 text-sm"
                 >
                   <Avatar name={u.display_name} url={u.avatar_url} size={24} />
-                  <span className="text-[#111b21]">{u.display_name ?? u.email}</span>
-                  <X className="h-3.5 w-3.5 text-[#667781]" />
+                  <span className="text-[var(--wa-text)]">{u.display_name ?? u.email}</span>
+                  <X className="h-3.5 w-3.5 text-[var(--wa-text-secondary)]" />
                 </button>
               ))}
             </div>
           )}
           <div className="p-3">
-            <div className="flex items-center gap-3 rounded-lg bg-[#f0f2f5] px-4 py-2">
-              <Search className="h-4 w-4 text-[#54656f]" />
+            <div className="flex items-center gap-3 rounded-lg bg-[var(--wa-header)] px-4 py-2">
+              <Search className="h-4 w-4 text-[var(--wa-text-secondary)]" />
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
@@ -290,10 +290,10 @@ export function NewGroupDialog({ open, currentUserId, onClose, onCreated }: Prop
                   else if (filtered[0]) toggle(filtered[0])
                 }}
                 placeholder="הקלד שם או מייל — יציע מאנשי הקשר בגוגל"
-                className="flex-1 bg-transparent text-sm outline-none placeholder:text-[#667781]"
+                className="flex-1 bg-transparent text-sm outline-none placeholder:text-[var(--wa-text-secondary)]"
               />
             </div>
-            <p className="mt-2 px-1 text-xs leading-relaxed text-[#667781]">
+            <p className="mt-2 px-1 text-xs leading-relaxed text-[var(--wa-text-secondary)]">
               {hasSyncedGoogle
                 ? "בזמן ההקלדה מוצגות הצעות מאנשי הקשר שסנכרנת מגוגל."
                 : "סנכרן פעם אחת מגוגל — ואז חיפוש לפי שם או מייל יציע אוטומטית."}
@@ -304,20 +304,20 @@ export function NewGroupDialog({ open, currentUserId, onClose, onCreated }: Prop
             type="button"
             onClick={() => void handleSyncGoogle()}
             disabled={syncing}
-            className="flex w-full items-center gap-3 border-b border-[#e9edef] bg-[#f7fbff] px-5 py-3.5 text-right transition hover:bg-[#eef5ff] disabled:opacity-60"
+            className="flex w-full items-center gap-3 border-b border-[var(--wa-border)] bg-[var(--wa-header)] px-5 py-3.5 text-right transition hover:bg-[var(--wa-hover)] disabled:opacity-60"
           >
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-[#1a73e8] shadow-sm">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--wa-panel)] text-[#1a73e8] shadow-sm">
               <RefreshCw className={`h-6 w-6 ${syncing ? "animate-spin" : ""}`} />
             </div>
             <div className="min-w-0 flex-1 text-right">
-              <div className="font-medium text-[#111b21]">
+              <div className="font-medium text-[var(--wa-text)]">
                 {syncing
                   ? "מסנכרן מגוגל..."
                   : hasSyncedGoogle
                     ? "סנכרן שוב מגוגל"
                     : "סנכרן אנשי קשר מגוגל"}
               </div>
-              <div className="text-sm text-[#667781]">
+              <div className="text-sm text-[var(--wa-text-secondary)]">
                 {hasSyncedGoogle
                   ? `${googleMatched.length + googleUnmatched.length} אנשי קשר נשמרו · לחץ לעדכון`
                   : "חובה לסנכרן פעם אחת כדי לקבל הצעות אוטומטיות"}
@@ -344,14 +344,14 @@ export function NewGroupDialog({ open, currentUserId, onClose, onCreated }: Prop
               type="button"
               onClick={() => void handleAddByEmail()}
               disabled={busy}
-              className="flex w-full items-center gap-3 px-5 py-3 text-right transition hover:bg-[#f5f6f6] disabled:opacity-60"
+              className="flex w-full items-center gap-3 px-5 py-3 text-right transition hover:bg-[var(--wa-hover)] disabled:opacity-60"
             >
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#e7fce3] text-[#008069]">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--wa-accent-soft)] text-[#008069]">
                 <Mail className="h-6 w-6" />
               </div>
               <div className="min-w-0 flex-1 text-right">
-                <div className="font-medium text-[#111b21]">הוסף לפי מייל</div>
-                <div className="truncate text-sm text-[#667781]">{q}</div>
+                <div className="font-medium text-[var(--wa-text)]">הוסף לפי מייל</div>
+                <div className="truncate text-sm text-[var(--wa-text-secondary)]">{q}</div>
               </div>
             </button>
           )}
@@ -382,18 +382,18 @@ export function NewGroupDialog({ open, currentUserId, onClose, onCreated }: Prop
                       if (s.contact.email) void handleAddByEmail(s.contact.email)
                     }}
                     disabled={busy || !s.contact.email}
-                    className="flex w-full items-center gap-3 px-5 py-2.5 text-right transition hover:bg-[#f5f6f6] disabled:opacity-60"
+                    className="flex w-full items-center gap-3 px-5 py-2.5 text-right transition hover:bg-[var(--wa-hover)] disabled:opacity-60"
                   >
                     <Avatar
                       name={s.contact.display_name ?? s.contact.email}
                       url={s.contact.photo_url}
                       size={48}
                     />
-                    <div className="min-w-0 flex-1 border-b border-[#e9edef] pb-2.5 text-right">
-                      <div className="truncate text-[#111b21]">
+                    <div className="min-w-0 flex-1 border-b border-[var(--wa-border)] pb-2.5 text-right">
+                      <div className="truncate text-[var(--wa-text)]">
                         {s.contact.display_name ?? s.contact.email}
                       </div>
-                      <div className="truncate text-sm text-[#667781]">
+                      <div className="truncate text-sm text-[var(--wa-text-secondary)]">
                         {s.contact.email
                           ? `${s.contact.email} · לא ב-WhaChat`
                           : "לא ב-WhaChat"}
@@ -407,16 +407,16 @@ export function NewGroupDialog({ open, currentUserId, onClose, onCreated }: Prop
 
           {!isSearching && browseGoogleUnmatched.length > 0 && (
             <>
-              <div className="px-5 py-2 text-xs font-medium text-[#667781]">לא ב-WhaChat</div>
+              <div className="px-5 py-2 text-xs font-medium text-[var(--wa-text-secondary)]">לא ב-WhaChat</div>
               {browseGoogleUnmatched.map((c) => (
                 <div
                   key={c.id}
                   className="flex w-full items-center gap-3 px-5 py-2.5 text-right opacity-70"
                 >
                   <Avatar name={c.display_name ?? c.email} url={c.photo_url} size={48} />
-                  <div className="min-w-0 flex-1 border-b border-[#e9edef] pb-2.5 text-right">
-                    <div className="truncate text-[#111b21]">{c.display_name ?? c.email}</div>
-                    <div className="truncate text-sm text-[#667781]">לא ב-WhaChat</div>
+                  <div className="min-w-0 flex-1 border-b border-[var(--wa-border)] pb-2.5 text-right">
+                    <div className="truncate text-[var(--wa-text)]">{c.display_name ?? c.email}</div>
+                    <div className="truncate text-sm text-[var(--wa-text-secondary)]">לא ב-WhaChat</div>
                   </div>
                 </div>
               ))}
@@ -429,7 +429,7 @@ export function NewGroupDialog({ open, currentUserId, onClose, onCreated }: Prop
             browseGoogleMatched.length === 0 &&
             browseGoogleUnmatched.length === 0 &&
             !showEmailAdd && (
-              <div className="p-6 text-center text-sm text-[#667781]">
+              <div className="p-6 text-center text-sm text-[var(--wa-text-secondary)]">
                 {isSearching
                   ? hasSyncedGoogle
                     ? "לא נמצאו הצעות תואמות"
@@ -439,7 +439,7 @@ export function NewGroupDialog({ open, currentUserId, onClose, onCreated }: Prop
             )}
 
           {selected.length > 0 && (
-            <div className="sticky bottom-0 flex justify-start bg-white p-4">
+            <div className="sticky bottom-0 flex justify-start bg-[var(--wa-panel)] p-4">
               <button
                 type="button"
                 onClick={() => setStep("name")}
@@ -464,15 +464,15 @@ export function NewGroupDialog({ open, currentUserId, onClose, onCreated }: Prop
           <div className="mb-6 flex flex-col items-center">
             <Avatar name={groupName || "?"} isGroup size={80} />
           </div>
-          <label className="mb-1.5 block text-sm font-medium text-[#3b4a54]">שם הקבוצה</label>
+          <label className="mb-1.5 block text-sm font-medium text-[var(--wa-text)]">שם הקבוצה</label>
           <input
             value={groupName}
             onChange={(e) => setGroupName(e.target.value)}
             placeholder="הזן שם קבוצה"
             autoFocus
-            className="w-full border-b-2 border-[#00a884] bg-transparent py-2 text-[#111b21] outline-none"
+            className="w-full border-b-2 border-[#00a884] bg-transparent py-2 text-[var(--wa-text)] outline-none"
           />
-          <div className="mt-2 text-sm text-[#667781]">{selected.length} חברים נבחרו</div>
+          <div className="mt-2 text-sm text-[var(--wa-text-secondary)]">{selected.length} חברים נבחרו</div>
           {actionError && (
             <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
               {actionError}

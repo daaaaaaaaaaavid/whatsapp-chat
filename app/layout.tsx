@@ -14,8 +14,20 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: "#00a884",
-  colorScheme: "light",
+  colorScheme: "light dark",
 }
+
+const themeScript = `
+  (() => {
+    try {
+      const saved = localStorage.getItem("whachat-theme") || "system";
+      const dark = saved === "dark" ||
+        (saved === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
+      document.documentElement.classList.add(dark ? "dark" : "light");
+      document.documentElement.style.colorScheme = dark ? "dark" : "light";
+    } catch {}
+  })();
+`
 
 export default function RootLayout({
   children,
@@ -23,7 +35,10 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="he" dir="rtl" className="light h-full bg-white">
+    <html lang="he" dir="rtl" className="h-full bg-[var(--wa-panel)]" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body className="h-full min-h-svh overflow-hidden antialiased">
         {children}
         {process.env.NODE_ENV === "production" && <Analytics />}

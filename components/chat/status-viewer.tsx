@@ -370,7 +370,7 @@ export function StatusViewer({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-[#f0f2f5]"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-[var(--wa-header)]"
       role="dialog"
       aria-modal="true"
       aria-label="צפייה בסטטוס"
@@ -378,7 +378,7 @@ export function StatusViewer({
       <button
         type="button"
         onClick={onClose}
-        className="absolute top-4 left-4 z-20 rounded-full p-2 text-[#54656f] transition hover:bg-black/5"
+        className="absolute top-4 left-4 z-20 rounded-full p-2 text-[var(--wa-text-secondary)] transition hover:bg-black/5"
         aria-label="סגור"
       >
         <X className="h-7 w-7" strokeWidth={1.75} />
@@ -417,7 +417,7 @@ export function StatusViewer({
           {group.statuses.map((s, i) => (
             <div key={s.id} className="h-[3px] flex-1 overflow-hidden rounded-full bg-white/35">
               <div
-                className="h-full rounded-full bg-white transition-none"
+                className="h-full rounded-full bg-[var(--wa-panel)] transition-none"
                 style={{
                   width: i < index ? "100%" : i > index ? "0%" : `${progress * 100}%`,
                 }}
@@ -467,12 +467,12 @@ export function StatusViewer({
                 <MoreVertical className="h-5 w-5" />
               </button>
               {menuOpen && (
-                <div className="absolute top-full left-0 mt-1 min-w-[140px] overflow-hidden rounded-md bg-white py-1 text-sm text-[#111b21] shadow-lg">
+                <div className="absolute top-full left-0 mt-1 min-w-[140px] overflow-hidden rounded-md bg-[var(--wa-panel)] py-1 text-sm text-[var(--wa-text)] shadow-lg">
                   {isOwn && (
                     <button
                       type="button"
                       disabled={deleting}
-                      className="block w-full px-4 py-2.5 text-right text-[#ea0038] hover:bg-[#f5f6f6] disabled:opacity-50"
+                      className="block w-full px-4 py-2.5 text-right text-[#ea0038] hover:bg-[var(--wa-hover)] disabled:opacity-50"
                       onClick={() => void deleteStatus()}
                     >
                       {deleting ? "מוחק..." : "מחק סטטוס"}
@@ -480,7 +480,7 @@ export function StatusViewer({
                   )}
                   <button
                     type="button"
-                    className="block w-full px-4 py-2.5 text-right hover:bg-[#f5f6f6]"
+                    className="block w-full px-4 py-2.5 text-right hover:bg-[var(--wa-hover)]"
                     onClick={() => {
                       setMenuOpen(false)
                       onClose()

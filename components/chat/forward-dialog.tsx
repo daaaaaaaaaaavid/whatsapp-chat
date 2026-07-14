@@ -67,12 +67,12 @@ export function ForwardDialog({
 
   return (
     <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/40 p-4" role="dialog">
-      <div className="flex max-h-[80svh] w-full max-w-md flex-col overflow-hidden rounded-xl bg-white shadow-2xl" dir="rtl">
-        <header className="flex items-center gap-3 border-b border-[#e9edef] px-4 py-3">
-          <button type="button" onClick={onClose} aria-label="סגור" className="text-[#54656f]">
+      <div className="flex max-h-[80svh] w-full max-w-md flex-col overflow-hidden rounded-xl bg-[var(--wa-panel)] shadow-2xl" dir="rtl">
+        <header className="flex items-center gap-3 border-b border-[var(--wa-border)] px-4 py-3">
+          <button type="button" onClick={onClose} aria-label="סגור" className="text-[var(--wa-text-secondary)]">
             <X className="h-5 w-5" />
           </button>
-          <h2 className="flex-1 text-base font-medium text-[#111b21]">
+          <h2 className="flex-1 text-base font-medium text-[var(--wa-text)]">
             {messages.length > 1 ? "העברת הודעות" : "העברת הודעה"}
           </h2>
           <button
@@ -85,12 +85,12 @@ export function ForwardDialog({
           </button>
         </header>
 
-        <div className="border-b border-[#e9edef] bg-[#f0f2f5] px-4 py-2 text-sm text-[#667781]">
+        <div className="border-b border-[var(--wa-border)] bg-[var(--wa-header)] px-4 py-2 text-sm text-[var(--wa-text-secondary)]">
           {preview}
         </div>
 
-        <div className="flex items-center gap-2 border-b border-[#e9edef] px-4 py-2">
-          <Search className="h-4 w-4 text-[#54656f]" />
+        <div className="flex items-center gap-2 border-b border-[var(--wa-border)] px-4 py-2">
+          <Search className="h-4 w-4 text-[var(--wa-text-secondary)]" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -108,7 +108,7 @@ export function ForwardDialog({
                 key={c.id}
                 type="button"
                 onClick={() => toggle(c.id)}
-                className="flex w-full items-center gap-3 px-4 py-3 text-right hover:bg-[#f5f6f6]"
+                className="flex w-full items-center gap-3 px-4 py-3 text-right hover:bg-[var(--wa-hover)]"
               >
                 <span
                   className={`flex h-5 w-5 items-center justify-center rounded-full border ${
@@ -127,7 +127,7 @@ export function ForwardDialog({
                   isGroup={c.is_group}
                   size={40}
                 />
-                <span className="truncate text-[#111b21]">{name}</span>
+                <span className="truncate text-[var(--wa-text)]">{name}</span>
               </button>
             )
           })}

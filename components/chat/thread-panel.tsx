@@ -114,26 +114,26 @@ export function ThreadPanel({
 
   return (
     <aside
-      className="flex h-full w-full min-w-0 flex-col border-r border-[#e9edef] bg-white shadow-[-8px_0_24px_rgba(11,20,26,0.08)] lg:w-[min(100%,400px)] lg:min-w-[340px] lg:max-w-[400px]"
+      className="flex h-full w-full min-w-0 flex-col border-r border-[var(--wa-border)] bg-[var(--wa-panel)] shadow-[-8px_0_24px_rgba(11,20,26,0.08)] lg:w-[min(100%,400px)] lg:min-w-[340px] lg:max-w-[400px]"
       dir="rtl"
       aria-label="שרשור"
     >
-      <header className="flex h-16 shrink-0 items-center gap-3 border-b border-[#e9edef] bg-[#f0f2f5] px-3">
+      <header className="flex h-16 shrink-0 items-center gap-3 border-b border-[var(--wa-border)] bg-[var(--wa-header)] px-3">
         <button
           type="button"
           onClick={onClose}
-          className="flex h-10 w-10 items-center justify-center rounded-full text-[#54656f] transition hover:bg-black/5"
+          className="flex h-10 w-10 items-center justify-center rounded-full text-[var(--wa-text-secondary)] transition hover:bg-black/5"
           aria-label="סגור שרשור"
         >
           <X className="h-5 w-5" />
         </button>
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#e7fce3] text-[#00a884]">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--wa-accent-soft)] text-[#00a884]">
             <MessagesSquare className="h-4 w-4" strokeWidth={1.75} />
           </div>
           <div className="min-w-0 text-right">
-            <div className="truncate text-[16px] font-medium text-[#111b21]">שרשור</div>
-            <div className="truncate text-xs text-[#667781]">
+            <div className="truncate text-[16px] font-medium text-[var(--wa-text)]">שרשור</div>
+            <div className="truncate text-xs text-[var(--wa-text-secondary)]">
               {replies.length === 0
                 ? "אין תגובות עדיין"
                 : replies.length === 1
@@ -155,7 +155,7 @@ export function ThreadPanel({
         {replies.length > 0 && (
           <div className="mb-3 flex items-center gap-3 px-1">
             <div className="h-px flex-1 bg-[#d1d7db]" />
-            <span className="shrink-0 text-[11px] font-medium text-[#667781]">
+            <span className="shrink-0 text-[11px] font-medium text-[var(--wa-text-secondary)]">
               {replies.length === 1 ? "תגובה" : `${replies.length} תגובות`}
             </span>
             <div className="h-px flex-1 bg-[#d1d7db]" />
@@ -177,7 +177,7 @@ export function ThreadPanel({
         <div ref={bottomRef} />
       </div>
 
-      <div className="shrink-0 border-t border-[#e9edef] bg-[#f0f2f5]">
+      <div className="shrink-0 border-t border-[var(--wa-border)] bg-[var(--wa-header)]">
         <MessageInput
           conversationId={conversation.id}
           currentUserId={currentUser.id}

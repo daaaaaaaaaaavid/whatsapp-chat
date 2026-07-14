@@ -12,7 +12,7 @@ export function GoogleSignInButton({ onClick, disabled, label = "המשך עם G
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="flex w-full items-center justify-center gap-3 rounded-full border border-[#dadce0] bg-white px-4 py-2.5 text-sm font-medium text-[#3c4043] transition hover:bg-[#f8f9fa] disabled:opacity-60"
+      className="flex w-full items-center justify-center gap-3 rounded-full border border-[#dadce0] bg-[var(--wa-panel)] px-4 py-2.5 text-sm font-medium text-[#3c4043] transition hover:bg-[#f8f9fa] disabled:opacity-60"
     >
       <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
         <path

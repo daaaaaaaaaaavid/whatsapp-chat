@@ -129,12 +129,9 @@ export function ConversationView({
   const other = otherParticipants[0]?.profile
   const online = !conversation.is_group && !isSelf && isOnline(other?.last_seen)
 
-  const typingNames = useMemo(() => {
-    const now = Date.now()
-    return otherParticipants
-      .filter((p) => (typingUsers[p.user_id] ?? 0) > now)
-      .map((p) => (p.user_id === currentUser.id ? "אתה" : p.profile?.display_name ?? "משתמש"))
-  }, [typingUsers, otherParticipants, currentUser.id])
+  const typingNames = otherParticipants
+    .filter((p) => typingUsers[p.user_id] != null)
+    .map((p) => (p.user_id === currentUser.id ? "אתה" : p.profile?.display_name ?? "משתמש"))
 
   const subtitle = isSelf
     ? "הודעות שמורות"
@@ -568,35 +565,35 @@ export function ConversationView({
     >
       {dragOver && !searchOpen && (
         <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center bg-[#00a884]/15 backdrop-blur-[1px]">
-          <div className="flex flex-col items-center gap-3 rounded-2xl bg-white px-10 py-8 shadow-xl ring-1 ring-black/5">
+          <div className="flex flex-col items-center gap-3 rounded-2xl bg-[var(--wa-panel)] px-10 py-8 shadow-xl ring-1 ring-black/5">
             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#00a884]/15 text-[#00a884]">
               <ImagePlus className="h-8 w-8" />
             </div>
-            <div className="text-lg font-medium text-[#111b21]">גרור לכאן כדי לצרף</div>
-            <div className="text-sm text-[#667781]">תמונות, סרטונים ומסמכים</div>
+            <div className="text-lg font-medium text-[var(--wa-text)]">גרור לכאן כדי לצרף</div>
+            <div className="text-sm text-[var(--wa-text-secondary)]">תמונות, סרטונים ומסמכים</div>
           </div>
         </div>
       )}
 
-      <header className="flex h-16 items-center gap-3 bg-[#f0f2f5] px-4">
+      <header className="flex h-16 items-center gap-3 bg-[var(--wa-header)] px-4">
         {selectionMode ? (
           <>
             <button
               type="button"
               onClick={exitSelection}
-              className="flex h-10 w-10 items-center justify-center rounded-full text-[#54656f] transition hover:bg-black/5"
+              className="flex h-10 w-10 items-center justify-center rounded-full text-[var(--wa-text-secondary)] transition hover:bg-black/5"
               aria-label="ביטול בחירה"
             >
               <X className="h-6 w-6" />
             </button>
-            <div className="min-w-0 flex-1 text-right font-medium text-[#111b21]">
+            <div className="min-w-0 flex-1 text-right font-medium text-[var(--wa-text)]">
               {selectedIds.length} נבחרו
             </div>
             <button
               type="button"
               disabled={selectedIds.length === 0}
               onClick={handleBulkReply}
-              className="flex h-10 w-10 items-center justify-center rounded-full text-[#54656f] transition hover:bg-black/5 disabled:opacity-30"
+              className="flex h-10 w-10 items-center justify-center rounded-full text-[var(--wa-text-secondary)] transition hover:bg-black/5 disabled:opacity-30"
               aria-label="תגובה"
               title="תגובה"
             >
@@ -606,7 +603,7 @@ export function ConversationView({
               type="button"
               disabled={selectedIds.length === 0}
               onClick={handleBulkForward}
-              className="flex h-10 w-10 items-center justify-center rounded-full text-[#54656f] transition hover:bg-black/5 disabled:opacity-30"
+              className="flex h-10 w-10 items-center justify-center rounded-full text-[var(--wa-text-secondary)] transition hover:bg-black/5 disabled:opacity-30"
               aria-label="העברה"
               title="העברה"
             >
@@ -629,7 +626,7 @@ export function ConversationView({
                   handleBulkDeleteForMe()
                 }
               }}
-              className="flex h-10 w-10 items-center justify-center rounded-full text-[#54656f] transition hover:bg-black/5 disabled:opacity-30"
+              className="flex h-10 w-10 items-center justify-center rounded-full text-[var(--wa-text-secondary)] transition hover:bg-black/5 disabled:opacity-30"
               aria-label="מחיקה"
               title="מחיקה"
             >
@@ -638,23 +635,23 @@ export function ConversationView({
           </>
         ) : (
           <>
-        <button onClick={onBack} className="text-[#54656f] md:hidden" aria-label="חזרה">
+        <button onClick={onBack} className="text-[var(--wa-text-secondary)] md:hidden" aria-label="חזרה">
           <ArrowRight className="h-6 w-6" />
         </button>
         <button onClick={onOpenInfo} className="flex min-w-0 flex-1 items-center gap-3 text-right">
           <Avatar name={name} url={avatar} isGroup={conversation.is_group} isSelf={isSelf} size={40} />
           <div className="min-w-0">
-            <div className="truncate font-medium text-[#111b21]">{name}</div>
+            <div className="truncate font-medium text-[var(--wa-text)]">{name}</div>
             <div
               className={`truncate text-xs ${
-                typingNames.length || online ? "text-[#00a884]" : "text-[#667781]"
+                typingNames.length || online ? "text-[#00a884]" : "text-[var(--wa-text-secondary)]"
               }`}
             >
               {subtitle}
             </div>
           </div>
         </button>
-        <div className="relative flex items-center gap-0.5 text-[#54656f]">
+        <div className="relative flex items-center gap-0.5 text-[var(--wa-text-secondary)]">
           {!isSelf && !conversation.is_group && (
             <>
               <button
@@ -690,14 +687,14 @@ export function ConversationView({
           {menuOpen && (
             <>
               <button type="button" className="fixed inset-0 z-20" aria-label="סגור" onClick={() => setMenuOpen(false)} />
-              <div className="absolute left-0 top-11 z-30 w-52 overflow-hidden rounded-md bg-white py-2 shadow-lg ring-1 ring-black/5">
+              <div className="absolute left-0 top-11 z-30 w-52 overflow-hidden rounded-md bg-[var(--wa-panel)] py-2 shadow-lg ring-1 ring-black/5">
                 <button
                   type="button"
                   onClick={() => {
                     setMenuOpen(false)
                     onOpenInfo()
                   }}
-                  className="block w-full px-5 py-2.5 text-right text-sm text-[#3b4a54] hover:bg-[#f5f6f6]"
+                  className="block w-full px-5 py-2.5 text-right text-sm text-[var(--wa-text)] hover:bg-[var(--wa-hover)]"
                 >
                   {isSelf ? "פרטי השיחה" : conversation.is_group ? "פרטי קבוצה" : "פרטי איש קשר"}
                 </button>
@@ -708,7 +705,7 @@ export function ConversationView({
                       setMenuOpen(false)
                       onTogglePinned()
                     }}
-                    className="block w-full px-5 py-2.5 text-right text-sm text-[#3b4a54] hover:bg-[#f5f6f6]"
+                    className="block w-full px-5 py-2.5 text-right text-sm text-[var(--wa-text)] hover:bg-[var(--wa-hover)]"
                   >
                     {isPinned ? "בטל נעיצה" : "נעץ צ'אט"}
                   </button>
@@ -719,7 +716,7 @@ export function ConversationView({
                     setMenuOpen(false)
                     onPrefsChange(toggleMuted(prefs, conversation.id))
                   }}
-                  className="block w-full px-5 py-2.5 text-right text-sm text-[#3b4a54] hover:bg-[#f5f6f6]"
+                  className="block w-full px-5 py-2.5 text-right text-sm text-[var(--wa-text)] hover:bg-[var(--wa-hover)]"
                 >
                   {prefs.muted.includes(conversation.id) ? "ביטול השתקה" : "השתקת התראות"}
                 </button>
@@ -729,7 +726,7 @@ export function ConversationView({
                     setMenuOpen(false)
                     onToggleFavorite()
                   }}
-                  className="block w-full px-5 py-2.5 text-right text-sm text-[#3b4a54] hover:bg-[#f5f6f6]"
+                  className="block w-full px-5 py-2.5 text-right text-sm text-[var(--wa-text)] hover:bg-[var(--wa-hover)]"
                 >
                   {isFavorite ? "הסר ממועדפים" : "הוסף למועדפים"}
                 </button>
@@ -739,7 +736,7 @@ export function ConversationView({
                     setMenuOpen(false)
                     onToggleArchive()
                   }}
-                  className="block w-full px-5 py-2.5 text-right text-sm text-[#3b4a54] hover:bg-[#f5f6f6]"
+                  className="block w-full px-5 py-2.5 text-right text-sm text-[var(--wa-text)] hover:bg-[var(--wa-hover)]"
                 >
                   {isArchived ? "הוצא מארכיון" : "העבר לארכיון"}
                 </button>
@@ -752,17 +749,17 @@ export function ConversationView({
       </header>
 
       {searchOpen && (
-        <div className="flex items-center gap-2 border-b border-[#e9edef] bg-white px-4 py-2">
-          <Search className="h-4 w-4 shrink-0 text-[#54656f]" />
+        <div className="flex items-center gap-2 border-b border-[var(--wa-border)] bg-[var(--wa-panel)] px-4 py-2">
+          <Search className="h-4 w-4 shrink-0 text-[var(--wa-text-secondary)]" />
           <input
             autoFocus
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="חיפוש בהודעות"
-            className="flex-1 bg-transparent py-1.5 text-sm text-[#111b21] outline-none placeholder:text-[#667781]"
+            className="flex-1 bg-transparent py-1.5 text-sm text-[var(--wa-text)] outline-none placeholder:text-[var(--wa-text-secondary)]"
           />
           {searchQuery.trim() && (
-            <span className="shrink-0 text-xs text-[#667781]" dir="ltr">
+            <span className="shrink-0 text-xs text-[var(--wa-text-secondary)]" dir="ltr">
               {searchMatches.length ? `${Math.min(searchHit + 1, searchMatches.length)}/${searchMatches.length}` : "0"}
             </span>
           )}
@@ -770,7 +767,7 @@ export function ConversationView({
             type="button"
             disabled={!searchMatches.length}
             onClick={() => setSearchHit((h) => (h - 1 + searchMatches.length) % searchMatches.length)}
-            className="text-[#54656f] disabled:opacity-30"
+            className="text-[var(--wa-text-secondary)] disabled:opacity-30"
             aria-label="הקודם"
           >
             <ChevronUp className="h-5 w-5" />
@@ -779,7 +776,7 @@ export function ConversationView({
             type="button"
             disabled={!searchMatches.length}
             onClick={() => setSearchHit((h) => (h + 1) % searchMatches.length)}
-            className="text-[#54656f] disabled:opacity-30"
+            className="text-[var(--wa-text-secondary)] disabled:opacity-30"
             aria-label="הבא"
           >
             <ChevronDown className="h-5 w-5" />
@@ -790,7 +787,7 @@ export function ConversationView({
               setSearchOpen(false)
             }}
             aria-label="סגור חיפוש"
-            className="text-[#54656f]"
+            className="text-[var(--wa-text-secondary)]"
           >
             <X className="h-5 w-5" />
           </button>
@@ -805,7 +802,7 @@ export function ConversationView({
             if (!id) return
             document.querySelector(`[data-message-id="${id}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" })
           }}
-          className="flex items-center gap-2 border-b border-[#e9edef] bg-[#f0f2f5] px-4 py-2 text-right text-sm text-[#54656f]"
+          className="flex items-center gap-2 border-b border-[var(--wa-border)] bg-[var(--wa-header)] px-4 py-2 text-right text-sm text-[var(--wa-text-secondary)]"
         >
           <span className="truncate">
             מוצמד: {messagePreview(pinnedInChat[pinnedInChat.length - 1])}
@@ -815,21 +812,21 @@ export function ConversationView({
 
       <div ref={scrollRef} className="wa-chat-bg wa-scroll flex-1 overflow-y-auto px-[5%] py-4">
         <div className="mx-auto flex max-w-3xl flex-col">
-          <div className="mx-auto mb-4 flex items-center gap-1.5 rounded-lg bg-[#fdf4c5] px-3 py-1.5 text-center text-xs text-[#54656f] shadow-sm">
+          <div className="mx-auto mb-4 flex items-center gap-1.5 rounded-lg bg-[#fdf4c5] px-3 py-1.5 text-center text-xs text-[var(--wa-text-secondary)] shadow-sm">
             <Lock className="h-3 w-3" />
             הודעות פרטיות — רק משתתפי השיחה יכולים לקרוא אותן
           </div>
 
           {loading ? (
-            <div className="py-8 text-center text-sm text-[#667781]">טוען הודעות...</div>
+            <div className="py-8 text-center text-sm text-[var(--wa-text-secondary)]">טוען הודעות...</div>
           ) : visibleMessages.length === 0 ? (
-            <div className="py-8 text-center text-sm text-[#667781]">אין הודעות עדיין. שלח את ההודעה הראשונה!</div>
+            <div className="py-8 text-center text-sm text-[var(--wa-text-secondary)]">אין הודעות עדיין. שלח את ההודעה הראשונה!</div>
           ) : (
             grouped.map(({ message, showDivider, showSenderName }) => (
               <div key={message.id} data-message-id={message.id}>
                 {showDivider && (
                   <div className="my-3 flex justify-center">
-                    <span className="rounded-lg bg-white/90 px-3 py-1 text-xs text-[#54656f] shadow-sm">
+                    <span className="rounded-lg bg-white/90 px-3 py-1 text-xs text-[var(--wa-text-secondary)] shadow-sm">
                       {formatDateDivider(message.created_at)}
                     </span>
                   </div>
@@ -837,7 +834,7 @@ export function ConversationView({
                 {unreadAnchorId === message.id && unreadCountAtOpen > 0 && (
                   <div className="my-3 flex items-center gap-3">
                     <div className="h-px flex-1 bg-[#e9edef]" />
-                    <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-[#00a884] shadow-sm">
+                    <span className="rounded-full bg-[var(--wa-panel)] px-3 py-1 text-xs font-medium text-[#00a884] shadow-sm">
                       {unreadCountAtOpen} הודעות שלא נקראו
                     </span>
                     <div className="h-px flex-1 bg-[#e9edef]" />

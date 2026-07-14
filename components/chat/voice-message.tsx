@@ -108,7 +108,7 @@ export function VoiceMessage({
       <button
         type="button"
         onClick={toggle}
-        className="flex h-8 w-8 shrink-0 items-center justify-center text-[#54656f] transition hover:text-[#111b21]"
+        className="flex h-8 w-8 shrink-0 items-center justify-center text-[var(--wa-text-secondary)] transition hover:text-[var(--wa-text)]"
         aria-label={playing ? "השהה" : "נגן"}
       >
         {playing ? <Pause className="h-5 w-5 fill-current" /> : <Play className="h-5 w-5 fill-current" />}
@@ -149,7 +149,7 @@ export function VoiceMessage({
             style={{ left: `${Math.max(2, Math.min(98, progress * 100))}%` }}
           />
         </div>
-        <div className="mt-0.5 flex items-center justify-between text-[11px] text-[#667781]">
+        <div className="mt-0.5 flex items-center justify-between text-[11px] text-[var(--wa-text-secondary)]">
           <span dir="ltr">{formatCallDuration(Math.round(displayTime || 0))}</span>
           <span className="flex items-center gap-1" dir="ltr">
             {timeLabel}

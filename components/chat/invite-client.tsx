@@ -43,12 +43,12 @@ export function InviteClient({ token }: Props) {
   }, [token, router])
 
   return (
-    <main className="flex min-h-svh items-center justify-center bg-[#f0f2f5] px-4" dir="rtl">
-      <div className="w-full max-w-md rounded-2xl bg-white p-8 text-center shadow-sm">
+    <main className="flex min-h-svh items-center justify-center bg-[var(--wa-header)] px-4" dir="rtl">
+      <div className="w-full max-w-md rounded-2xl bg-[var(--wa-panel)] p-8 text-center shadow-sm">
         <div className="flex justify-center">
           <Logo size={10} withWordmark wordmarkClassName="text-2xl" />
         </div>
-        <p className={`mt-4 text-sm ${status === "error" ? "text-[#ea0038]" : "text-[#54656f]"}`}>{message}</p>
+        <p className={`mt-4 text-sm ${status === "error" ? "text-[#ea0038]" : "text-[var(--wa-text-secondary)]"}`}>{message}</p>
         {status === "error" && (
           <button
             type="button"

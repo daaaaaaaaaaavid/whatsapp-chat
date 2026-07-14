@@ -25,9 +25,9 @@ export class ConversationInfoBoundary extends Component<Props, State> {
   render() {
     if (this.state.error) {
       return (
-        <aside className="flex h-full w-full max-w-md flex-col items-center justify-center gap-3 border-r border-[#e9edef] bg-white px-6 text-center lg:w-[360px]">
-          <p className="text-[#111b21]">לא ניתן להציג את פרטי השיחה</p>
-          <p className="text-sm text-[#667781]">{this.state.error.message || "שגיאה לא צפויה"}</p>
+        <aside className="flex h-full w-full max-w-md flex-col items-center justify-center gap-3 border-r border-[var(--wa-border)] bg-[var(--wa-panel)] px-6 text-center lg:w-[360px]">
+          <p className="text-[var(--wa-text)]">לא ניתן להציג את פרטי השיחה</p>
+          <p className="text-sm text-[var(--wa-text-secondary)]">{this.state.error.message || "שגיאה לא צפויה"}</p>
           <button
             type="button"
             className="rounded-lg bg-[#00a884] px-4 py-2 text-sm text-white"
@@ -60,9 +60,9 @@ export class ChatPaneBoundary extends Component<Props, State> {
   render() {
     if (this.state.error) {
       return (
-        <div className="flex h-full min-w-0 flex-1 flex-col items-center justify-center gap-3 bg-[#f0f2f5] px-6 text-center">
-          <p className="text-[#111b21]">{this.props.fallbackTitle ?? "משהו השתבש בצ׳אט"}</p>
-          <p className="max-w-md text-sm text-[#667781]">{this.state.error.message || "שגיאה לא צפויה"}</p>
+        <div className="flex h-full min-w-0 flex-1 flex-col items-center justify-center gap-3 bg-[var(--wa-header)] px-6 text-center">
+          <p className="text-[var(--wa-text)]">{this.props.fallbackTitle ?? "משהו השתבש בצ׳אט"}</p>
+          <p className="max-w-md text-sm text-[var(--wa-text-secondary)]">{this.state.error.message || "שגיאה לא צפויה"}</p>
           <button
             type="button"
             className="rounded-lg bg-[#00a884] px-4 py-2 text-sm text-white"

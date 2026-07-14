@@ -756,18 +756,18 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
       )}
 
       {replyTo && !isEditing && !threadMode && (
-        <div className="flex items-stretch gap-2 border-b border-[#e9edef] bg-[#f0f2f5] px-4 pt-2" dir="rtl">
-          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border-r-4 border-[#00a884] bg-white px-3 py-2">
+        <div className="flex items-stretch gap-2 border-b border-[var(--wa-border)] bg-[var(--wa-header)] px-4 pt-2" dir="rtl">
+          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border-r-4 border-[#00a884] bg-[var(--wa-panel)] px-3 py-2">
             <Reply className="h-4 w-4 shrink-0 text-[#00a884]" />
             <div className="min-w-0 flex-1">
               <div className="text-xs font-medium text-[#00a884]">{replyAuthor ?? "משתמש"}</div>
-              <div className="truncate text-sm text-[#667781]">{replyPreview(replyTo)}</div>
+              <div className="truncate text-sm text-[var(--wa-text-secondary)]">{replyPreview(replyTo)}</div>
             </div>
           </div>
           <button
             type="button"
             onClick={onCancelReply}
-            className="flex h-10 w-10 shrink-0 items-center justify-center self-center rounded-full text-[#54656f] transition hover:bg-black/5"
+            className="flex h-10 w-10 shrink-0 items-center justify-center self-center rounded-full text-[var(--wa-text-secondary)] transition hover:bg-black/5"
             aria-label="ביטול תגובה"
           >
             <X className="h-5 w-5" />
@@ -776,7 +776,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
       )}
 
       {replyTo && !isEditing && threadMode && (
-        <div className="border-b border-[#e9edef] bg-[#f0f2f5] px-4 pt-2" dir="rtl">
+        <div className="border-b border-[var(--wa-border)] bg-[var(--wa-header)] px-4 pt-2" dir="rtl">
           <div className="mb-1 flex items-center gap-2 text-xs font-medium text-[#00a884]">
             <Reply className="h-3.5 w-3.5 shrink-0" />
             תגובה בשרשור
@@ -785,12 +785,12 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
       )}
 
       {isEditing && editingMessage && (
-        <div className="flex items-stretch gap-2 border-b border-[#e9edef] bg-[#f0f2f5] px-4 pt-2" dir="rtl">
-          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border-r-4 border-[#53bdeb] bg-white px-3 py-2">
+        <div className="flex items-stretch gap-2 border-b border-[var(--wa-border)] bg-[var(--wa-header)] px-4 pt-2" dir="rtl">
+          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border-r-4 border-[#53bdeb] bg-[var(--wa-panel)] px-3 py-2">
             <Pencil className="h-4 w-4 shrink-0 text-[#53bdeb]" />
             <div className="min-w-0 flex-1">
               <div className="text-xs font-medium text-[#53bdeb]">עריכת הודעה</div>
-              <div className="truncate text-sm text-[#667781]">
+              <div className="truncate text-sm text-[var(--wa-text-secondary)]">
                 {editingMessage.reply_to_id
                   ? (editingMessage.content ?? "")
                   : (parseReplyContent(editingMessage.content)?.body ?? editingMessage.content ?? "")}
@@ -803,7 +803,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
               setText("")
               onCancelEdit?.()
             }}
-            className="flex h-10 w-10 shrink-0 items-center justify-center self-center rounded-full text-[#54656f] transition hover:bg-black/5"
+            className="flex h-10 w-10 shrink-0 items-center justify-center self-center rounded-full text-[var(--wa-text-secondary)] transition hover:bg-black/5"
             aria-label="ביטול עריכה"
           >
             <X className="h-5 w-5" />
@@ -834,20 +834,20 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
             onClick={stopRecording}
             className="flex items-center gap-2 rounded-full bg-[#ea0038] px-4 py-1.5 text-sm text-white shadow"
           >
-            <span className="h-2 w-2 animate-pulse rounded-full bg-white" />
+            <span className="h-2 w-2 animate-pulse rounded-full bg-[var(--wa-panel)]" />
             מקליט... לחץ לעצירה ושליחה
           </button>
         </div>
       )}
 
       {showEmoji && (
-        <div className="absolute bottom-16 right-4 z-20 grid grid-cols-8 gap-1 rounded-lg bg-white p-3 shadow-lg ring-1 ring-black/5">
+        <div className="absolute bottom-16 right-4 z-20 grid grid-cols-8 gap-1 rounded-lg bg-[var(--wa-panel)] p-3 shadow-lg ring-1 ring-black/5">
           {EMOJIS.map((emoji) => (
             <button
               key={emoji}
               type="button"
               onClick={() => setText((t) => t + emoji)}
-              className="rounded p-1 text-xl transition hover:bg-[#f0f2f5]"
+              className="rounded p-1 text-xl transition hover:bg-[var(--wa-header)]"
             >
               {emoji}
             </button>
@@ -856,11 +856,11 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
       )}
 
       {showAttach && (
-        <div className="absolute bottom-16 right-14 z-20 flex flex-col gap-2 rounded-lg bg-white p-2 shadow-lg ring-1 ring-black/5">
+        <div className="absolute bottom-16 right-14 z-20 flex flex-col gap-2 rounded-lg bg-[var(--wa-panel)] p-2 shadow-lg ring-1 ring-black/5">
           <button
             type="button"
             onClick={() => imageInputRef.current?.click()}
-            className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-[#3b4a54] transition hover:bg-[#f0f2f5]"
+            className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-[var(--wa-text)] transition hover:bg-[var(--wa-header)]"
           >
             <ImageIcon className="h-5 w-5 text-[#007bfc]" />
             תמונות וסרטונים
@@ -868,7 +868,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-[#3b4a54] transition hover:bg-[#f0f2f5]"
+            className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-[var(--wa-text)] transition hover:bg-[var(--wa-header)]"
           >
             <FileText className="h-5 w-5 text-[#7f66ff]" />
             מסמך
@@ -909,7 +909,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
         }}
       />
 
-      <form onSubmit={handleSendText} className="flex items-end gap-2 bg-[#f0f2f5] px-4 py-2.5">
+      <form onSubmit={handleSendText} className="flex items-end gap-2 bg-[var(--wa-header)] px-4 py-2.5">
         {!isEditing && (
           <>
             <button
@@ -918,7 +918,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
                 setShowEmoji((v) => !v)
                 setShowAttach(false)
               }}
-              className="mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#54656f] transition hover:bg-black/5"
+              className="mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[var(--wa-text-secondary)] transition hover:bg-black/5"
               aria-label="אמוג'י"
             >
               <Smile className="h-6 w-6" />
@@ -929,7 +929,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
                 setShowAttach((v) => !v)
                 setShowEmoji(false)
               }}
-              className="mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#54656f] transition hover:bg-black/5"
+              className="mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[var(--wa-text-secondary)] transition hover:bg-black/5"
               aria-label="צירוף קובץ"
             >
               {showAttach ? <X className="h-6 w-6" /> : <Plus className="h-6 w-6" />}
@@ -943,7 +943,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
               setShowEmoji((v) => !v)
               setShowAttach(false)
             }}
-            className="mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#54656f] transition hover:bg-black/5"
+            className="mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[var(--wa-text-secondary)] transition hover:bg-black/5"
             aria-label="אמוג'י"
           >
             <Smile className="h-6 w-6" />
@@ -970,7 +970,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
             // Shift+Enter: allow default newline behavior
           }}
           placeholder={isEditing ? "ערוך הודעה" : "הקלדת הודעה"}
-          className="max-h-[120px] min-h-[42px] flex-1 resize-none overflow-y-auto rounded-lg bg-white px-4 py-2.5 text-[15px] leading-[22px] text-[#111b21] outline-none placeholder:text-[#667781]"
+          className="max-h-[120px] min-h-[42px] flex-1 resize-none overflow-y-auto rounded-lg bg-[var(--wa-panel)] px-4 py-2.5 text-[15px] leading-[22px] text-[var(--wa-text)] outline-none placeholder:text-[var(--wa-text-secondary)]"
         />
 
         {hasText || isEditing ? (
@@ -980,7 +980,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
             className={`mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition disabled:opacity-40 ${
               isEditing
                 ? "bg-[#00a884] text-white hover:bg-[#06cf9c]"
-                : "text-[#54656f] hover:bg-black/5"
+                : "text-[var(--wa-text-secondary)] hover:bg-black/5"
             }`}
             aria-label={isEditing ? "שמור עריכה" : "שלח"}
           >
@@ -995,7 +995,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
             type="button"
             onClick={() => (recording ? stopRecording() : startRecording())}
             className={`mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition hover:bg-black/5 ${
-              recording ? "text-[#ea0038]" : "text-[#54656f]"
+              recording ? "text-[#ea0038]" : "text-[var(--wa-text-secondary)]"
             }`}
             aria-label={recording ? "עצור הקלטה" : "הודעה קולית"}
           >

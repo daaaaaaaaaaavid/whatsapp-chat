@@ -77,6 +77,27 @@ export function NewChatDialog({
     setLoading(false)
   }
 
+  const handleSyncGoogle = async () => {
+    if (syncing) return
+    setSyncing(true)
+    setGoogleError(null)
+    setActionError(null)
+    try {
+      const result = await syncGoogleContactsOrConnect()
+      if (result === "redirecting") return
+      setGoogleMatched(result.matched)
+      setGoogleUnmatched(result.unmatched)
+      setHasSyncedGoogle(true)
+      const contactsRes = await fetchContacts(currentUserId)
+      setUsers(contactsRes.users)
+      if (contactsRes.error) setError(contactsRes.error)
+    } catch (err) {
+      setGoogleError(err instanceof Error ? err.message : "נכשל בסנכרון מגוגל")
+    } finally {
+      setSyncing(false)
+    }
+  }
+
   useEffect(() => {
     if (!open) return
     setQuery("")
@@ -216,28 +237,6 @@ export function NewChatDialog({
     }
   }
 
-  const handleSyncGoogle = async () => {
-    if (syncing) return
-    setSyncing(true)
-    setGoogleError(null)
-    setActionError(null)
-    try {
-      const result = await syncGoogleContactsOrConnect()
-      if (result === "redirecting") return
-      setGoogleMatched(result.matched)
-      setGoogleUnmatched(result.unmatched)
-      setHasSyncedGoogle(true)
-      // Refresh contacts so newly matched Google profiles appear under אנשי קשר
-      const contactsRes = await fetchContacts(currentUserId)
-      setUsers(contactsRes.users)
-      if (contactsRes.error) setError(contactsRes.error)
-    } catch (err) {
-      setGoogleError(err instanceof Error ? err.message : "נכשל בסנכרון מגוגל")
-    } finally {
-      setSyncing(false)
-    }
-  }
-
   const empty =
     !loading &&
     filteredKnown.length === 0 &&
@@ -248,8 +247,8 @@ export function NewChatDialog({
   return (
     <Modal open={open} onClose={onClose} title="צ'אט חדש">
       <div className="p-3">
-        <div className="flex items-center gap-3 rounded-lg bg-[#f0f2f5] px-4 py-2">
-          <Search className="h-4 w-4 text-[#54656f]" />
+        <div className="flex items-center gap-3 rounded-lg bg-[var(--wa-header)] px-4 py-2">
+          <Search className="h-4 w-4 text-[var(--wa-text-secondary)]" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -270,10 +269,10 @@ export function NewChatDialog({
             }}
             placeholder="הקלד שם או מייל — יציע מאנשי הקשר בגוגל"
             autoFocus
-            className="flex-1 bg-transparent text-sm outline-none placeholder:text-[#667781]"
+            className="flex-1 bg-transparent text-sm outline-none placeholder:text-[var(--wa-text-secondary)]"
           />
         </div>
-        <p className="mt-2 px-1 text-xs leading-relaxed text-[#667781]">
+        <p className="mt-2 px-1 text-xs leading-relaxed text-[var(--wa-text-secondary)]">
           {hasSyncedGoogle
             ? "בזמן ההקלדה מוצגות הצעות מאנשי הקשר שסנכרנת מגוגל."
             : "סנכרן פעם אחת מגוגל — ואז חיפוש לפי שם או מייל יציע אוטומטית."}
@@ -284,20 +283,20 @@ export function NewChatDialog({
         type="button"
         onClick={() => void handleSyncGoogle()}
         disabled={syncing}
-        className="flex w-full items-center gap-3 border-b border-[#e9edef] bg-[#f7fbff] px-5 py-3.5 text-right transition hover:bg-[#eef5ff] disabled:opacity-60"
+        className="flex w-full items-center gap-3 border-b border-[var(--wa-border)] bg-[var(--wa-header)] px-5 py-3.5 text-right transition hover:bg-[var(--wa-hover)] disabled:opacity-60"
       >
-        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-[#1a73e8] shadow-sm">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--wa-panel)] text-[#1a73e8] shadow-sm">
           <RefreshCw className={`h-6 w-6 ${syncing ? "animate-spin" : ""}`} />
         </div>
         <div className="min-w-0 flex-1 text-right">
-          <div className="font-medium text-[#111b21]">
+          <div className="font-medium text-[var(--wa-text)]">
             {syncing
               ? "מסנכרן מגוגל..."
               : hasSyncedGoogle
                 ? "סנכרן שוב מגוגל"
                 : "סנכרן אנשי קשר מגוגל"}
           </div>
-          <div className="text-sm text-[#667781]">
+          <div className="text-sm text-[var(--wa-text-secondary)]">
             {hasSyncedGoogle
               ? `${googleMatched.length + googleUnmatched.length} אנשי קשר נשמרו · לחץ לעדכון`
               : "חובה לסנכרן פעם אחת כדי לקבל הצעות אוטומטיות"}
@@ -308,12 +307,12 @@ export function NewChatDialog({
       <button
         type="button"
         onClick={onNewGroup}
-        className="flex w-full items-center gap-3 px-5 py-3 text-right transition hover:bg-[#f5f6f6]"
+        className="flex w-full items-center gap-3 px-5 py-3 text-right transition hover:bg-[var(--wa-hover)]"
       >
         <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#00a884] text-white">
           <Users className="h-6 w-6" />
         </div>
-        <span className="font-medium text-[#111b21]">קבוצה חדשה</span>
+        <span className="font-medium text-[var(--wa-text)]">קבוצה חדשה</span>
       </button>
 
       {showEmailStart && (
@@ -321,14 +320,14 @@ export function NewChatDialog({
           type="button"
           onClick={() => void handleStartByEmail()}
           disabled={busy}
-          className="flex w-full items-center gap-3 px-5 py-3 text-right transition hover:bg-[#f5f6f6] disabled:opacity-60"
+          className="flex w-full items-center gap-3 px-5 py-3 text-right transition hover:bg-[var(--wa-hover)] disabled:opacity-60"
         >
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#e7fce3] text-[#008069]">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--wa-accent-soft)] text-[#008069]">
             <Mail className="h-6 w-6" />
           </div>
           <div className="min-w-0 flex-1 text-right">
-            <div className="font-medium text-[#111b21]">התחל שיחה עם מייל</div>
-            <div className="truncate text-sm text-[#667781]">{q}</div>
+            <div className="font-medium text-[var(--wa-text)]">התחל שיחה עם מייל</div>
+            <div className="truncate text-sm text-[var(--wa-text-secondary)]">{q}</div>
           </div>
         </button>
       )}
@@ -354,7 +353,7 @@ export function NewChatDialog({
       )}
 
       {loading ? (
-        <div className="p-6 text-center text-sm text-[#667781]">טוען אנשי קשר...</div>
+        <div className="p-6 text-center text-sm text-[var(--wa-text-secondary)]">טוען אנשי קשר...</div>
       ) : (
         <>
           {/* WhaChat contacts first */}
@@ -370,12 +369,12 @@ export function NewChatDialog({
               type="button"
               onClick={() => void handleSelect(u.id)}
               disabled={busy}
-              className="flex w-full items-center gap-3 px-5 py-2.5 text-right transition hover:bg-[#f5f6f6] disabled:opacity-60"
+              className="flex w-full items-center gap-3 px-5 py-2.5 text-right transition hover:bg-[var(--wa-hover)] disabled:opacity-60"
             >
               <Avatar name={u.display_name} url={u.avatar_url} size={48} />
-              <div className="min-w-0 flex-1 border-b border-[#e9edef] pb-2.5">
-                <div className="truncate text-[#111b21]">{u.display_name ?? u.email}</div>
-                <div className="truncate text-sm text-[#667781]">{u.about ?? u.email ?? "זמין"}</div>
+              <div className="min-w-0 flex-1 border-b border-[var(--wa-border)] pb-2.5">
+                <div className="truncate text-[var(--wa-text)]">{u.display_name ?? u.email}</div>
+                <div className="truncate text-sm text-[var(--wa-text-secondary)]">{u.about ?? u.email ?? "זמין"}</div>
               </div>
             </button>
           ))}
@@ -387,12 +386,12 @@ export function NewChatDialog({
                 type="button"
                 onClick={() => void handleSelect(u.id)}
                 disabled={busy}
-                className="flex w-full items-center gap-3 px-5 py-2.5 text-right transition hover:bg-[#f5f6f6] disabled:opacity-60"
+                className="flex w-full items-center gap-3 px-5 py-2.5 text-right transition hover:bg-[var(--wa-hover)] disabled:opacity-60"
               >
                 <Avatar name={u.display_name} url={u.avatar_url} size={48} />
-                <div className="min-w-0 flex-1 border-b border-[#e9edef] pb-2.5">
-                  <div className="truncate text-[#111b21]">{u.display_name ?? u.email}</div>
-                  <div className="truncate text-sm text-[#667781]">
+                <div className="min-w-0 flex-1 border-b border-[var(--wa-border)] pb-2.5">
+                  <div className="truncate text-[var(--wa-text)]">{u.display_name ?? u.email}</div>
+                  <div className="truncate text-sm text-[var(--wa-text-secondary)]">
                     {u.email ? `${u.email} · ב-WhaChat` : "ב-WhaChat"}
                   </div>
                 </div>
@@ -409,18 +408,18 @@ export function NewChatDialog({
                     type="button"
                     onClick={() => void handleSelect(s.profile.id)}
                     disabled={busy}
-                    className="flex w-full items-center gap-3 px-5 py-2.5 text-right transition hover:bg-[#f5f6f6] disabled:opacity-60"
+                    className="flex w-full items-center gap-3 px-5 py-2.5 text-right transition hover:bg-[var(--wa-hover)] disabled:opacity-60"
                   >
                     <Avatar
                       name={s.profile.display_name}
                       url={s.profile.avatar_url}
                       size={48}
                     />
-                    <div className="min-w-0 flex-1 border-b border-[#e9edef] pb-2.5">
-                      <div className="truncate text-[#111b21]">
+                    <div className="min-w-0 flex-1 border-b border-[var(--wa-border)] pb-2.5">
+                      <div className="truncate text-[var(--wa-text)]">
                         {s.profile.display_name ?? s.profile.email}
                       </div>
-                      <div className="truncate text-sm text-[#667781]">
+                      <div className="truncate text-sm text-[var(--wa-text-secondary)]">
                         {s.profile.email ?? "ב-WhaChat"} · ב-WhaChat
                       </div>
                     </div>
@@ -433,18 +432,18 @@ export function NewChatDialog({
                       if (s.contact.email) void handleStartByEmail(s.contact.email)
                     }}
                     disabled={busy || !s.contact.email}
-                    className="flex w-full items-center gap-3 px-5 py-2.5 text-right transition hover:bg-[#f5f6f6] disabled:opacity-60"
+                    className="flex w-full items-center gap-3 px-5 py-2.5 text-right transition hover:bg-[var(--wa-hover)] disabled:opacity-60"
                   >
                     <Avatar
                       name={s.contact.display_name ?? s.contact.email}
                       url={s.contact.photo_url}
                       size={48}
                     />
-                    <div className="min-w-0 flex-1 border-b border-[#e9edef] pb-2.5">
-                      <div className="truncate text-[#111b21]">
+                    <div className="min-w-0 flex-1 border-b border-[var(--wa-border)] pb-2.5">
+                      <div className="truncate text-[var(--wa-text)]">
                         {s.contact.display_name ?? s.contact.email}
                       </div>
-                      <div className="truncate text-sm text-[#667781]">
+                      <div className="truncate text-sm text-[var(--wa-text-secondary)]">
                         {s.contact.email
                           ? `${s.contact.email} · לא ב-WhaChat`
                           : "לא ב-WhaChat"}
@@ -458,7 +457,7 @@ export function NewChatDialog({
 
           {!isSearching && browseGoogleUnmatched.length > 0 && (
             <>
-              <div className="px-5 py-2 text-xs font-medium text-[#667781]">לא ב-WhaChat</div>
+              <div className="px-5 py-2 text-xs font-medium text-[var(--wa-text-secondary)]">לא ב-WhaChat</div>
               {browseGoogleUnmatched.map((c) => (
                 <button
                   key={c.id}
@@ -467,12 +466,12 @@ export function NewChatDialog({
                     if (c.email) void handleStartByEmail(c.email)
                   }}
                   disabled={busy || !c.email}
-                  className="flex w-full items-center gap-3 px-5 py-2.5 text-right opacity-80 transition hover:bg-[#f5f6f6] disabled:opacity-50"
+                  className="flex w-full items-center gap-3 px-5 py-2.5 text-right opacity-80 transition hover:bg-[var(--wa-hover)] disabled:opacity-50"
                 >
                   <Avatar name={c.display_name ?? c.email} url={c.photo_url} size={48} />
-                  <div className="min-w-0 flex-1 border-b border-[#e9edef] pb-2.5">
-                    <div className="truncate text-[#111b21]">{c.display_name ?? c.email}</div>
-                    <div className="truncate text-sm text-[#667781]">
+                  <div className="min-w-0 flex-1 border-b border-[var(--wa-border)] pb-2.5">
+                    <div className="truncate text-[var(--wa-text)]">{c.display_name ?? c.email}</div>
+                    <div className="truncate text-sm text-[var(--wa-text-secondary)]">
                       {c.email ? `${c.email} · לא ב-WhaChat` : "לא ב-WhaChat"}
                     </div>
                   </div>
@@ -482,7 +481,7 @@ export function NewChatDialog({
           )}
 
           {empty && (
-            <div className="space-y-2 p-6 text-center text-sm text-[#667781]">
+            <div className="space-y-2 p-6 text-center text-sm text-[var(--wa-text-secondary)]">
               <p>
                 {isSearching
                   ? showEmailStart

@@ -138,15 +138,15 @@ export function CallsPanel({ conversations, currentUser, onCall }: Props) {
   }, [privateConvs, convById, currentUser.id])
 
   return (
-    <div className="flex h-full flex-col bg-white">
+    <div className="flex h-full flex-col bg-[var(--wa-panel)]">
       <header className="flex h-16 items-center px-4">
         <h1 className="text-xl font-medium text-[#00a884]">שיחות</h1>
       </header>
       <div className="wa-scroll flex-1 overflow-y-auto">
         {loading ? (
-          <div className="p-8 text-center text-sm text-[#667781]">טוען שיחות...</div>
+          <div className="p-8 text-center text-sm text-[var(--wa-text-secondary)]">טוען שיחות...</div>
         ) : history.length === 0 ? (
-          <div className="p-8 text-center text-sm text-[#667781]">
+          <div className="p-8 text-center text-sm text-[var(--wa-text-secondary)]">
             אין היסטוריית שיחות עדיין. התחל שיחה מצ&apos;אט פרטי.
           </div>
         ) : (
@@ -156,7 +156,7 @@ export function CallsPanel({ conversations, currentUser, onCall }: Props) {
             return (
               <div
                 key={id}
-                className="flex w-full items-center gap-3 px-3 py-3 transition hover:bg-[#f5f6f6]"
+                className="flex w-full items-center gap-3 px-3 py-3 transition hover:bg-[var(--wa-hover)]"
               >
                 <Avatar
                   name={name}
@@ -164,15 +164,15 @@ export function CallsPanel({ conversations, currentUser, onCall }: Props) {
                   isGroup={conv.is_group}
                   size={49}
                 />
-                <div className="flex min-w-0 flex-1 flex-col border-b border-[#e9edef] pb-3">
+                <div className="flex min-w-0 flex-1 flex-col border-b border-[var(--wa-border)] pb-3">
                   <div className="flex items-center justify-between gap-2">
-                    <span className={`truncate ${missed ? "text-[#ea0038]" : "text-[#111b21]"}`}>
+                    <span className={`truncate ${missed ? "text-[#ea0038]" : "text-[var(--wa-text)]"}`}>
                       {name}
                     </span>
-                    <span className="shrink-0 text-xs text-[#667781]">{formatChatListTime(at)}</span>
+                    <span className="shrink-0 text-xs text-[var(--wa-text-secondary)]">{formatChatListTime(at)}</span>
                   </div>
                   <div className="mt-0.5 flex items-center justify-between gap-2">
-                    <span className="flex items-center gap-1 text-sm text-[#667781]">
+                    <span className="flex items-center gap-1 text-sm text-[var(--wa-text-secondary)]">
                       <Icon className={`h-3.5 w-3.5 ${missed ? "text-[#ea0038]" : "text-[#25d366]"}`} />
                       {label}
                       {video ? " · וידאו" : ""}
@@ -181,7 +181,7 @@ export function CallsPanel({ conversations, currentUser, onCall }: Props) {
                       <button
                         type="button"
                         onClick={() => onCall(conv, false)}
-                        className="flex h-8 w-8 items-center justify-center rounded-full text-[#54656f] hover:bg-black/5"
+                        className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--wa-text-secondary)] hover:bg-black/5"
                         aria-label="התקשר"
                       >
                         <Phone className="h-4 w-4" />
@@ -189,7 +189,7 @@ export function CallsPanel({ conversations, currentUser, onCall }: Props) {
                       <button
                         type="button"
                         onClick={() => onCall(conv, true)}
-                        className="flex h-8 w-8 items-center justify-center rounded-full text-[#54656f] hover:bg-black/5"
+                        className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--wa-text-secondary)] hover:bg-black/5"
                         aria-label="שיחת וידאו"
                       >
                         <Video className="h-4 w-4" />

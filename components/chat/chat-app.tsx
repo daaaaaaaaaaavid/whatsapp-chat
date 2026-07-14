@@ -430,7 +430,7 @@ export function ChatApp({ currentUser: initialUser }: Props) {
   }
 
   return (
-    <div className="flex h-svh w-svw max-w-[100vw] overflow-hidden bg-white">
+    <div className="flex h-svh w-svw max-w-[100vw] overflow-hidden bg-[var(--wa-panel)]">
       <div className="flex h-full min-w-0 w-full flex-1 overflow-hidden">
         <NavRail
           active={navTab === "settings" ? "settings" : navTab === "status" ? "status" : navTab}
@@ -442,7 +442,7 @@ export function ChatApp({ currentUser: initialUser }: Props) {
 
         {/* Chat list pane */}
         <aside
-          className={`flex min-w-0 flex-col border-l border-[#e9edef] bg-white ${
+          className={`flex min-w-0 flex-col border-l border-[var(--wa-border)] bg-[var(--wa-panel)] ${
             showChatPane ? "hidden md:flex md:w-[min(30%,420px)] md:min-w-[340px] md:max-w-[420px]" : "flex w-full md:w-[min(30%,420px)] md:min-w-[340px] md:max-w-[420px]"
           }`}
         >

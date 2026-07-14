@@ -100,15 +100,15 @@ export default function SignUpPage() {
   }
 
   return (
-    <div className="flex min-h-svh w-full flex-col bg-[#f0f2f5]">
+    <div className="flex min-h-svh w-full flex-col bg-[var(--wa-header)]">
       <div className="h-32 w-full bg-[#00a884]" />
       <div className="mx-auto -mt-24 w-full max-w-md px-4 pb-10">
         <div className="mb-6 flex justify-center">
           <Logo size={8} withWordmark variant="white" wordmarkClassName="text-sm font-medium tracking-wide" />
         </div>
-        <div className="rounded-lg bg-white p-8 shadow-sm">
-          <h1 className="text-2xl font-normal text-[#111b21]">יצירת חשבון</h1>
-          <p className="mt-1 text-sm text-[#667781]">הצטרף כדי להתחיל לשלוח הודעות</p>
+        <div className="rounded-lg bg-[var(--wa-panel)] p-8 shadow-sm">
+          <h1 className="text-2xl font-normal text-[var(--wa-text)]">יצירת חשבון</h1>
+          <p className="mt-1 text-sm text-[var(--wa-text-secondary)]">הצטרף כדי להתחיל לשלוח הודעות</p>
 
           <div className="mt-6">
             <GoogleSignInButton
@@ -126,7 +126,7 @@ export default function SignUpPage() {
 
           <form onSubmit={handleSignUp} className="flex flex-col gap-4" noValidate>
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="name" className="text-sm font-medium text-[#3b4a54]">
+              <label htmlFor="name" className="text-sm font-medium text-[var(--wa-text)]">
                 שם תצוגה
               </label>
               <input
@@ -136,11 +136,11 @@ export default function SignUpPage() {
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 placeholder="השם שיראו אחרים"
-                className="rounded-md border border-[#d1d7db] bg-white px-3 py-2.5 text-[#111b21] outline-none transition focus:border-[#00a884] focus:ring-1 focus:ring-[#00a884]"
+                className="rounded-md border border-[#d1d7db] bg-[var(--wa-panel)] px-3 py-2.5 text-[var(--wa-text)] outline-none transition focus:border-[#00a884] focus:ring-1 focus:ring-[#00a884]"
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="email" className="text-sm font-medium text-[#3b4a54]">
+              <label htmlFor="email" className="text-sm font-medium text-[var(--wa-text)]">
                 כתובת אימייל
               </label>
               <input
@@ -151,11 +151,11 @@ export default function SignUpPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="name@example.com"
-                className="rounded-md border border-[#d1d7db] bg-white px-3 py-2.5 text-[#111b21] outline-none transition focus:border-[#00a884] focus:ring-1 focus:ring-[#00a884]"
+                className="rounded-md border border-[#d1d7db] bg-[var(--wa-panel)] px-3 py-2.5 text-[var(--wa-text)] outline-none transition focus:border-[#00a884] focus:ring-1 focus:ring-[#00a884]"
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="password" className="text-sm font-medium text-[#3b4a54]">
+              <label htmlFor="password" className="text-sm font-medium text-[var(--wa-text)]">
                 סיסמה (לפחות 6 תווים)
               </label>
               <input
@@ -166,11 +166,11 @@ export default function SignUpPage() {
                 dir="ltr"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="rounded-md border border-[#d1d7db] bg-white px-3 py-2.5 text-[#111b21] outline-none transition focus:border-[#00a884] focus:ring-1 focus:ring-[#00a884]"
+                className="rounded-md border border-[#d1d7db] bg-[var(--wa-panel)] px-3 py-2.5 text-[var(--wa-text)] outline-none transition focus:border-[#00a884] focus:ring-1 focus:ring-[#00a884]"
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="repeat-password" className="text-sm font-medium text-[#3b4a54]">
+              <label htmlFor="repeat-password" className="text-sm font-medium text-[var(--wa-text)]">
                 אימות סיסמה
               </label>
               <input
@@ -181,7 +181,7 @@ export default function SignUpPage() {
                 dir="ltr"
                 value={repeatPassword}
                 onChange={(e) => setRepeatPassword(e.target.value)}
-                className="rounded-md border border-[#d1d7db] bg-white px-3 py-2.5 text-[#111b21] outline-none transition focus:border-[#00a884] focus:ring-1 focus:ring-[#00a884]"
+                className="rounded-md border border-[#d1d7db] bg-[var(--wa-panel)] px-3 py-2.5 text-[var(--wa-text)] outline-none transition focus:border-[#00a884] focus:ring-1 focus:ring-[#00a884]"
               />
             </div>
 
@@ -203,7 +203,7 @@ export default function SignUpPage() {
             </button>
           </form>
 
-          <p className="mt-6 text-center text-sm text-[#667781]">
+          <p className="mt-6 text-center text-sm text-[var(--wa-text-secondary)]">
             כבר יש לך חשבון?{" "}
             <Link href="/auth/login" className="font-medium text-[#008069] hover:underline">
               התחברות
@@ -211,7 +211,7 @@ export default function SignUpPage() {
           </p>
         </div>
 
-        <p className="mt-6 flex items-center justify-center gap-1.5 text-xs text-[#667781]">
+        <p className="mt-6 flex items-center justify-center gap-1.5 text-xs text-[var(--wa-text-secondary)]">
           <Lock className="h-3 w-3" />
           ההודעות האישיות שלך מוצפנות מקצה לקצה
         </p>

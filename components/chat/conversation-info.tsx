@@ -139,7 +139,7 @@ export function ConversationInfo({
   }
 
   return (
-    <aside className="flex h-full min-h-0 w-full max-w-md shrink-0 flex-col border-r border-[#e9edef] bg-white lg:w-[360px]">
+    <aside className="flex h-full min-h-0 w-full max-w-md shrink-0 flex-col border-r border-[var(--wa-border)] bg-[var(--wa-panel)] lg:w-[360px]">
       <header className="flex h-16 shrink-0 items-center gap-4 bg-[#00a884] px-4 text-white">
         <button type="button" onClick={onClose} aria-label="סגור" className="rounded-full p-1 transition hover:bg-white/10">
           <X className="h-6 w-6" />
@@ -149,32 +149,32 @@ export function ConversationInfo({
         </h2>
       </header>
 
-      <div className="wa-scroll min-h-0 flex-1 overflow-y-auto bg-[#f0f2f5]">
-        <div className="flex flex-col items-center bg-white px-6 py-8 shadow-sm">
+      <div className="wa-scroll min-h-0 flex-1 overflow-y-auto bg-[var(--wa-header)]">
+        <div className="flex flex-col items-center bg-[var(--wa-panel)] px-6 py-8 shadow-sm">
           <Avatar name={name} url={avatar} isGroup={conversation.is_group} isSelf={isSelf} size={200} />
-          <h3 className="mt-4 text-2xl font-light text-[#111b21]">{name}</h3>
-          {isSelf && <p className="mt-1 text-sm text-[#667781]">הודעות שמורות בשבילך בלבד</p>}
+          <h3 className="mt-4 text-2xl font-light text-[var(--wa-text)]">{name}</h3>
+          {isSelf && <p className="mt-1 text-sm text-[var(--wa-text-secondary)]">הודעות שמורות בשבילך בלבד</p>}
           {!conversation.is_group && !isSelf && other?.email && (
-            <p className="mt-1 text-sm text-[#667781]" dir="ltr">
+            <p className="mt-1 text-sm text-[var(--wa-text-secondary)]" dir="ltr">
               {other.email}
             </p>
           )}
           {conversation.is_group && (
-            <p className="mt-1 text-sm text-[#667781]">
+            <p className="mt-1 text-sm text-[var(--wa-text-secondary)]">
               קבוצה · {(conversation.participants ?? []).length} משתתפים
             </p>
           )}
         </div>
 
         {!conversation.is_group && !isSelf && (
-          <div className="mt-2 bg-white px-6 py-4 shadow-sm">
+          <div className="mt-2 bg-[var(--wa-panel)] px-6 py-4 shadow-sm">
             <div className="text-sm text-[#008069]">מידע</div>
-            <p className="mt-1 text-[#111b21]">{other?.about ?? "זמין"}</p>
+            <p className="mt-1 text-[var(--wa-text)]">{other?.about ?? "זמין"}</p>
           </div>
         )}
 
         {conversation.is_group && (
-          <div className="mt-2 bg-white shadow-sm">
+          <div className="mt-2 bg-[var(--wa-panel)] shadow-sm">
             <div className="flex items-center gap-2 px-6 py-3 text-sm text-[#008069]">
               <Users className="h-4 w-4" />
               {(conversation.participants ?? []).length} משתתפים
@@ -188,16 +188,16 @@ export function ConversationInfo({
               return (
                 <div key={p.id} className="flex items-center gap-3 px-5 py-2.5">
                   <Avatar name={profile?.display_name} url={profile?.avatar_url} size={40} />
-                  <div className="min-w-0 flex-1 border-b border-[#e9edef] pb-2.5">
+                  <div className="min-w-0 flex-1 border-b border-[var(--wa-border)] pb-2.5">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="truncate text-[#111b21]">{label}</span>
+                      <span className="truncate text-[var(--wa-text)]">{label}</span>
                       {p.is_admin && (
-                        <span className="shrink-0 rounded bg-[#e7fce3] px-1.5 py-0.5 text-[10px] font-medium text-[#008069]">
+                        <span className="shrink-0 rounded bg-[var(--wa-accent-soft)] px-1.5 py-0.5 text-[10px] font-medium text-[#008069]">
                           מנהל/ת
                         </span>
                       )}
                     </div>
-                    <div className="truncate text-sm text-[#667781]">{profile?.about ?? "זמין"}</div>
+                    <div className="truncate text-sm text-[var(--wa-text-secondary)]">{profile?.about ?? "זמין"}</div>
                   </div>
                 </div>
               )
@@ -205,11 +205,11 @@ export function ConversationInfo({
           </div>
         )}
 
-        <div className="mt-2 bg-white shadow-sm">
+        <div className="mt-2 bg-[var(--wa-panel)] shadow-sm">
           <div className="flex items-center gap-2 px-6 py-3 text-sm text-[#008069]">
             <ImageIcon className="h-4 w-4" />
             מדיה, קישורים ומסמכים
-            <span className="mr-auto text-[#667781]">{mediaItems.length}</span>
+            <span className="mr-auto text-[var(--wa-text-secondary)]">{mediaItems.length}</span>
           </div>
           <div className="flex gap-1 px-4 pb-2">
             {(
@@ -225,7 +225,7 @@ export function ConversationInfo({
                 type="button"
                 onClick={() => setMediaTab(id)}
                 className={`rounded-full px-3 py-1 text-xs ${
-                  mediaTab === id ? "bg-[#e7fce3] text-[#008069]" : "bg-[#f0f2f5] text-[#54656f]"
+                  mediaTab === id ? "bg-[var(--wa-accent-soft)] text-[#008069]" : "bg-[var(--wa-header)] text-[var(--wa-text-secondary)]"
                 }`}
               >
                 {label}
@@ -233,7 +233,7 @@ export function ConversationInfo({
             ))}
           </div>
           {filteredMedia.length === 0 ? (
-            <p className="px-6 pb-4 text-sm text-[#667781]">אין מדיה עדיין</p>
+            <p className="px-6 pb-4 text-sm text-[var(--wa-text-secondary)]">אין מדיה עדיין</p>
           ) : (
             <div className="grid grid-cols-3 gap-0.5 px-0.5 pb-2">
               {filteredMedia.slice(0, 24).map((item: GalleryItem) => (
@@ -254,7 +254,7 @@ export function ConversationInfo({
                       <span className="text-[10px] text-white/70">סרטון</span>
                     </div>
                   ) : (
-                    <div className="flex h-full w-full items-center justify-center text-xs text-[#54656f]">
+                    <div className="flex h-full w-full items-center justify-center text-xs text-[var(--wa-text-secondary)]">
                       קובץ
                     </div>
                   )}
@@ -264,15 +264,15 @@ export function ConversationInfo({
           )}
         </div>
 
-        <div className="mt-2 bg-white shadow-sm">
+        <div className="mt-2 bg-[var(--wa-panel)] shadow-sm">
           {!isSelf && (
             <button
               type="button"
               disabled={busy}
               onClick={() => void handleInvite()}
-              className="flex w-full items-center gap-4 px-6 py-4 text-right text-[#111b21] transition hover:bg-[#f5f6f6] disabled:opacity-50"
+              className="flex w-full items-center gap-4 px-6 py-4 text-right text-[var(--wa-text)] transition hover:bg-[var(--wa-hover)] disabled:opacity-50"
             >
-              {inviteCopied ? <Check className="h-5 w-5 text-[#00a884]" /> : <Link2 className="h-5 w-5 text-[#54656f]" />}
+              {inviteCopied ? <Check className="h-5 w-5 text-[#00a884]" /> : <Link2 className="h-5 w-5 text-[var(--wa-text-secondary)]" />}
               {inviteCopied ? "הקישור הועתק" : "העתק קישור הזמנה"}
             </button>
           )}
@@ -280,9 +280,9 @@ export function ConversationInfo({
             <button
               type="button"
               onClick={onTogglePinned}
-              className="flex w-full items-center gap-4 px-6 py-4 text-right text-[#111b21] transition hover:bg-[#f5f6f6]"
+              className="flex w-full items-center gap-4 px-6 py-4 text-right text-[var(--wa-text)] transition hover:bg-[var(--wa-hover)]"
             >
-              <Pin className={`h-5 w-5 ${isPinned ? "text-[#00a884]" : "text-[#54656f]"}`} />
+              <Pin className={`h-5 w-5 ${isPinned ? "text-[#00a884]" : "text-[var(--wa-text-secondary)]"}`} />
               {isPinned ? "בטל נעיצה" : "נעץ צ'אט"}
             </button>
           )}
@@ -290,9 +290,9 @@ export function ConversationInfo({
             <button
               type="button"
               onClick={onToggleFavorite}
-              className="flex w-full items-center gap-4 px-6 py-4 text-right text-[#111b21] transition hover:bg-[#f5f6f6]"
+              className="flex w-full items-center gap-4 px-6 py-4 text-right text-[var(--wa-text)] transition hover:bg-[var(--wa-hover)]"
             >
-              <Star className={`h-5 w-5 ${isFavorite ? "fill-[#25d366] text-[#25d366]" : "text-[#54656f]"}`} />
+              <Star className={`h-5 w-5 ${isFavorite ? "fill-[#25d366] text-[#25d366]" : "text-[var(--wa-text-secondary)]"}`} />
               {isFavorite ? "הסר ממועדפים" : "הוסף למועדפים"}
             </button>
           )}
@@ -300,9 +300,9 @@ export function ConversationInfo({
             <button
               type="button"
               onClick={onToggleArchive}
-              className="flex w-full items-center gap-4 px-6 py-4 text-right text-[#111b21] transition hover:bg-[#f5f6f6]"
+              className="flex w-full items-center gap-4 px-6 py-4 text-right text-[var(--wa-text)] transition hover:bg-[var(--wa-hover)]"
             >
-              <Archive className="h-5 w-5 text-[#54656f]" />
+              <Archive className="h-5 w-5 text-[var(--wa-text-secondary)]" />
               {isArchived ? "הוצא מארכיון" : "העבר לארכיון"}
             </button>
           )}
@@ -310,12 +310,12 @@ export function ConversationInfo({
             <button
               type="button"
               onClick={onToggleMute}
-              className="flex w-full items-center gap-4 px-6 py-4 text-right text-[#111b21] transition hover:bg-[#f5f6f6]"
+              className="flex w-full items-center gap-4 px-6 py-4 text-right text-[var(--wa-text)] transition hover:bg-[var(--wa-hover)]"
             >
               {isMuted ? (
-                <BellOff className="h-5 w-5 text-[#54656f]" />
+                <BellOff className="h-5 w-5 text-[var(--wa-text-secondary)]" />
               ) : (
-                <Bell className="h-5 w-5 text-[#54656f]" />
+                <Bell className="h-5 w-5 text-[var(--wa-text-secondary)]" />
               )}
               {isMuted ? "ביטול השתקת התראות" : "השתקת התראות"}
             </button>
@@ -325,7 +325,7 @@ export function ConversationInfo({
               type="button"
               disabled={busy}
               onClick={() => void handleBlock()}
-              className="flex w-full items-center gap-4 px-6 py-4 text-right text-[#ea0038] transition hover:bg-[#f5f6f6] disabled:opacity-50"
+              className="flex w-full items-center gap-4 px-6 py-4 text-right text-[#ea0038] transition hover:bg-[var(--wa-hover)] disabled:opacity-50"
             >
               <Ban className="h-5 w-5" />
               חסימת איש קשר
@@ -336,7 +336,7 @@ export function ConversationInfo({
               type="button"
               disabled={busy}
               onClick={() => void handleLeaveOrDelete()}
-              className="flex w-full items-center gap-4 px-6 py-4 text-right text-[#ea0038] transition hover:bg-[#f5f6f6] disabled:opacity-50"
+              className="flex w-full items-center gap-4 px-6 py-4 text-right text-[#ea0038] transition hover:bg-[var(--wa-hover)] disabled:opacity-50"
             >
               <Ban className="h-5 w-5" />
               יציאה מהקבוצה
@@ -347,7 +347,7 @@ export function ConversationInfo({
               type="button"
               disabled={busy}
               onClick={() => void handleLeaveOrDelete()}
-              className="flex w-full items-center gap-4 px-6 py-4 text-right text-[#ea0038] transition hover:bg-[#f5f6f6] disabled:opacity-50"
+              className="flex w-full items-center gap-4 px-6 py-4 text-right text-[#ea0038] transition hover:bg-[var(--wa-hover)] disabled:opacity-50"
             >
               <Trash2 className="h-5 w-5" />
               מחיקת הצ&apos;אט

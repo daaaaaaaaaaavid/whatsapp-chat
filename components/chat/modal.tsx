@@ -25,7 +25,7 @@ export function Modal({ open, onClose, title, children }: Props) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div
-        className="flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-lg bg-white shadow-xl"
+        className="flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-lg bg-[var(--wa-panel)] shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex h-16 items-center gap-4 bg-[#00a884] px-5 text-white">

@@ -54,7 +54,7 @@ export function ProfileDialog({ open, currentUser, onClose, onUpdated }: Props) 
 
   return (
     <Modal open={open} onClose={onClose} title="הפרופיל שלי">
-      <div className="flex flex-col items-center bg-[#f0f2f5] py-8">
+      <div className="flex flex-col items-center bg-[var(--wa-header)] py-8">
         <div className="relative">
           <Avatar name={name} url={avatarUrl} size={200} />
           <button
@@ -78,7 +78,7 @@ export function ProfileDialog({ open, currentUser, onClose, onUpdated }: Props) 
         </div>
       </div>
 
-      <div className="bg-white">
+      <div className="bg-[var(--wa-panel)]">
         <div className="px-6 py-4">
           <label className="text-sm text-[#008069]">שם</label>
           <div className="mt-1 flex items-center gap-2">
@@ -88,7 +88,7 @@ export function ProfileDialog({ open, currentUser, onClose, onUpdated }: Props) 
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   autoFocus
-                  className="flex-1 border-b-2 border-[#00a884] bg-transparent py-1 text-[#111b21] outline-none"
+                  className="flex-1 border-b-2 border-[#00a884] bg-transparent py-1 text-[var(--wa-text)] outline-none"
                 />
                 <button
                   onClick={async () => {
@@ -97,25 +97,25 @@ export function ProfileDialog({ open, currentUser, onClose, onUpdated }: Props) 
                   }}
                   aria-label="שמור"
                 >
-                  <Check className="h-5 w-5 text-[#54656f]" />
+                  <Check className="h-5 w-5 text-[var(--wa-text-secondary)]" />
                 </button>
               </>
             ) : (
               <>
-                <span className="flex-1 text-[#111b21]">{name}</span>
+                <span className="flex-1 text-[var(--wa-text)]">{name}</span>
                 <button onClick={() => setEditingName(true)} aria-label="ערוך שם">
-                  <Pencil className="h-4 w-4 text-[#54656f]" />
+                  <Pencil className="h-4 w-4 text-[var(--wa-text-secondary)]" />
                 </button>
               </>
             )}
           </div>
         </div>
 
-        <p className="px-6 pb-4 text-xs text-[#667781]">
+        <p className="px-6 pb-4 text-xs text-[var(--wa-text-secondary)]">
           זהו לא שם המשתמש שלך ולא קוד PIN. שם זה יופיע לאנשי הקשר שלך.
         </p>
 
-        <div className="border-t border-[#e9edef] px-6 py-4">
+        <div className="border-t border-[var(--wa-border)] px-6 py-4">
           <label className="text-sm text-[#008069]">מידע (סטטוס)</label>
           <div className="mt-1 flex items-center gap-2">
             {editingAbout ? (
@@ -124,7 +124,7 @@ export function ProfileDialog({ open, currentUser, onClose, onUpdated }: Props) 
                   value={about}
                   onChange={(e) => setAbout(e.target.value)}
                   autoFocus
-                  className="flex-1 border-b-2 border-[#00a884] bg-transparent py-1 text-[#111b21] outline-none"
+                  className="flex-1 border-b-2 border-[#00a884] bg-transparent py-1 text-[var(--wa-text)] outline-none"
                 />
                 <button
                   onClick={async () => {
@@ -133,23 +133,23 @@ export function ProfileDialog({ open, currentUser, onClose, onUpdated }: Props) 
                   }}
                   aria-label="שמור"
                 >
-                  <Check className="h-5 w-5 text-[#54656f]" />
+                  <Check className="h-5 w-5 text-[var(--wa-text-secondary)]" />
                 </button>
               </>
             ) : (
               <>
-                <span className="flex-1 text-[#111b21]">{about}</span>
+                <span className="flex-1 text-[var(--wa-text)]">{about}</span>
                 <button onClick={() => setEditingAbout(true)} aria-label="ערוך מידע">
-                  <Pencil className="h-4 w-4 text-[#54656f]" />
+                  <Pencil className="h-4 w-4 text-[var(--wa-text-secondary)]" />
                 </button>
               </>
             )}
           </div>
         </div>
 
-        <div className="border-t border-[#e9edef] px-6 py-4">
+        <div className="border-t border-[var(--wa-border)] px-6 py-4">
           <label className="text-sm text-[#008069]">אימייל</label>
-          <div className="mt-1 text-[#111b21]" dir="ltr">
+          <div className="mt-1 text-[var(--wa-text)]" dir="ltr">
             {currentUser.email}
           </div>
         </div>

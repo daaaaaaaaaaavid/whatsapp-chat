@@ -56,15 +56,15 @@ function LoginForm() {
   }
 
   return (
-    <div className="flex min-h-svh w-full flex-col bg-[#f0f2f5]">
+    <div className="flex min-h-svh w-full flex-col bg-[var(--wa-header)]">
       <div className="h-32 w-full bg-[#00a884]" />
       <div className="mx-auto -mt-24 w-full max-w-md px-4 pb-10">
         <div className="mb-6 flex justify-center">
           <Logo size={8} withWordmark variant="white" wordmarkClassName="text-sm font-medium tracking-wide" />
         </div>
-        <div className="rounded-lg bg-white p-8 shadow-sm">
-          <h1 className="text-2xl font-normal text-[#111b21]">התחברות</h1>
-          <p className="mt-1 text-sm text-[#667781]">הזן את הפרטים שלך כדי להיכנס לחשבון</p>
+        <div className="rounded-lg bg-[var(--wa-panel)] p-8 shadow-sm">
+          <h1 className="text-2xl font-normal text-[var(--wa-text)]">התחברות</h1>
+          <p className="mt-1 text-sm text-[var(--wa-text-secondary)]">הזן את הפרטים שלך כדי להיכנס לחשבון</p>
 
           <div className="mt-6">
             <GoogleSignInButton onClick={() => void handleGoogle()} disabled={isLoading || googleLoading} />
@@ -78,7 +78,7 @@ function LoginForm() {
 
           <form onSubmit={handleLogin} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="email" className="text-sm font-medium text-[#3b4a54]">
+              <label htmlFor="email" className="text-sm font-medium text-[var(--wa-text)]">
                 כתובת אימייל
               </label>
               <input
@@ -89,11 +89,11 @@ function LoginForm() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="name@example.com"
-                className="rounded-md border border-[#d1d7db] bg-white px-3 py-2.5 text-[#111b21] outline-none transition focus:border-[#00a884] focus:ring-1 focus:ring-[#00a884]"
+                className="rounded-md border border-[#d1d7db] bg-[var(--wa-panel)] px-3 py-2.5 text-[var(--wa-text)] outline-none transition focus:border-[#00a884] focus:ring-1 focus:ring-[#00a884]"
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="password" className="text-sm font-medium text-[#3b4a54]">
+              <label htmlFor="password" className="text-sm font-medium text-[var(--wa-text)]">
                 סיסמה
               </label>
               <input
@@ -103,7 +103,7 @@ function LoginForm() {
                 dir="ltr"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="rounded-md border border-[#d1d7db] bg-white px-3 py-2.5 text-[#111b21] outline-none transition focus:border-[#00a884] focus:ring-1 focus:ring-[#00a884]"
+                className="rounded-md border border-[#d1d7db] bg-[var(--wa-panel)] px-3 py-2.5 text-[var(--wa-text)] outline-none transition focus:border-[#00a884] focus:ring-1 focus:ring-[#00a884]"
               />
             </div>
 
@@ -122,7 +122,7 @@ function LoginForm() {
             </button>
           </form>
 
-          <p className="mt-6 text-center text-sm text-[#667781]">
+          <p className="mt-6 text-center text-sm text-[var(--wa-text-secondary)]">
             אין לך חשבון?{" "}
             <Link href="/auth/sign-up" className="font-medium text-[#008069] hover:underline">
               הרשמה
@@ -130,7 +130,7 @@ function LoginForm() {
           </p>
         </div>
 
-        <p className="mt-6 flex items-center justify-center gap-1.5 text-xs text-[#667781]">
+        <p className="mt-6 flex items-center justify-center gap-1.5 text-xs text-[var(--wa-text-secondary)]">
           <Lock className="h-3 w-3" />
           ההודעות האישיות שלך מוצפנות מקצה לקצה
         </p>
@@ -141,7 +141,7 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className="min-h-svh bg-[#f0f2f5]" />}>
+    <Suspense fallback={<div className="min-h-svh bg-[var(--wa-header)]" />}>
       <LoginForm />
     </Suspense>
   )

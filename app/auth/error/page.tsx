@@ -28,21 +28,21 @@ function AuthErrorInner() {
   const reason = params.get("reason")
 
   return (
-    <div className="flex min-h-svh w-full flex-col bg-[#f0f2f5]">
+    <div className="flex min-h-svh w-full flex-col bg-[var(--wa-header)]">
       <div className="h-32 w-full bg-[#00a884]" />
       <div className="mx-auto -mt-24 w-full max-w-md px-4">
-        <div className="rounded-lg bg-white p-8 text-center shadow-sm">
+        <div className="rounded-lg bg-[var(--wa-panel)] p-8 text-center shadow-sm">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-red-50">
             <AlertTriangle className="h-7 w-7 text-red-500" />
           </div>
-          <h1 className="mt-4 text-2xl font-normal text-[#111b21]">משהו השתבש</h1>
-          <p className="mt-2 text-sm leading-relaxed text-[#667781]">{reasonHint(reason)}</p>
+          <h1 className="mt-4 text-2xl font-normal text-[var(--wa-text)]">משהו השתבש</h1>
+          <p className="mt-2 text-sm leading-relaxed text-[var(--wa-text-secondary)]">{reasonHint(reason)}</p>
 
           <div
-            className="mt-5 rounded-md bg-[#f0f2f5] p-3 text-right text-xs leading-relaxed text-[#54656f]"
+            className="mt-5 rounded-md bg-[var(--wa-header)] p-3 text-right text-xs leading-relaxed text-[var(--wa-text-secondary)]"
             dir="rtl"
           >
-            <p className="font-medium text-[#111b21]">בדיקות מהירות:</p>
+            <p className="font-medium text-[var(--wa-text)]">בדיקות מהירות:</p>
             <ol className="mt-2 list-decimal space-y-1 pr-4">
               <li>
                 ב־Google Cloud → Credentials: Authorized redirect URI =
@@ -77,7 +77,7 @@ export default function AuthErrorPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-svh items-center justify-center bg-[#f0f2f5] text-sm text-[#667781]">
+        <div className="flex min-h-svh items-center justify-center bg-[var(--wa-header)] text-sm text-[var(--wa-text-secondary)]">
           טוען...
         </div>
       }
