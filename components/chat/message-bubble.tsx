@@ -9,6 +9,7 @@ import { extractUrls, highlightQuery, parseReplyContent, splitTextWithLinks } fr
 import { MessageTicks } from "./message-ticks"
 import { VoiceMessage } from "./voice-message"
 import { resolveMediaKind } from "./media-gallery"
+import { isExpiredChatMedia, MEDIA_EXPIRED_LABEL } from "@/lib/media-retention"
 import {
   Ban,
   FileText,
@@ -20,6 +21,7 @@ import {
   PhoneMissed,
   PhoneOff,
   Video,
+  ImageOff,
   ChevronDown,
   Reply,
   MessagesSquare,
@@ -192,6 +194,7 @@ function LinkPreview({ url }: { url: string }) {
 
 function replyPreviewText(message: Message) {
   if (message.deleted_at) return "הודעה שנמחקה"
+  if (isExpiredChatMedia(message)) return MEDIA_EXPIRED_LABEL
   if (message.type === "image") return "תמונה"
   if (message.type === "video") return "סרטון"
   if (message.type === "audio") return "הודעה קולית"
@@ -369,6 +372,7 @@ export function MessageBubble({
   const mediaKind = message.file_url
     ? resolveMediaKind(message.type, message.file_name, message.file_url)
     : null
+  const mediaExpired = isExpiredChatMedia(message)
 
   const legacyReply = parseReplyContent(message.content)
   const structuredTarget = message.reply_to
@@ -595,6 +599,17 @@ export function MessageBubble({
           <div className="mb-1 rounded-md border-r-4 border-[#06cf9c] bg-black/[0.06] px-2 py-1.5 text-right">
             <div className="truncate text-xs font-medium text-[#06cf9c]">{reply.author}</div>
             <div className="truncate text-[12px] text-[var(--wa-text-secondary)]">{reply.preview || "הודעה"}</div>
+          </div>
+        )}
+
+        {mediaExpired && (
+          <div className="mb-1 flex max-w-xs items-center gap-2 rounded-md bg-black/5 px-3 py-3 text-[13px] text-[var(--wa-text-secondary)]">
+            {message.type === "video" ? (
+              <Video className="h-5 w-5 shrink-0 opacity-50" />
+            ) : (
+              <ImageOff className="h-5 w-5 shrink-0 opacity-50" />
+            )}
+            <span>{MEDIA_EXPIRED_LABEL}</span>
           </div>
         )}
 

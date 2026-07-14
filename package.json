@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "cleanup-media": "npx tsx scripts/cleanup-media.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
