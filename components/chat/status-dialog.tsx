@@ -5,10 +5,24 @@ import { Modal } from "./modal"
 import { Avatar } from "./avatar"
 import { StatusViewer, type GroupedStatus } from "./status-viewer"
 import { createClient } from "@/lib/supabase/client"
-import type { Profile, Status } from "@/lib/types"
+import { fetchContacts } from "@/lib/chat-actions"
+import type { Profile, Status, StatusAudienceMode } from "@/lib/types"
 import { formatChatListTime } from "@/lib/format"
 import { isAllowedMediaFile, resolveFileMime, UNSUPPORTED_MEDIA_MESSAGE } from "@/lib/media-mime"
-import { Camera, ImagePlus, Plus, Type, Video, X } from "lucide-react"
+import {
+  Camera,
+  Check,
+  ChevronLeft,
+  ImagePlus,
+  Plus,
+  Settings,
+  Type,
+  UserCheck,
+  UserMinus,
+  Users,
+  Video,
+  X,
+} from "lucide-react"
 
 type Props = {
   open: boolean
@@ -21,9 +35,24 @@ const MAX_MEDIA_BYTES = 50 * 1024 * 1024
 
 type CreateMode = "text" | "media"
 
+const AUDIENCE_STORAGE_KEY = "whachat-status-audience"
+
+function audienceLabel(mode: StatusAudienceMode, selectedCount: number) {
+  if (mode === "contacts_except") {
+    return selectedCount ? `אנשי הקשר, חוץ מ־${selectedCount}` : "כל אנשי הקשר"
+  }
+  if (mode === "selected_contacts") {
+    return selectedCount ? `רק ${selectedCount} אנשי קשר` : "אף אחד"
+  }
+  return "כל אנשי הקשר"
+}
+
 export function StatusDialog({ open, currentUser, onClose }: Props) {
   const [statuses, setStatuses] = useState<Status[]>([])
+  const [contacts, setContacts] = useState<Profile[]>([])
+  const [contactsError, setContactsError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
+  const [privacyOpen, setPrivacyOpen] = useState(false)
   const [createMode, setCreateMode] = useState<CreateMode>("text")
   const [text, setText] = useState("")
   const [bgColor, setBgColor] = useState(BG_COLORS[0])
@@ -33,21 +62,28 @@ export function StatusDialog({ open, currentUser, onClose }: Props) {
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [viewing, setViewing] = useState<GroupedStatus | null>(null)
   const [viewIndex, setViewIndex] = useState(0)
+  const [audienceMode, setAudienceMode] = useState<StatusAudienceMode>("contacts")
+  const [audienceUserIds, setAudienceUserIds] = useState<string[]>([])
   const mediaInputRef = useRef<HTMLInputElement>(null)
 
   const load = useCallback(async () => {
     const supabase = createClient()
-    const { data } = await supabase
-      .from("statuses")
-      .select("*")
-      .gt("expires_at", new Date().toISOString())
-      .order("created_at", { ascending: true })
+    const [{ data }, contactsResult] = await Promise.all([
+      supabase
+        .from("statuses")
+        .select("*")
+        .gt("expires_at", new Date().toISOString())
+        .order("created_at", { ascending: true }),
+      fetchContacts(currentUser.id),
+    ])
+    setContacts(contactsResult.users)
+    setContactsError(contactsResult.error)
     if (!data) return
     const uids = Array.from(new Set(data.map((s) => s.user_id)))
     const { data: profiles } = await supabase.from("profiles").select("*").in("id", uids)
     const pmap = new Map((profiles ?? []).map((p) => [p.id, p as Profile]))
     setStatuses(data.map((s) => ({ ...s, profile: pmap.get(s.user_id) })) as Status[])
-  }, [])
+  }, [currentUser.id])
 
   const resetCreate = () => {
     setCreating(false)
@@ -57,6 +93,7 @@ export function StatusDialog({ open, currentUser, onClose }: Props) {
     setMediaFile(null)
     setUploadError(null)
     setPosting(false)
+    setPrivacyOpen(false)
     if (mediaPreview) URL.revokeObjectURL(mediaPreview)
     setMediaPreview(null)
   }
@@ -66,9 +103,25 @@ export function StatusDialog({ open, currentUser, onClose }: Props) {
       load()
       resetCreate()
       setViewing(null)
+      try {
+        const saved = JSON.parse(
+          localStorage.getItem(`${AUDIENCE_STORAGE_KEY}:${currentUser.id}`) ?? "null",
+        ) as { mode?: StatusAudienceMode; userIds?: string[] } | null
+        if (
+          saved?.mode === "contacts" ||
+          saved?.mode === "contacts_except" ||
+          saved?.mode === "selected_contacts"
+        ) {
+          setAudienceMode(saved.mode)
+          setAudienceUserIds(Array.isArray(saved.userIds) ? saved.userIds : [])
+        }
+      } catch {
+        setAudienceMode("contacts")
+        setAudienceUserIds([])
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only reset when dialog opens
-  }, [open, load])
+  }, [open, load, currentUser.id])
 
   useEffect(() => {
     return () => {
@@ -128,6 +181,26 @@ export function StatusDialog({ open, currentUser, onClose }: Props) {
     setCreateMode("media")
     setUploadError(null)
     setCreating(true)
+  }
+
+  const saveAudience = (mode: StatusAudienceMode, userIds: string[]) => {
+    setAudienceMode(mode)
+    setAudienceUserIds(userIds)
+    localStorage.setItem(
+      `${AUDIENCE_STORAGE_KEY}:${currentUser.id}`,
+      JSON.stringify({ mode, userIds }),
+    )
+  }
+
+  const selectAudienceMode = (mode: StatusAudienceMode) => {
+    saveAudience(mode, mode === "contacts" ? [] : audienceUserIds)
+  }
+
+  const toggleAudienceContact = (userId: string) => {
+    const next = audienceUserIds.includes(userId)
+      ? audienceUserIds.filter((id) => id !== userId)
+      : [...audienceUserIds, userId]
+    saveAudience(audienceMode, next)
   }
 
   const handlePost = async () => {
@@ -190,9 +263,16 @@ export function StatusDialog({ open, currentUser, onClose }: Props) {
         content: text.trim() || null,
         background_color: createMode === "text" ? bgColor : "#000000",
         media_url: mediaUrl,
+        audience_mode: audienceMode,
+        audience_user_ids: audienceMode === "contacts" ? [] : audienceUserIds,
       })
       if (insertError) {
-        setUploadError(insertError.message)
+        const message = insertError.message.toLowerCase()
+        setUploadError(
+          message.includes("audience_mode") || message.includes("audience_user_ids")
+            ? "יש להריץ את supabase/migration-status-privacy-12h.sql ב־Supabase לפני פרסום סטטוס"
+            : insertError.message,
+        )
         return
       }
 
@@ -227,7 +307,133 @@ export function StatusDialog({ open, currentUser, onClose }: Props) {
         }}
       />
 
-      {creating ? (
+      {privacyOpen ? (
+        <div className="flex flex-col" dir="rtl">
+          <div className="flex items-center gap-3 border-b border-[#e9edef] px-4 py-3">
+            <button
+              type="button"
+              onClick={() => setPrivacyOpen(false)}
+              className="rounded-full p-2 text-[#54656f] hover:bg-[#f0f2f5]"
+              aria-label="חזרה"
+            >
+              <ChevronLeft className="h-5 w-5 rotate-180" />
+            </button>
+            <div>
+              <div className="font-medium text-[#111b21]">פרטיות הסטטוס</div>
+              <div className="text-xs text-[#667781]">מי יוכל לראות סטטוסים חדשים</div>
+            </div>
+          </div>
+
+          <div className="border-b border-[#e9edef] py-2">
+            {(
+              [
+                {
+                  mode: "contacts" as const,
+                  label: "כל אנשי הקשר",
+                  detail: "כל אנשי הקשר שלך ב־WhaChat",
+                  icon: Users,
+                },
+                {
+                  mode: "contacts_except" as const,
+                  label: "אנשי הקשר חוץ מ...",
+                  detail: "בחר למי להסתיר",
+                  icon: UserMinus,
+                },
+                {
+                  mode: "selected_contacts" as const,
+                  label: "שתף רק עם...",
+                  detail: "בחר מי יוכל לראות",
+                  icon: UserCheck,
+                },
+              ] satisfies Array<{
+                mode: StatusAudienceMode
+                label: string
+                detail: string
+                icon: typeof Users
+              }>
+            ).map((option) => {
+              const Icon = option.icon
+              const selected = audienceMode === option.mode
+              return (
+                <button
+                  key={option.mode}
+                  type="button"
+                  onClick={() => selectAudienceMode(option.mode)}
+                  className="flex w-full items-center gap-3 px-5 py-3 text-right hover:bg-[#f5f6f6]"
+                >
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#e7fce3] text-[#008069]">
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[#111b21]">{option.label}</div>
+                    <div className="text-xs text-[#667781]">{option.detail}</div>
+                  </div>
+                  <span
+                    className={`flex h-5 w-5 items-center justify-center rounded-full border ${
+                      selected ? "border-[#00a884] bg-[#00a884]" : "border-[#8696a0]"
+                    }`}
+                  >
+                    {selected && <Check className="h-3.5 w-3.5 text-white" />}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+
+          {audienceMode !== "contacts" && (
+            <div className="max-h-[46vh] overflow-y-auto">
+              <div className="px-5 py-2 text-xs font-medium text-[#667781]">
+                {audienceMode === "contacts_except" ? "הסתר מ־" : "שתף עם"} ·{" "}
+                {audienceUserIds.length} נבחרו
+              </div>
+              {contactsError && (
+                <div className="mx-4 mb-2 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  {contactsError}
+                </div>
+              )}
+              {contacts.map((contact) => {
+                const selected = audienceUserIds.includes(contact.id)
+                return (
+                  <button
+                    key={contact.id}
+                    type="button"
+                    onClick={() => toggleAudienceContact(contact.id)}
+                    className="flex w-full items-center gap-3 px-5 py-2.5 text-right hover:bg-[#f5f6f6]"
+                  >
+                    <Avatar name={contact.display_name} url={contact.avatar_url} size={42} />
+                    <div className="min-w-0 flex-1 border-b border-[#e9edef] pb-2">
+                      <div className="truncate text-[#111b21]">
+                        {contact.display_name ?? contact.email}
+                      </div>
+                      <div className="truncate text-xs text-[#667781]">{contact.email}</div>
+                    </div>
+                    <span
+                      className={`flex h-5 w-5 items-center justify-center rounded border ${
+                        selected ? "border-[#00a884] bg-[#00a884]" : "border-[#8696a0]"
+                      }`}
+                    >
+                      {selected && <Check className="h-3.5 w-3.5 text-white" />}
+                    </span>
+                  </button>
+                )
+              })}
+              {!contactsError && contacts.length === 0 && (
+                <div className="p-6 text-center text-sm text-[#667781]">אין אנשי קשר לבחירה</div>
+              )}
+            </div>
+          )}
+
+          <div className="border-t border-[#e9edef] p-4">
+            <button
+              type="button"
+              onClick={() => setPrivacyOpen(false)}
+              className="w-full rounded-full bg-[#00a884] py-2.5 font-medium text-white"
+            >
+              שמור
+            </button>
+          </div>
+        </div>
+      ) : creating ? (
         <div className="flex flex-col">
           {createMode === "media" && mediaPreview ? (
             <div className="relative flex min-h-64 items-center justify-center bg-black">
@@ -293,6 +499,22 @@ export function StatusDialog({ open, currentUser, onClose }: Props) {
               ))}
             </div>
           )}
+
+          <button
+            type="button"
+            onClick={() => setPrivacyOpen(true)}
+            className="mx-4 mb-3 flex items-center gap-3 rounded-lg bg-[#f0f2f5] px-3 py-2.5 text-right"
+            dir="rtl"
+          >
+            <Settings className="h-5 w-5 text-[#008069]" />
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-medium text-[#111b21]">מי יכול לראות</div>
+              <div className="truncate text-xs text-[#667781]">
+                {audienceLabel(audienceMode, audienceUserIds.length)}
+              </div>
+            </div>
+            <ChevronLeft className="h-4 w-4 text-[#8696a0]" />
+          </button>
 
           {uploadError && (
             <div className="px-4 pb-2 text-center text-sm text-red-600">{uploadError}</div>
@@ -368,6 +590,24 @@ export function StatusDialog({ open, currentUser, onClose }: Props) {
               <Camera className="h-4 w-4" />
               <Video className="h-4 w-4" />
             </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setPrivacyOpen(true)}
+            className="flex w-full items-center gap-3 border-b border-[#e9edef] px-5 py-3 text-right transition hover:bg-[#f5f6f6]"
+            dir="rtl"
+          >
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#e7fce3] text-[#008069]">
+              <Settings className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-[#111b21]">פרטיות הסטטוס</div>
+              <div className="truncate text-xs text-[#667781]">
+                {audienceLabel(audienceMode, audienceUserIds.length)}
+              </div>
+            </div>
+            <ChevronLeft className="h-4 w-4 text-[#8696a0]" />
           </button>
 
           {grouped.length > 0 && (

@@ -79,6 +79,8 @@ export type Conversation = {
   unread_count?: number
 }
 
+export type StatusAudienceMode = "contacts" | "contacts_except" | "selected_contacts"
+
 export type Status = {
   id: string
   user_id: string
@@ -87,6 +89,8 @@ export type Status = {
   background_color: string
   created_at: string
   expires_at: string
+  audience_mode: StatusAudienceMode
+  audience_user_ids: string[]
   profile?: Profile
   viewed?: boolean
 }
