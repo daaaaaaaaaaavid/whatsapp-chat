@@ -8,12 +8,14 @@ export type MessageToastItem = {
   id: string
   title: string
   body: string
-  conversationId: string
+  conversationId?: string
+  openStatus?: boolean
+  badge?: string
 }
 
 type Props = {
   toasts: MessageToastItem[]
-  onOpen: (conversationId: string) => void
+  onOpen: (toast: MessageToastItem) => void
   onDismiss: (id: string) => void
 }
 
@@ -36,7 +38,7 @@ function MessageToastCard({
   onDismiss,
 }: {
   toast: MessageToastItem
-  onOpen: (conversationId: string) => void
+  onOpen: (toast: MessageToastItem) => void
   onDismiss: (id: string) => void
 }) {
   useEffect(() => {
@@ -54,7 +56,7 @@ function MessageToastCard({
         type="button"
         className="flex w-full items-start gap-3 px-4 py-3 pl-11 text-right"
         onClick={() => {
-          onOpen(toast.conversationId)
+          onOpen(toast)
           onDismiss(toast.id)
         }}
       >
@@ -62,7 +64,9 @@ function MessageToastCard({
           {toast.title.slice(0, 1)}
         </div>
         <div className="min-w-0 flex-1 pt-0.5">
-          <div className="text-[11px] font-medium uppercase tracking-wide text-[#25d366]">הודעה חדשה</div>
+          <div className="text-[11px] font-medium uppercase tracking-wide text-[#25d366]">
+            {toast.badge || (toast.openStatus ? "תגובה לסטטוס" : "הודעה חדשה")}
+          </div>
           <div className="truncate text-[15px] font-semibold">{toast.title}</div>
           <div className="mt-0.5 line-clamp-2 text-sm text-[#d1d7db]">{toast.body || " "}</div>
         </div>

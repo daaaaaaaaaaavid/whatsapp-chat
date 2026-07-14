@@ -41,6 +41,10 @@ type Props = {
   replyTo?: Message | null
   replyAuthor?: string | null
   onCancelReply?: () => void
+  /** Keep reply target after send (side thread panel). */
+  keepReplyAfterSend?: boolean
+  /** Label / chrome for Google Chat–style thread composer. */
+  threadMode?: boolean
   editingMessage?: Message | null
   onCancelEdit?: () => void
   onEdited?: (message: Message) => void
@@ -116,6 +120,8 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
     replyTo,
     replyAuthor,
     onCancelReply,
+    keepReplyAfterSend,
+    threadMode,
     editingMessage,
     onCancelEdit,
     onEdited,
@@ -487,7 +493,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
 
     setText("")
     const replySnapshot = replyTo
-    onCancelReply?.()
+    if (!keepReplyAfterSend) onCancelReply?.()
     try {
       await sendMessage({
         content: trimmed,
@@ -514,7 +520,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
 
     setPending([])
     setActiveIndex(0)
-    if (replySnapshot) onCancelReply?.()
+    if (replySnapshot && !keepReplyAfterSend) onCancelReply?.()
 
     try {
       for (let i = 0; i < items.length; i++) {
@@ -749,7 +755,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
         </div>
       )}
 
-      {replyTo && !isEditing && (
+      {replyTo && !isEditing && !threadMode && (
         <div className="flex items-stretch gap-2 border-b border-[#e9edef] bg-[#f0f2f5] px-4 pt-2" dir="rtl">
           <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border-r-4 border-[#00a884] bg-white px-3 py-2">
             <Reply className="h-4 w-4 shrink-0 text-[#00a884]" />
@@ -766,6 +772,15 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
           >
             <X className="h-5 w-5" />
           </button>
+        </div>
+      )}
+
+      {replyTo && !isEditing && threadMode && (
+        <div className="border-b border-[#e9edef] bg-[#f0f2f5] px-4 pt-2" dir="rtl">
+          <div className="mb-1 flex items-center gap-2 text-xs font-medium text-[#00a884]">
+            <Reply className="h-3.5 w-3.5 shrink-0" />
+            תגובה בשרשור
+          </div>
         </div>
       )}
 

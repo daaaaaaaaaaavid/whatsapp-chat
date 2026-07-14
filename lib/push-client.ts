@@ -89,3 +89,16 @@ export function notifyOfflineRecipients(opts: {
     body: JSON.stringify(opts),
   }).catch(() => {})
 }
+
+/** Fire-and-forget: notify the status owner about a new reply. */
+export function notifyStatusOwner(opts: {
+  statusId: string
+  replyId?: string
+  body: string
+}) {
+  void fetch("/api/push/notify-status-reply", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(opts),
+  }).catch(() => {})
+}

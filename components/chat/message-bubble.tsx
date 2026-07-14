@@ -22,6 +22,7 @@ import {
   Video,
   ChevronDown,
   Reply,
+  MessagesSquare,
   Copy,
   SmilePlus,
   Forward,
@@ -56,6 +57,11 @@ type Props = {
   onDeleteForEveryone?: () => void
   onDeleteForMe?: () => void
   onReply?: () => void
+  /** Google Chat–style: open / reply in side thread (groups). */
+  onReplyInThread?: () => void
+  onOpenThread?: () => void
+  threadReplyCount?: number
+  threadPreview?: string | null
   onForward?: () => void
   onEdit?: () => void
   onToggleStar?: () => void
@@ -72,6 +78,8 @@ type Props = {
   isStarred?: boolean
   isPinned?: boolean
   searchQuery?: string
+  /** Narrower panel (thread side pane). */
+  compact?: boolean
 }
 
 function SystemCallMessage({ message }: { message: Message }) {
@@ -218,6 +226,10 @@ export function MessageBubble({
   onDeleteForEveryone,
   onDeleteForMe,
   onReply,
+  onReplyInThread,
+  onOpenThread,
+  threadReplyCount = 0,
+  threadPreview,
   onForward,
   onEdit,
   onToggleStar,
@@ -234,6 +246,7 @@ export function MessageBubble({
   isStarred,
   isPinned,
   searchQuery,
+  compact,
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [showMoreEmoji, setShowMoreEmoji] = useState(false)
@@ -402,15 +415,32 @@ export function MessageBubble({
   }
 
   const menuItems = [
-    {
-      id: "reply",
-      label: "תשובה",
-      icon: Reply,
-      onClick: () => {
-        closeMenu()
-        onReply?.()
-      },
-    },
+    ...(onReply
+      ? [
+          {
+            id: "reply" as const,
+            label: "תשובה",
+            icon: Reply,
+            onClick: () => {
+              closeMenu()
+              onReply()
+            },
+          },
+        ]
+      : []),
+    ...(onReplyInThread
+      ? [
+          {
+            id: "thread" as const,
+            label: "תשובה בשרשור",
+            icon: MessagesSquare,
+            onClick: () => {
+              closeMenu()
+              onReplyInThread()
+            },
+          },
+        ]
+      : []),
     ...(canEdit
       ? [
           {
@@ -439,24 +469,32 @@ export function MessageBubble({
       icon: SmilePlus,
       onClick: () => setShowMoreEmoji(true),
     },
-    {
-      id: "forward",
-      label: "העברה",
-      icon: Forward,
-      onClick: () => {
-        closeMenu()
-        onForward?.()
-      },
-    },
-    {
-      id: "select",
-      label: "בחירה",
-      icon: CheckSquare,
-      onClick: () => {
-        closeMenu()
-        onStartSelect?.()
-      },
-    },
+    ...(onForward
+      ? [
+          {
+            id: "forward" as const,
+            label: "העברה",
+            icon: Forward,
+            onClick: () => {
+              closeMenu()
+              onForward()
+            },
+          },
+        ]
+      : []),
+    ...(onStartSelect
+      ? [
+          {
+            id: "select" as const,
+            label: "בחירה",
+            icon: CheckSquare,
+            onClick: () => {
+              closeMenu()
+              onStartSelect()
+            },
+          },
+        ]
+      : []),
     {
       id: "pin",
       label: isPinned ? "ביטול הצמדה" : "הצמדה",
@@ -477,11 +515,14 @@ export function MessageBubble({
     },
   ]
 
+  const replyCountLabel =
+    threadReplyCount === 1 ? "תגובה אחת" : `${threadReplyCount} תגובות`
+
   return (
     <div
       className={cn(
-        "group relative flex items-center gap-2 px-2",
-        isMine ? "justify-start" : "justify-end",
+        "group relative flex flex-col gap-1 px-2",
+        isMine ? "items-start" : "items-end",
         selectionMode && isSelected && "rounded-lg bg-[#00a884]/10",
       )}
       dir="ltr"
@@ -489,6 +530,12 @@ export function MessageBubble({
         if (selectionMode) onToggleSelect?.()
       }}
     >
+      <div
+        className={cn(
+          "flex w-full items-center gap-2",
+          isMine ? "justify-start" : "justify-end",
+        )}
+      >
       {selectionMode && (
         <button
           type="button"
@@ -511,7 +558,8 @@ export function MessageBubble({
       <div
         ref={bubbleRef}
         className={cn(
-          "relative my-0.5 max-w-[65%] rounded-lg px-2.5 py-1.5 shadow-sm",
+          "relative my-0.5 rounded-lg px-2.5 py-1.5 shadow-sm",
+          compact ? "max-w-[95%]" : "max-w-[65%]",
           isMine ? "bubble-tail-out rounded-tl-none bg-[#d9fdd3]" : "bubble-tail-in rounded-tr-none bg-white",
           menuOpen && "z-20",
           isPinned && "ring-1 ring-[#00a884]/40",
@@ -800,6 +848,30 @@ export function MessageBubble({
           </>,
           document.body,
         )}
+      </div>
+
+      {onOpenThread && threadReplyCount > 0 && !selectionMode && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            onOpenThread()
+          }}
+          className={cn(
+            "mb-1 flex max-w-[min(100%,320px)] items-center gap-2 rounded-lg border border-[#d1d7db] bg-white px-3 py-1.5 text-right shadow-sm transition hover:bg-[#f0f2f5]",
+            isMine ? "self-start" : "self-end",
+          )}
+          dir="rtl"
+        >
+          <MessagesSquare className="h-4 w-4 shrink-0 text-[#00a884]" strokeWidth={1.75} />
+          <span className="min-w-0 flex-1">
+            <span className="block text-[13px] font-medium text-[#00a884]">{replyCountLabel}</span>
+            {threadPreview && (
+              <span className="block truncate text-[12px] text-[#667781]">{threadPreview}</span>
+            )}
+          </span>
+        </button>
+      )}
     </div>
   )
 }

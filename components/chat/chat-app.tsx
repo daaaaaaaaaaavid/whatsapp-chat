@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useConversations } from "@/lib/use-conversations"
-import type { Conversation, Message, Profile } from "@/lib/types"
+import type { Conversation, Message, Profile, StatusReply } from "@/lib/types"
 import {
   loadChatPrefs,
   mergeRemoteChatPrefs,
@@ -67,6 +67,13 @@ export function ChatApp({ currentUser: initialUser }: Props) {
   activeIdRef.current = activeId
   const conversationsRef = useRef(conversations)
   conversationsRef.current = conversations
+  const statusOpenRef = useRef(statusOpen)
+  statusOpenRef.current = statusOpen
+
+  const openStatusTab = useCallback(() => {
+    setNavTab("status")
+    setStatusOpen(true)
+  }, [])
 
   const pushToast = useCallback((item: Omit<MessageToastItem, "id">) => {
     const id = `toast-${crypto.randomUUID()}`
@@ -77,11 +84,12 @@ export function ChatApp({ currentUser: initialUser }: Props) {
     setToasts((prev) => prev.filter((t) => t.id !== id))
   }, [])
 
-  // Deep link: /chat?c=<conversationId> and /chat?google_contacts=1 (post OAuth sync)
+  // Deep link: /chat?c=<conversationId>, /chat?tab=status, /chat?google_contacts=1
   useEffect(() => {
     if (typeof window === "undefined") return
     const params = new URLSearchParams(window.location.search)
     const c = params.get("c")
+    const tab = params.get("tab")
     const googleContacts = params.get("google_contacts")
     const url = new URL(window.location.href)
     let changed = false
@@ -90,6 +98,13 @@ export function ChatApp({ currentUser: initialUser }: Props) {
       setActiveId(c)
       setNavTab("chats")
       url.searchParams.delete("c")
+      changed = true
+    }
+
+    if (tab === "status") {
+      setNavTab("status")
+      setStatusOpen(true)
+      url.searchParams.delete("tab")
       changed = true
     }
 
@@ -159,7 +174,7 @@ export function ChatApp({ currentUser: initialUser }: Props) {
     }
   }, [currentUser.id])
 
-  // Incoming message sound + in-app toasts + browser / push notifications
+  // Incoming message / status-reply sound + in-app toasts + browser / push notifications
   useEffect(() => {
     const unlock = () => {
       unlockNotificationSound()
@@ -173,15 +188,35 @@ export function ChatApp({ currentUser: initialUser }: Props) {
 
     const onSwMessage = (event: MessageEvent) => {
       const data = event.data as
-        | { type?: string; conversationId?: string; title?: string; body?: string }
+        | {
+            type?: string
+            conversationId?: string
+            title?: string
+            body?: string
+            openStatus?: boolean
+          }
         | undefined
       if (!data?.type) return
+      if (data.type === "open-status") {
+        openStatusTab()
+        return
+      }
       if (data.type === "open-conversation" && data.conversationId) {
         setActiveId(data.conversationId)
         setNavTab("chats")
         return
       }
-      if (data.type === "push-message" && data.conversationId) {
+      if (data.type === "push-message") {
+        if (data.openStatus) {
+          if (statusOpenRef.current && document.visibilityState === "visible") return
+          pushToast({
+            title: data.title || "תגובה לסטטוס",
+            body: data.body || "",
+            openStatus: true,
+          })
+          return
+        }
+        if (!data.conversationId) return
         const isActiveChat =
           activeIdRef.current === data.conversationId && document.visibilityState === "visible"
         if (isActiveChat) return
@@ -231,6 +266,44 @@ export function ChatApp({ currentUser: initialUser }: Props) {
           })
         },
       )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "status_replies" },
+        (payload) => {
+          void (async () => {
+            const reply = payload.new as StatusReply
+            if (!reply || reply.user_id === currentUser.id) return
+
+            const { data: status } = await supabase
+              .from("statuses")
+              .select("user_id")
+              .eq("id", reply.status_id)
+              .maybeSingle()
+            if (!status || status.user_id !== currentUser.id) return
+
+            if (statusOpenRef.current && document.visibilityState === "visible") return
+
+            const { data: sender } = await supabase
+              .from("profiles")
+              .select("display_name, email")
+              .eq("id", reply.user_id)
+              .maybeSingle()
+
+            const title = sender?.display_name || sender?.email || "תגובה לסטטוס"
+            const body = reply.content?.trim() || "הגיב לסטטוס שלך"
+
+            playIncomingMessageSound()
+            pushToast({ title, body, openStatus: true })
+            void showIncomingMessageNotification({
+              title,
+              body,
+              tag: `status-reply-${reply.status_id}`,
+              url: "/chat?tab=status",
+              onClick: openStatusTab,
+            })
+          })()
+        },
+      )
       .subscribe()
 
     return () => {
@@ -241,7 +314,7 @@ export function ChatApp({ currentUser: initialUser }: Props) {
       }
       supabase.removeChannel(channel)
     }
-  }, [currentUser.id, pushToast])
+  }, [currentUser.id, pushToast, openStatusTab])
 
   const updatePrefs = useCallback(
     (next: ChatPrefs) => {
@@ -534,9 +607,15 @@ export function ChatApp({ currentUser: initialUser }: Props) {
 
       <MessageToastStack
         toasts={toasts}
-        onOpen={(id) => {
-          setActiveId(id)
-          setNavTab("chats")
+        onOpen={(toast) => {
+          if (toast.openStatus) {
+            openStatusTab()
+            return
+          }
+          if (toast.conversationId) {
+            setActiveId(toast.conversationId)
+            setNavTab("chats")
+          }
         }}
         onDismiss={dismissToast}
       />

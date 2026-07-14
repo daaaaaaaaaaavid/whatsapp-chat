@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { notifyStatusOwner } from "@/lib/push-client"
 
 export type GroupedStatus = { profile: Profile; statuses: Status[] }
 
@@ -305,15 +306,24 @@ export function StatusViewer({
     setReplyError(null)
     try {
       const supabase = createClient()
-      const { error } = await supabase.from("status_replies").insert({
-        status_id: status.id,
-        user_id: currentUserId,
-        content: trimmed,
-      })
+      const { data, error } = await supabase
+        .from("status_replies")
+        .insert({
+          status_id: status.id,
+          user_id: currentUserId,
+          content: trimmed,
+        })
+        .select("id")
+        .single()
       if (error) {
         setReplyError(error.message || "שליחת התגובה נכשלה")
         return
       }
+      notifyStatusOwner({
+        statusId: status.id,
+        replyId: data?.id,
+        body: trimmed,
+      })
       setReply("")
       setReplySent(true)
       setShowEmoji(false)

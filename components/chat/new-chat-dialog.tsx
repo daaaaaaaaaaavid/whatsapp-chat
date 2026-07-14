@@ -119,6 +119,8 @@ export function NewChatDialog({
     }
 
     out.sort((a, b) => {
+      // WhaChat matches first, then by score, then name
+      if (a.kind !== b.kind) return a.kind === "matched" ? -1 : 1
       if (a.score !== b.score) return a.score - b.score
       const an =
         a.kind === "matched"
@@ -137,23 +139,44 @@ export function NewChatDialog({
   const filteredKnown = useMemo(() => {
     return users
       .filter((u) => contactMatchesQuery(u.display_name, u.email, q))
-      .sort(
-        (a, b) =>
-          contactMatchScore(a.display_name, a.email, q) -
-          contactMatchScore(b.display_name, b.email, q),
-      )
-  }, [users, q])
+      .sort((a, b) => {
+        if (isSearching) {
+          return (
+            contactMatchScore(a.display_name, a.email, q) -
+            contactMatchScore(b.display_name, b.email, q)
+          )
+        }
+        return (a.display_name ?? a.email ?? "").localeCompare(
+          b.display_name ?? b.email ?? "",
+          "he",
+        )
+      })
+  }, [users, q, isSearching])
 
-  /** All Google rows when not searching (browse after sync). */
+  /** Google-matched profiles not already in the contacts list. */
   const browseGoogleMatched = useMemo(() => {
     if (isSearching) return []
-    return googleMatched.filter((u) => !knownIds.has(u.id))
+    return [...googleMatched]
+      .filter((u) => !knownIds.has(u.id))
+      .sort((a, b) =>
+        (a.display_name ?? a.email ?? "").localeCompare(
+          b.display_name ?? b.email ?? "",
+          "he",
+        ),
+      )
   }, [googleMatched, knownIds, isSearching])
 
   const browseGoogleUnmatched = useMemo(() => {
     if (isSearching) return []
-    return googleUnmatched
+    return [...googleUnmatched].sort((a, b) =>
+      (a.display_name ?? a.email ?? "").localeCompare(
+        b.display_name ?? b.email ?? "",
+        "he",
+      ),
+    )
   }, [googleUnmatched, isSearching])
+
+  const onWhachatCount = filteredKnown.length + browseGoogleMatched.length
 
   const showEmailStart =
     looksLikeEmail(query) &&
@@ -204,6 +227,10 @@ export function NewChatDialog({
       setGoogleMatched(result.matched)
       setGoogleUnmatched(result.unmatched)
       setHasSyncedGoogle(true)
+      // Refresh contacts so newly matched Google profiles appear under אנשי קשר
+      const contactsRes = await fetchContacts(currentUserId)
+      setUsers(contactsRes.users)
+      if (contactsRes.error) setError(contactsRes.error)
     } catch (err) {
       setGoogleError(err instanceof Error ? err.message : "נכשל בסנכרון מגוגל")
     } finally {
@@ -330,6 +357,48 @@ export function NewChatDialog({
         <div className="p-6 text-center text-sm text-[#667781]">טוען אנשי קשר...</div>
       ) : (
         <>
+          {/* WhaChat contacts first */}
+          {onWhachatCount > 0 && (
+            <div className="px-5 py-2 text-xs font-medium text-[#008069]">
+              {isSearching ? "ב-WhaChat" : "אנשי קשר ב-WhaChat"}
+            </div>
+          )}
+
+          {filteredKnown.map((u) => (
+            <button
+              key={u.id}
+              type="button"
+              onClick={() => void handleSelect(u.id)}
+              disabled={busy}
+              className="flex w-full items-center gap-3 px-5 py-2.5 text-right transition hover:bg-[#f5f6f6] disabled:opacity-60"
+            >
+              <Avatar name={u.display_name} url={u.avatar_url} size={48} />
+              <div className="min-w-0 flex-1 border-b border-[#e9edef] pb-2.5">
+                <div className="truncate text-[#111b21]">{u.display_name ?? u.email}</div>
+                <div className="truncate text-sm text-[#667781]">{u.about ?? u.email ?? "זמין"}</div>
+              </div>
+            </button>
+          ))}
+
+          {!isSearching &&
+            browseGoogleMatched.map((u) => (
+              <button
+                key={`g-${u.id}`}
+                type="button"
+                onClick={() => void handleSelect(u.id)}
+                disabled={busy}
+                className="flex w-full items-center gap-3 px-5 py-2.5 text-right transition hover:bg-[#f5f6f6] disabled:opacity-60"
+              >
+                <Avatar name={u.display_name} url={u.avatar_url} size={48} />
+                <div className="min-w-0 flex-1 border-b border-[#e9edef] pb-2.5">
+                  <div className="truncate text-[#111b21]">{u.display_name ?? u.email}</div>
+                  <div className="truncate text-sm text-[#667781]">
+                    {u.email ? `${u.email} · ב-WhaChat` : "ב-WhaChat"}
+                  </div>
+                </div>
+              </button>
+            ))}
+
           {isSearching && googleSuggestions.length > 0 && (
             <>
               <div className="px-5 py-2 text-xs font-medium text-[#1a73e8]">הצעות מגוגל</div>
@@ -352,7 +421,7 @@ export function NewChatDialog({
                         {s.profile.display_name ?? s.profile.email}
                       </div>
                       <div className="truncate text-sm text-[#667781]">
-                        {s.profile.email ?? "ב-WhaChat"} · מגוגל
+                        {s.profile.email ?? "ב-WhaChat"} · ב-WhaChat
                       </div>
                     </div>
                   </button>
@@ -377,7 +446,7 @@ export function NewChatDialog({
                       </div>
                       <div className="truncate text-sm text-[#667781]">
                         {s.contact.email
-                          ? `${s.contact.email} · נסה לפתוח שיחה`
+                          ? `${s.contact.email} · לא ב-WhaChat`
                           : "לא ב-WhaChat"}
                       </div>
                     </div>
@@ -387,24 +456,9 @@ export function NewChatDialog({
             </>
           )}
 
-          {!isSearching && (browseGoogleMatched.length > 0 || browseGoogleUnmatched.length > 0) && (
+          {!isSearching && browseGoogleUnmatched.length > 0 && (
             <>
-              <div className="px-5 py-2 text-xs font-medium text-[#1a73e8]">מגוגל</div>
-              {browseGoogleMatched.map((u) => (
-                <button
-                  key={`g-${u.id}`}
-                  type="button"
-                  onClick={() => void handleSelect(u.id)}
-                  disabled={busy}
-                  className="flex w-full items-center gap-3 px-5 py-2.5 text-right transition hover:bg-[#f5f6f6] disabled:opacity-60"
-                >
-                  <Avatar name={u.display_name} url={u.avatar_url} size={48} />
-                  <div className="min-w-0 flex-1 border-b border-[#e9edef] pb-2.5">
-                    <div className="truncate text-[#111b21]">{u.display_name ?? u.email}</div>
-                    <div className="truncate text-sm text-[#667781]">{u.email ?? "ב-WhaChat"}</div>
-                  </div>
-                </button>
-              ))}
+              <div className="px-5 py-2 text-xs font-medium text-[#667781]">לא ב-WhaChat</div>
               {browseGoogleUnmatched.map((c) => (
                 <button
                   key={c.id}
@@ -426,28 +480,6 @@ export function NewChatDialog({
               ))}
             </>
           )}
-
-          {filteredKnown.length > 0 && (
-            <div className="px-5 py-2 text-xs font-medium text-[#008069]">
-              {isSearching ? "באפליקציה" : "אנשי קשר"}
-            </div>
-          )}
-
-          {filteredKnown.map((u) => (
-            <button
-              key={u.id}
-              type="button"
-              onClick={() => void handleSelect(u.id)}
-              disabled={busy}
-              className="flex w-full items-center gap-3 px-5 py-2.5 text-right transition hover:bg-[#f5f6f6] disabled:opacity-60"
-            >
-              <Avatar name={u.display_name} url={u.avatar_url} size={48} />
-              <div className="min-w-0 flex-1 border-b border-[#e9edef] pb-2.5">
-                <div className="truncate text-[#111b21]">{u.display_name ?? u.email}</div>
-                <div className="truncate text-sm text-[#667781]">{u.about ?? u.email ?? "זמין"}</div>
-              </div>
-            </button>
-          ))}
 
           {empty && (
             <div className="space-y-2 p-6 text-center text-sm text-[#667781]">

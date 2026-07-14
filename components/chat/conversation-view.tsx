@@ -16,9 +16,16 @@ import {
 } from "@/lib/chat-prefs"
 import { broadcastTyping, subscribeTyping } from "@/lib/typing"
 import { messagePreview } from "@/lib/conversation-display"
+import {
+  buildMessageMap,
+  filterMainStreamMessages,
+  getThreadRootId,
+  threadReplyPreview,
+} from "@/lib/message-thread"
 import { Avatar } from "./avatar"
 import { MessageBubble } from "./message-bubble"
 import { MessageInput, type MessageInputHandle } from "./message-input"
+import { ThreadPanel } from "./thread-panel"
 import { MediaGallery, mediaItemsFromMessages } from "./media-gallery"
 import { ForwardDialog } from "./forward-dialog"
 import { convAvatarUrl, convDisplayName, isSelfConversation } from "@/lib/conversation-display"
@@ -108,9 +115,11 @@ export function ConversationView({
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [typingUsers, setTypingUsers] = useState<Record<string, number>>({})
+  const [threadRootId, setThreadRootId] = useState<string | null>(null)
   const markedRef = useRef<string | null>(null)
 
   const isSelf = isSelfConversation(conversation, currentUser.id)
+  const threadsEnabled = conversation.is_group
   const otherParticipants = (conversation.participants ?? []).filter((p) => p.user_id !== currentUser.id)
   const totalOthers = otherParticipants.length
 
@@ -143,15 +152,57 @@ export function ConversationView({
             ? `נראה לאחרונה ${formatChatListTime(other.last_seen)}`
             : (other?.about ?? "זמין")
 
-  const visibleMessages = useMemo(
-    () => messages.filter((m) => !prefs.hiddenMessages.includes(m.id)),
-    [messages, prefs.hiddenMessages],
+  const messageById = useMemo(() => buildMessageMap(messages), [messages])
+
+  const visibleMessages = useMemo(() => {
+    const unhidden = messages.filter((m) => !prefs.hiddenMessages.includes(m.id))
+    return filterMainStreamMessages(unhidden, threadsEnabled)
+  }, [messages, prefs.hiddenMessages, threadsEnabled])
+
+  const threadRoot = useMemo(() => {
+    if (!threadRootId) return null
+    return messageById.get(threadRootId) ?? null
+  }, [threadRootId, messageById])
+
+  const openThread = useCallback(
+    (message: Message) => {
+      if (!threadsEnabled) return
+      const rootId = getThreadRootId(message, messageById)
+      setThreadRootId(rootId)
+      setReplyTo(null)
+      setEditingMessage(null)
+      setSelectionMode(false)
+      setSelectedIds([])
+    },
+    [threadsEnabled, messageById],
   )
+
+  const closeThread = useCallback(() => setThreadRootId(null), [])
+
+  const threadReplyStats = useMemo(() => {
+    if (!threadsEnabled) return new Map<string, { count: number; preview: string | null }>()
+    const map = new Map<string, { count: number; preview: string | null }>()
+    for (const m of messages) {
+      if (!m.reply_to_id || prefs.hiddenMessages.includes(m.id)) continue
+      const rootId = getThreadRootId(m, messageById)
+      if (rootId === m.id) continue
+      const prev = map.get(rootId) ?? { count: 0, preview: null }
+      const nextPreview = m.deleted_at ? prev.preview : threadReplyPreview(m)
+      map.set(rootId, {
+        count: prev.count + 1,
+        preview: nextPreview ?? prev.preview,
+      })
+    }
+    return map
+  }, [threadsEnabled, messages, messageById, prefs.hiddenMessages])
 
   const searchMatches = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()
     if (!q) return [] as string[]
-    return visibleMessages
+    const pool = threadsEnabled
+      ? messages.filter((m) => !prefs.hiddenMessages.includes(m.id))
+      : visibleMessages
+    return pool
       .filter(
         (m) =>
           !m.deleted_at &&
@@ -159,7 +210,7 @@ export function ConversationView({
           ((m.content ?? "").toLowerCase().includes(q) || (m.file_name ?? "").toLowerCase().includes(q)),
       )
       .map((m) => m.id)
-  }, [visibleMessages, searchQuery])
+  }, [visibleMessages, messages, searchQuery, threadsEnabled, prefs.hiddenMessages])
 
   useEffect(() => {
     setSearchHit(0)
@@ -168,9 +219,19 @@ export function ConversationView({
   useEffect(() => {
     if (!searchOpen || !searchMatches.length) return
     const id = searchMatches[Math.min(searchHit, searchMatches.length - 1)]
+    const msg = messageById.get(id)
+    if (threadsEnabled && msg?.reply_to_id) {
+      openThread(msg)
+      requestAnimationFrame(() => {
+        document
+          .querySelector(`[data-thread-message-id="${id}"]`)
+          ?.scrollIntoView({ behavior: "smooth", block: "center" })
+      })
+      return
+    }
     const node = document.querySelector(`[data-message-id="${id}"]`)
     node?.scrollIntoView({ behavior: "smooth", block: "center" })
-  }, [searchHit, searchMatches, searchOpen])
+  }, [searchHit, searchMatches, searchOpen, threadsEnabled, messageById, openThread])
 
   const stickToBottomRef = useRef(true)
   const prevConvIdRef = useRef(conversation.id)
@@ -226,6 +287,7 @@ export function ConversationView({
     setSelectionMode(false)
     setSelectedIds([])
     setTypingUsers({})
+    setThreadRootId(null)
   }, [conversation.id])
 
   useEffect(() => {
@@ -291,7 +353,13 @@ export function ConversationView({
       })
   }, [messages, currentUser.id, conversation.id, loading, onConversationOpened])
 
-  const mediaItems = useMemo(() => mediaItemsFromMessages(visibleMessages), [visibleMessages])
+  const mediaItems = useMemo(
+    () =>
+      mediaItemsFromMessages(
+        messages.filter((m) => !prefs.hiddenMessages.includes(m.id)),
+      ),
+    [messages, prefs.hiddenMessages],
+  )
 
   useEffect(() => {
     if (!initialGalleryMessageId || loading) return
@@ -446,6 +514,10 @@ export function ConversationView({
     if (!target) return
     exitSelection()
     setEditingMessage(null)
+    if (threadsEnabled) {
+      openThread(target)
+      return
+    }
     setReplyTo(target)
   }
 
@@ -486,8 +558,9 @@ export function ConversationView({
   }
 
   return (
+    <div className="relative flex h-full min-w-0 flex-1 overflow-hidden">
     <div
-      className="relative flex h-full flex-col"
+      className={`relative flex h-full min-w-0 flex-col ${threadRoot ? "hidden lg:flex lg:flex-1" : "flex flex-1"}`}
       onDragEnter={onDragEnter}
       onDragLeave={onDragLeave}
       onDragOver={onDragOver}
@@ -783,10 +856,26 @@ export function ConversationView({
                       : undefined
                   }
                   onDeleteForMe={() => onPrefsChange(hideMessageForMe(prefs, message.id))}
-                  onReply={() => {
-                    setEditingMessage(null)
-                    setReplyTo(message)
-                  }}
+                  onReply={
+                    threadsEnabled
+                      ? undefined
+                      : () => {
+                          setEditingMessage(null)
+                          setReplyTo(message)
+                        }
+                  }
+                  onReplyInThread={
+                    threadsEnabled && message.type !== "system" && !message.deleted_at
+                      ? () => openThread(message)
+                      : undefined
+                  }
+                  onOpenThread={
+                    threadsEnabled && (threadReplyStats.get(message.id)?.count ?? 0) > 0
+                      ? () => openThread(message)
+                      : undefined
+                  }
+                  threadReplyCount={threadReplyStats.get(message.id)?.count ?? 0}
+                  threadPreview={threadReplyStats.get(message.id)?.preview ?? null}
                   onForward={() => setForwardMessages([message])}
                   onEdit={
                     message.sender_id === currentUser.id &&
@@ -882,6 +971,42 @@ export function ConversationView({
         onClose={() => setForwardMessages([])}
         onForward={handleForward}
       />
+    </div>
+
+    {threadRoot && (
+      <div
+        className={`z-30 flex h-full shrink-0 ${
+          threadRoot ? "absolute inset-0 lg:static lg:inset-auto" : ""
+        }`}
+      >
+        <ThreadPanel
+          root={threadRoot}
+          messages={messages.filter((m) => !prefs.hiddenMessages.includes(m.id))}
+          conversation={conversation}
+          currentUser={currentUser}
+          prefs={prefs}
+          onPrefsChange={onPrefsChange}
+          onClose={closeThread}
+          onDeleteForEveryone={handleDeleteForEveryone}
+          onOpenMedia={openMedia}
+          onOptimistic={(msg) => {
+            addOptimistic(msg)
+            onMessageActivity?.(msg)
+          }}
+          onSent={(msg, tempId) => {
+            confirmOptimistic(tempId, msg)
+            onMessageActivity?.(msg)
+          }}
+          onSendFailed={failOptimistic}
+          onEdited={(msg) => {
+            setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, ...msg } : m)))
+            onMessageActivity?.(msg)
+          }}
+          onTyping={handleTyping}
+          onForward={(message) => setForwardMessages([message])}
+        />
+      </div>
+    )}
     </div>
   )
 }

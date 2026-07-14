@@ -17,11 +17,14 @@ async function showViaServiceWorker(opts: {
   body: string
   tag?: string
   conversationId?: string
+  url?: string
   requireInteraction?: boolean
 }): Promise<boolean> {
   if (!("serviceWorker" in navigator)) return false
   try {
     const reg = await navigator.serviceWorker.ready
+    const url =
+      opts.url || (opts.conversationId ? `/chat?c=${opts.conversationId}` : "/chat")
     await reg.showNotification(opts.title, {
       body: opts.body,
       tag: opts.tag ?? "wa-message",
@@ -30,8 +33,9 @@ async function showViaServiceWorker(opts: {
       lang: "he",
       requireInteraction: opts.requireInteraction ?? false,
       data: {
-        url: opts.conversationId ? `/chat?c=${opts.conversationId}` : "/chat",
+        url,
         conversationId: opts.conversationId ?? null,
+        openStatus: Boolean(opts.url?.includes("tab=status")),
       },
     } as NotificationOptions)
     return true
@@ -45,6 +49,7 @@ export async function showIncomingMessageNotification(opts: {
   body: string
   tag?: string
   conversationId?: string
+  url?: string
   onClick?: () => void
 }) {
   if (typeof window === "undefined" || !("Notification" in window)) return
@@ -55,7 +60,8 @@ export async function showIncomingMessageNotification(opts: {
     title: opts.title,
     body: opts.body,
     tag: opts.tag ?? opts.conversationId ?? "wa-message",
-    conversationId: opts.conversationId ?? opts.tag,
+    conversationId: opts.conversationId,
+    url: opts.url,
   })
   if (viaSw) return
 

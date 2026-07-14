@@ -93,29 +93,62 @@ export function NewGroupDialog({ open, currentUserId, onClose, onCreated }: Prop
       })
     }
 
-    out.sort((a, b) => a.score - b.score)
+    out.sort((a, b) => {
+      if (a.kind !== b.kind) return a.kind === "matched" ? -1 : 1
+      if (a.score !== b.score) return a.score - b.score
+      const an =
+        a.kind === "matched"
+          ? (a.profile.display_name ?? a.profile.email ?? "")
+          : (a.contact.display_name ?? a.contact.email ?? "")
+      const bn =
+        b.kind === "matched"
+          ? (b.profile.display_name ?? b.profile.email ?? "")
+          : (b.contact.display_name ?? b.contact.email ?? "")
+      return an.localeCompare(bn, "he")
+    })
     return out.slice(0, 12)
   }, [googleMatched, googleUnmatched, knownIds, selectedIds, isSearching, q])
 
   const filtered = useMemo(() => {
     return users
       .filter((u) => contactMatchesQuery(u.display_name, u.email, q))
-      .sort(
-        (a, b) =>
-          contactMatchScore(a.display_name, a.email, q) -
-          contactMatchScore(b.display_name, b.email, q),
-      )
-  }, [users, q])
+      .sort((a, b) => {
+        if (isSearching) {
+          return (
+            contactMatchScore(a.display_name, a.email, q) -
+            contactMatchScore(b.display_name, b.email, q)
+          )
+        }
+        return (a.display_name ?? a.email ?? "").localeCompare(
+          b.display_name ?? b.email ?? "",
+          "he",
+        )
+      })
+  }, [users, q, isSearching])
 
   const browseGoogleMatched = useMemo(() => {
     if (isSearching) return []
-    return googleMatched.filter((u) => !knownIds.has(u.id))
+    return [...googleMatched]
+      .filter((u) => !knownIds.has(u.id))
+      .sort((a, b) =>
+        (a.display_name ?? a.email ?? "").localeCompare(
+          b.display_name ?? b.email ?? "",
+          "he",
+        ),
+      )
   }, [googleMatched, knownIds, isSearching])
 
   const browseGoogleUnmatched = useMemo(() => {
     if (isSearching) return []
-    return googleUnmatched
+    return [...googleUnmatched].sort((a, b) =>
+      (a.display_name ?? a.email ?? "").localeCompare(
+        b.display_name ?? b.email ?? "",
+        "he",
+      ),
+    )
   }, [googleUnmatched, isSearching])
+
+  const onWhachatCount = filtered.length + browseGoogleMatched.length
 
   const showEmailAdd =
     looksLikeEmail(query) &&
@@ -138,6 +171,8 @@ export function NewGroupDialog({ open, currentUserId, onClose, onCreated }: Prop
       setGoogleMatched(result.matched)
       setGoogleUnmatched(result.unmatched)
       setHasSyncedGoogle(true)
+      const contactsRes = await fetchContacts(currentUserId)
+      setUsers(contactsRes.users)
     } catch (err) {
       setGoogleError(err instanceof Error ? err.message : "נכשל בסנכרון מגוגל")
     } finally {
@@ -321,6 +356,18 @@ export function NewGroupDialog({ open, currentUserId, onClose, onCreated }: Prop
             </button>
           )}
 
+          {/* WhaChat contacts first */}
+          {onWhachatCount > 0 && (
+            <div className="px-5 py-2 text-xs font-medium text-[#008069]">
+              {isSearching ? "ב-WhaChat" : "אנשי קשר ב-WhaChat"}
+            </div>
+          )}
+
+          {filtered.map((u) => renderToggleRow(u, u.id))}
+
+          {!isSearching &&
+            browseGoogleMatched.map((u) => renderToggleRow(u, `g-${u.id}`))}
+
           {isSearching && googleSuggestions.length > 0 && (
             <>
               <div className="px-5 py-2 text-xs font-medium text-[#1a73e8]">הצעות מגוגל</div>
@@ -348,7 +395,7 @@ export function NewGroupDialog({ open, currentUserId, onClose, onCreated }: Prop
                       </div>
                       <div className="truncate text-sm text-[#667781]">
                         {s.contact.email
-                          ? `${s.contact.email} · נסה להוסיף`
+                          ? `${s.contact.email} · לא ב-WhaChat`
                           : "לא ב-WhaChat"}
                       </div>
                     </div>
@@ -358,10 +405,9 @@ export function NewGroupDialog({ open, currentUserId, onClose, onCreated }: Prop
             </>
           )}
 
-          {!isSearching && (browseGoogleMatched.length > 0 || browseGoogleUnmatched.length > 0) && (
+          {!isSearching && browseGoogleUnmatched.length > 0 && (
             <>
-              <div className="px-5 py-2 text-xs font-medium text-[#1a73e8]">מגוגל</div>
-              {browseGoogleMatched.map((u) => renderToggleRow(u, `g-${u.id}`))}
+              <div className="px-5 py-2 text-xs font-medium text-[#667781]">לא ב-WhaChat</div>
               {browseGoogleUnmatched.map((c) => (
                 <div
                   key={c.id}
@@ -376,14 +422,6 @@ export function NewGroupDialog({ open, currentUserId, onClose, onCreated }: Prop
               ))}
             </>
           )}
-
-          {filtered.length > 0 && (
-            <div className="px-5 py-2 text-xs font-medium text-[#008069]">
-              {isSearching ? "באפליקציה" : "אנשי קשר"}
-            </div>
-          )}
-
-          {filtered.map((u) => renderToggleRow(u, u.id))}
 
           {!busy &&
             filtered.length === 0 &&
