@@ -193,6 +193,7 @@ export function ChatList({
             const isFav = favoriteSet.has(conv.id)
             const othersCount = (conv.participants ?? []).filter((p) => p.user_id !== currentUser.id).length
             const tickStatus = isMine && last ? messageTickStatus(last, othersCount) : null
+            const lastViewCount = (last?.reads ?? []).filter((r) => r.user_id !== last?.sender_id).length
             return (
               <div key={conv.id} className="relative">
                 <button
@@ -233,7 +234,9 @@ export function ChatList({
                     </div>
                     <div className="mt-0.5 flex items-center justify-between gap-2">
                       <span className="flex min-w-0 items-center gap-1 truncate text-sm text-[var(--wa-text-secondary)]">
-                        {tickStatus && last && !last.deleted_at && <MessageTicks status={tickStatus} />}
+                        {tickStatus && last && !last.deleted_at && (
+                          <MessageTicks status={tickStatus} isGroup={conv.is_group} viewCount={lastViewCount} />
+                        )}
                         <span className="truncate">
                           {last?.deleted_at ? "ההודעה נמחקה" : messagePreview(last)}
                         </span>

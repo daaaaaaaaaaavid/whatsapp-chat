@@ -1,13 +1,29 @@
 "use client"
 
-import { Check, CheckCheck, Clock } from "lucide-react"
+import { Check, CheckCheck, Clock, Eye } from "lucide-react"
 
 type Props = {
   status: "sending" | "sent" | "delivered" | "read"
+  isGroup?: boolean
+  viewCount?: number
 }
 
-export function MessageTicks({ status }: Props) {
+export function MessageTicks({ status, isGroup, viewCount = 0 }: Props) {
   if (status === "sending") return <Clock className="h-3.5 w-3.5 text-[var(--wa-text-secondary)]" />
+
+  if (isGroup) {
+    const seen = viewCount > 0
+    return (
+      <span
+        className={seen ? "flex items-center gap-0.5 text-[#53bdeb]" : "flex items-center gap-0.5 text-[var(--wa-text-secondary)]"}
+        dir="ltr"
+      >
+        <Eye className="h-3.5 w-3.5" />
+        <span className="text-[11px] leading-none">{viewCount}</span>
+      </span>
+    )
+  }
+
   if (status === "sent") return <Check className="h-4 w-4 text-[var(--wa-text-secondary)]" />
   if (status === "delivered") return <CheckCheck className="h-4 w-4 text-[var(--wa-text-secondary)]" />
   return <CheckCheck className="h-4 w-4 text-[#53bdeb]" />

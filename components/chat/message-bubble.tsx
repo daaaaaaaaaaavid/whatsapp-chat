@@ -352,7 +352,7 @@ export function MessageBubble({
           </span>
           <span className="float-right ml-2 mt-1 flex items-center gap-1 text-[11px] text-[var(--wa-text-secondary)]" dir="ltr">
             {formatTime(message.created_at)}
-            {isMine && <MessageTicks status={status} />}
+            {isMine && <MessageTicks status={status} isGroup={isGroup} viewCount={readCount} />}
           </span>
         </div>
       </div>
@@ -656,6 +656,8 @@ export function MessageBubble({
             isMine={isMine}
             timeLabel={formatTime(message.created_at)}
             status={status}
+            isGroup={isGroup}
+            viewCount={readCount}
             avatarUrl={isMine ? currentUserAvatarUrl : senderProfile?.avatar_url}
             avatarName={isMine ? currentUserName : senderName}
           />
@@ -692,7 +694,7 @@ export function MessageBubble({
             {isPinned && <Pin className="h-3 w-3 text-[#00a884]" />}
             {message.edited_at && <span className="text-[10px]">נערך</span>}
             {formatTime(message.created_at)}
-            {isMine && <MessageTicks status={status} />}
+            {isMine && <MessageTicks status={status} isGroup={isGroup} viewCount={readCount} />}
           </span>
         )}
 

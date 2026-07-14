@@ -25,6 +25,8 @@ type Props = {
   isMine: boolean
   timeLabel: string
   status: "sending" | "sent" | "delivered" | "read"
+  isGroup?: boolean
+  viewCount?: number
   avatarUrl?: string | null
   avatarName?: string | null
 }
@@ -35,6 +37,8 @@ export function VoiceMessage({
   isMine,
   timeLabel,
   status,
+  isGroup,
+  viewCount,
   avatarUrl,
   avatarName,
 }: Props) {
@@ -153,7 +157,7 @@ export function VoiceMessage({
           <span dir="ltr">{formatCallDuration(Math.round(displayTime || 0))}</span>
           <span className="flex items-center gap-1" dir="ltr">
             {timeLabel}
-            {isMine && <MessageTicks status={status} />}
+            {isMine && <MessageTicks status={status} isGroup={isGroup} viewCount={viewCount} />}
           </span>
         </div>
       </div>
