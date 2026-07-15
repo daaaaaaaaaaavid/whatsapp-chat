@@ -6,6 +6,9 @@ export const metadata: Metadata = {
   title: "WhaChat",
   description: "פשוט. אמין. הודעות פרטיות.",
   generator: "v0.app",
+  verification: {
+    google: "t9baAK2VUiT5qE7LL3lotOcAOIKHVWBfU7CtkZ_M-rQ",
+  },
   icons: {
     icon: [{ url: "/logo.svg", type: "image/svg+xml" }],
     apple: [{ url: "/logo.svg" }],
