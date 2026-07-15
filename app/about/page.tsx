@@ -4,7 +4,8 @@ import { Logo } from "@/components/brand/logo"
 import { APP_NAME, getSiteUrl, getSupportEmail } from "@/lib/site-config"
 
 export const metadata: Metadata = {
-  title: `אודות ${APP_NAME}`,
+  // Google OAuth branding verification matches the OAuth app name to this page.
+  title: APP_NAME,
   description: `${APP_NAME} — אפליקציית הודעות פרטיות ופשוטה.`,
 }
 
@@ -18,19 +19,20 @@ export default function AboutPage() {
           <div className="flex justify-center">
             <Logo size={12} withWordmark variant="white" wordmarkClassName="text-xl font-semibold" />
           </div>
-          <p className="mt-4 text-sm text-white/90">פשוט. אמין. הודעות פרטיות.</p>
+          <h1 className="mt-4 text-3xl font-semibold tracking-tight text-white">{APP_NAME}</h1>
+          <p className="mt-2 text-sm text-white/90">פשוט. אמין. הודעות פרטיות.</p>
         </div>
       </header>
 
       <main className="mx-auto max-w-3xl px-4 py-10 pb-16">
         <section className="rounded-lg bg-[var(--wa-panel)] p-6 shadow-sm sm:p-10">
-          <h1 className="text-2xl font-medium text-[var(--wa-text)]">מה זה {APP_NAME}?</h1>
+          <h2 className="text-2xl font-medium text-[var(--wa-text)]">מה זה {APP_NAME}?</h2>
           <p className="mt-4 text-sm leading-relaxed text-[var(--wa-text-secondary)]">
             {APP_NAME} היא אפליקציית צ&apos;אט שמאפשרת לשלוח הודעות, לשתף מדיה, לבצע שיחות קול ווידאו, ולנהל שיחות
             קבוצתיות — בדומה לחוויית WhatsApp, עם דגש על פרטיות ושליטה במידע שלך.
           </p>
 
-          <h2 className="mt-8 text-lg font-medium text-[var(--wa-text)]">סנכרון אנשי קשר מגוגל</h2>
+          <h3 className="mt-8 text-lg font-medium text-[var(--wa-text)]">סנכרון אנשי קשר מגוגל</h3>
           <p className="mt-3 text-sm leading-relaxed text-[var(--wa-text-secondary)]">
             בבחירה מרצונך, ניתן לסנכרן אנשי קשר מחשבון Google כדי למצוא בקלות משתמשים רשומים ב־{APP_NAME} ולהתחיל איתם
             שיחה. הגישה היא לקריאה בלבד (<span dir="ltr">contacts.readonly</span>) — אנחנו לא משנים או מוחקים אנשי
