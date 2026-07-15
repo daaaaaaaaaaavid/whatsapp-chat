@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { Lock } from "lucide-react"
 import { Logo } from "@/components/brand/logo"
+import { AuthLegalFooter } from "@/components/legal/auth-legal-footer"
 
 function errorMessage(err: unknown): string {
   if (err instanceof Error && err.message) return err.message
@@ -215,6 +216,7 @@ export default function SignUpPage() {
           <Lock className="h-3 w-3" />
           ההודעות האישיות שלך מוצפנות מקצה לקצה
         </p>
+        <AuthLegalFooter />
       </div>
     </div>
   )

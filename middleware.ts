@@ -1,7 +1,16 @@
 import { updateSession } from "@/lib/supabase/proxy"
-import { type NextRequest } from "next/server"
+import { type NextRequest, NextResponse } from "next/server"
 
 export async function middleware(request: NextRequest) {
+  if (process.env.NODE_ENV === "production") {
+    const proto = request.headers.get("x-forwarded-proto")
+    if (proto === "http") {
+      const httpsUrl = request.nextUrl.clone()
+      httpsUrl.protocol = "https:"
+      return NextResponse.redirect(httpsUrl, 308)
+    }
+  }
+
   return await updateSession(request)
 }
 

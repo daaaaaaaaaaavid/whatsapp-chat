@@ -18,7 +18,14 @@ export async function updateSession(request: NextRequest) {
   const { url, anonKey } = getSupabaseEnv()
 
   if (!url || !anonKey) {
-    if (pathname.startsWith("/auth") || pathname.startsWith("/api/") || pathname === "/") {
+    if (
+      pathname.startsWith("/auth") ||
+      pathname.startsWith("/api/") ||
+      pathname === "/" ||
+      pathname === "/about" ||
+      pathname === "/privacy" ||
+      pathname === "/terms"
+    ) {
       return NextResponse.next({ request })
     }
     const redirectUrl = request.nextUrl.clone()
@@ -50,8 +57,14 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   const isAuthRoute = pathname.startsWith("/auth")
-  const isPublic =
-    pathname === "/" || pathname.startsWith("/api/") || isAuthRoute
+  const isPublicRoute =
+    pathname === "/" ||
+    pathname === "/about" ||
+    pathname === "/privacy" ||
+    pathname === "/terms" ||
+    pathname.startsWith("/api/") ||
+    isAuthRoute
+  const isPublic = isPublicRoute
 
   if (!user && !isPublic) {
     const loginUrl = request.nextUrl.clone()

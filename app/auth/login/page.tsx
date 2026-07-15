@@ -10,6 +10,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { useState, Suspense } from "react"
 import { Lock } from "lucide-react"
 import { Logo } from "@/components/brand/logo"
+import { AuthLegalFooter } from "@/components/legal/auth-legal-footer"
 
 function LoginForm() {
   const [email, setEmail] = useState("")
@@ -134,6 +135,7 @@ function LoginForm() {
           <Lock className="h-3 w-3" />
           ההודעות האישיות שלך מוצפנות מקצה לקצה
         </p>
+        <AuthLegalFooter />
       </div>
     </div>
   )
