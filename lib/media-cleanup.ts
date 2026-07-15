@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import {
   MEDIA_RETENTION_DAYS,
   MEDIA_RETENTION_ENABLED,
+  isOlderThanRetention,
   mediaRetentionCutoffIso,
 } from "@/lib/media-retention"
 import { parseMediaStoragePath } from "@/lib/media-url"
@@ -28,12 +29,19 @@ export function isChatMediaStoragePath(path: string): boolean {
   return true
 }
 
+function escapeIlikePattern(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_")
+}
+
+/**
+ * True if a newer (still-in-retention) message still points at the same storage object.
+ * Matches by path so `#d=` / `#whachat=` fragments don't hide live references.
+ */
 async function urlStillReferenced(
   admin: SupabaseClient,
   fileUrl: string,
   cutoffIso: string,
 ): Promise<boolean> {
-  // Match by storage path so `#d=` / `#whachat=` fragments don't hide live references.
   const path = parseMediaStoragePath(fileUrl)
   if (!path) {
     const { data, error } = await admin
@@ -49,14 +57,14 @@ async function urlStillReferenced(
 
   const { data, error } = await admin
     .from("messages")
-    .select("id, file_url")
-    .not("file_url", "is", null)
+    .select("id")
+    .ilike("file_url", `%${escapeIlikePattern(path)}%`)
     .gte("created_at", cutoffIso)
     .is("deleted_at", null)
-    .limit(500)
+    .limit(1)
 
   if (error) throw error
-  return (data ?? []).some((row) => parseMediaStoragePath(row.file_url ?? "") === path)
+  return (data?.length ?? 0) > 0
 }
 
 async function cleanupExpiredChatMedia(
@@ -71,18 +79,30 @@ async function cleanupExpiredChatMedia(
   while (true) {
     const { data: rows, error } = await admin
       .from("messages")
-      .select("id, file_url")
+      .select("id, file_url, created_at")
       .in("type", ["image", "video"])
       .not("file_url", "is", null)
       .lt("created_at", cutoffIso)
       .is("deleted_at", null)
+      .order("created_at", { ascending: true })
       .limit(BATCH_SIZE)
 
     if (error) throw error
     if (!rows?.length) break
 
-    const messageIds = rows.map((r) => r.id)
-    const urls = [...new Set(rows.map((r) => r.file_url).filter(Boolean) as string[])]
+    // Belt-and-suspenders: never touch rows that are still inside the retention window
+    // (guards against bad cutoff math or clock skew).
+    const eligible = rows.filter((row) => isOlderThanRetention(row.created_at))
+    if (eligible.length === 0) {
+      console.warn(
+        "[media-cleanup] selected rows were all inside retention window; aborting batch",
+        { cutoffIso, sampleCreatedAt: rows[0]?.created_at },
+      )
+      break
+    }
+
+    const messageIds = eligible.map((r) => r.id)
+    const urls = [...new Set(eligible.map((r) => r.file_url).filter(Boolean) as string[])]
 
     const pathsToDelete: string[] = []
     for (const fileUrl of urls) {

@@ -1,18 +1,28 @@
-/**
- * Chat image/video auto-deletion is disabled — media stays with the conversation.
- * Status media still expires via `expires_at` (see status privacy migration).
- */
-export const MEDIA_RETENTION_ENABLED = false
+/** Chat image/video retention window (days). Avatars and other files are not affected. */
+export const MEDIA_RETENTION_DAYS = 4
 
-/** Kept for scripts/tests; unused while `MEDIA_RETENTION_ENABLED` is false. */
-export const MEDIA_RETENTION_DAYS = 3650
+/** When false, chat media cleanup is skipped (statuses still expire via expires_at). */
+export const MEDIA_RETENTION_ENABLED = true
 
 export const MEDIA_EXPIRED_LABEL = "הקובץ לא זמין יותר"
 
 export function mediaRetentionCutoffIso(now = new Date()): string {
-  const cutoff = new Date(now)
-  cutoff.setDate(cutoff.getDate() - MEDIA_RETENTION_DAYS)
+  const cutoff = new Date(now.getTime())
+  // Use UTC day math so server timezone / DST cannot shrink the window.
+  cutoff.setUTCDate(cutoff.getUTCDate() - MEDIA_RETENTION_DAYS)
   return cutoff.toISOString()
+}
+
+/** True when a message timestamp is older than the retention window. */
+export function isOlderThanRetention(
+  createdAt: string | null | undefined,
+  now = new Date(),
+): boolean {
+  if (!createdAt) return false
+  const createdMs = Date.parse(createdAt)
+  if (!Number.isFinite(createdMs)) return false
+  const minAgeMs = MEDIA_RETENTION_DAYS * 24 * 60 * 60 * 1000
+  return createdMs <= now.getTime() - minAgeMs
 }
 
 export function isExpiredChatMedia(message: {

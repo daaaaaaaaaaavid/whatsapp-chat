@@ -16,6 +16,7 @@ export function parseMediaStoragePath(fileUrl: string): string | null {
       `/storage/v1/object/public/${MEDIA_BUCKET}/`,
       `/storage/v1/object/sign/${MEDIA_BUCKET}/`,
       `/storage/v1/object/authenticated/${MEDIA_BUCKET}/`,
+      `/storage/v1/object/${MEDIA_BUCKET}/`,
     ]
     for (const marker of markers) {
       const idx = url.pathname.indexOf(marker)

@@ -2,6 +2,10 @@ import { NextResponse } from "next/server"
 import { createServiceClient } from "@/lib/supabase/admin"
 import { mediaCleanupSummary, runMediaCleanup } from "@/lib/media-cleanup"
 
+/** Prevent accidental execution during static build / deploy prefetch. */
+export const dynamic = "force-dynamic"
+export const runtime = "nodejs"
+
 function isAuthorized(req: Request): boolean {
   const secret = process.env.CRON_SECRET?.trim()
   if (!secret) return false
