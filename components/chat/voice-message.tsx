@@ -5,7 +5,8 @@ import { LoaderCircle, Mic, Pause, Play, User } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { formatCallDuration } from "@/lib/format"
 import { createClient } from "@/lib/supabase/client"
-import { downloadMediaBlob } from "@/lib/media-url"
+import { inferAudioMimeFromUrl } from "@/lib/media-mime"
+import { downloadMediaBlob, parseMediaDurationHint } from "@/lib/media-url"
 import { useSignedMediaUrlControls } from "@/lib/use-signed-media-url"
 import { MessageTicks } from "./message-ticks"
 
@@ -27,7 +28,15 @@ function readFiniteDuration(audio: HTMLAudioElement): number {
   return Number.isFinite(d) && d > 0 ? d : 0
 }
 
-/** Some browsers report Infinity for WebM until we seek to the end once. */
+function resetPlayhead(audio: HTMLAudioElement) {
+  try {
+    audio.currentTime = 0
+  } catch {
+    // ignore
+  }
+}
+
+/** Some browsers report Infinity for WebM until we seek near the end once. */
 async function resolveDuration(audio: HTMLAudioElement): Promise<number> {
   const immediate = readFiniteDuration(audio)
   if (immediate > 0) return immediate
@@ -37,34 +46,36 @@ async function resolveDuration(audio: HTMLAudioElement): Promise<number> {
     const finish = (value: number) => {
       if (settled) return
       settled = true
-      audio.removeEventListener("timeupdate", onTimeUpdate)
+      audio.removeEventListener("timeupdate", onTick)
+      audio.removeEventListener("durationchange", onTick)
+      audio.removeEventListener("seeked", onTick)
+      resetPlayhead(audio)
       resolve(value)
     }
-    const onTimeUpdate = () => {
+    const onTick = () => {
       const d = readFiniteDuration(audio)
-      if (d > 0) {
-        try {
-          audio.currentTime = 0
-        } catch {
-          // ignore
-        }
-        finish(d)
-      }
+      if (d > 0) finish(d)
     }
-    audio.addEventListener("timeupdate", onTimeUpdate)
+    audio.addEventListener("timeupdate", onTick)
+    audio.addEventListener("durationchange", onTick)
+    audio.addEventListener("seeked", onTick)
     try {
-      audio.currentTime = 1e101
+      audio.currentTime = Number.MAX_SAFE_INTEGER
     } catch {
       finish(0)
       return
     }
-    window.setTimeout(() => finish(readFiniteDuration(audio)), 1500)
+    window.setTimeout(() => finish(readFiniteDuration(audio)), 1200)
   })
 }
 
-function waitForAudioReady(audio: HTMLAudioElement): Promise<void> {
-  if (audio.readyState >= 1 && readFiniteDuration(audio) > 0) return Promise.resolve()
+function waitForAudioReady(audio: HTMLAudioElement, timeoutMs = 8000): Promise<void> {
+  if (audio.readyState >= 2) return Promise.resolve()
   return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      cleanup()
+      reject(new Error("audio load timeout"))
+    }, timeoutMs)
     const ok = () => {
       cleanup()
       resolve()
@@ -74,6 +85,7 @@ function waitForAudioReady(audio: HTMLAudioElement): Promise<void> {
       reject(new Error("audio error"))
     }
     const cleanup = () => {
+      window.clearTimeout(timer)
       audio.removeEventListener("loadedmetadata", ok)
       audio.removeEventListener("canplay", ok)
       audio.removeEventListener("error", fail)
@@ -83,6 +95,14 @@ function waitForAudioReady(audio: HTMLAudioElement): Promise<void> {
     audio.addEventListener("error", fail)
     audio.load()
   })
+}
+
+function blobForPlayback(blob: Blob, fileUrl: string): Blob {
+  const mime = inferAudioMimeFromUrl(fileUrl)
+  if (blob.type && blob.type !== "application/octet-stream" && !blob.type.startsWith("video/")) {
+    return blob
+  }
+  return new Blob([blob], { type: mime })
 }
 
 type Props = {
@@ -112,9 +132,10 @@ export function VoiceMessage({
   const { url: signedAvatarUrl } = useSignedMediaUrlControls(avatarUrl)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const objectUrlRef = useRef<string | null>(null)
+  const hintDuration = parseMediaDurationHint(fileUrl) ?? 0
   const [ready, setReady] = useState(false)
   const [playing, setPlaying] = useState(false)
-  const [duration, setDuration] = useState(0)
+  const [duration, setDuration] = useState(hintDuration)
   const [current, setCurrent] = useState(0)
   const [buffering, setBuffering] = useState(true)
   const [loadError, setLoadError] = useState(false)
@@ -128,7 +149,7 @@ export function VoiceMessage({
     let cancelled = false
     setPlaying(false)
     setCurrent(0)
-    setDuration(0)
+    setDuration(parseMediaDurationHint(fileUrl) ?? 0)
     setReady(false)
     setLoadError(false)
     setPlayError(null)
@@ -147,10 +168,17 @@ export function VoiceMessage({
     audio.preload = "auto"
     audioRef.current = audio
 
-    const onTime = () => setCurrent(audio.currentTime)
+    const onTime = () => {
+      setCurrent(audio.currentTime)
+      const live = readFiniteDuration(audio)
+      if (live > 0) {
+        setDuration((prev) => (prev > 0 ? prev : live))
+      }
+    }
     const onEnded = () => {
       setPlaying(false)
       setCurrent(0)
+      resetPlayhead(audio)
     }
     const onPlay = () => setPlaying(true)
     const onPause = () => setPlaying(false)
@@ -167,14 +195,15 @@ export function VoiceMessage({
         if (cancelled) return
         if (!blob || blob.size === 0) throw new Error("empty media")
 
-        const objectUrl = URL.createObjectURL(blob)
+        const typed = blobForPlayback(blob, fileUrl)
+        const objectUrl = URL.createObjectURL(typed)
         objectUrlRef.current = objectUrl
         audio.src = objectUrl
         await waitForAudioReady(audio)
         if (cancelled) return
-        const d = await resolveDuration(audio)
+        const resolved = await resolveDuration(audio)
         if (cancelled) return
-        if (d > 0) setDuration(d)
+        if (resolved > 0) setDuration(resolved)
         setReady(true)
         setBuffering(false)
         setLoadError(false)
@@ -211,17 +240,23 @@ export function VoiceMessage({
 
   const toggle = async () => {
     const audio = audioRef.current
-    if (!audio || !ready || buffering) {
+    if (!audio || buffering) {
       if (loadError) refresh()
       return
     }
+    if (!ready && !loadError) return
     if (!audio.paused) {
       audio.pause()
       return
     }
     setPlayError(null)
     try {
+      if (audio.currentTime > 0 && duration > 0 && audio.currentTime >= duration - 0.05) {
+        resetPlayhead(audio)
+        setCurrent(0)
+      }
       await audio.play()
+      setReady(true)
     } catch (err) {
       console.error("VoiceMessage play failed:", err)
       setLoadError(true)

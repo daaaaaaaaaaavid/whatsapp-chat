@@ -29,4 +29,10 @@ describe("splitTextWithLinks", () => {
       { type: "email", value: "b@example.com" },
     ])
   })
+
+  it("detects gmail addresses used in chat", () => {
+    expect(splitTextWithLinks("dc6427874@gmail.com")).toEqual([
+      { type: "email", value: "dc6427874@gmail.com" },
+    ])
+  })
 })

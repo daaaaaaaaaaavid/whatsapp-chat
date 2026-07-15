@@ -39,4 +39,10 @@ describe("media-mime", () => {
     expect(file.name.endsWith(".webm")).toBe(true)
     expect(isAllowedMediaFile(file)).toBe(true)
   })
+
+  it("infers audio mime from file url extension", async () => {
+    const { inferAudioMimeFromUrl } = await import("@/lib/media-mime")
+    expect(inferAudioMimeFromUrl("https://x/media/a/voice.m4a#d=2")).toBe("audio/mp4")
+    expect(inferAudioMimeFromUrl("https://x/media/a/voice.webm")).toBe("audio/webm")
+  })
 })

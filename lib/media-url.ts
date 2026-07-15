@@ -37,6 +37,26 @@ export function mediaReferenceUrl(supabase: SupabaseClient, path: string): strin
   return data.publicUrl
 }
 
+/** Read `#d=12.3` duration hint appended to stored media URLs. */
+export function parseMediaDurationHint(fileUrl: string | null | undefined): number | null {
+  if (!fileUrl) return null
+  const hashIdx = fileUrl.indexOf("#")
+  if (hashIdx < 0) return null
+  const hash = fileUrl.slice(hashIdx + 1)
+  const params = new URLSearchParams(hash.replace(/;/g, "&"))
+  const raw = params.get("d")
+  if (!raw) return null
+  const seconds = Number(raw)
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : null
+}
+
+/** Append or replace `#d=` duration hint on a media reference URL. */
+export function withMediaDurationHint(fileUrl: string, durationSec: number): string {
+  const base = fileUrl.split("#")[0] ?? fileUrl
+  const safe = Math.max(0.1, Math.round(durationSec * 10) / 10)
+  return `${base}#d=${safe}`
+}
+
 /** Resolve a displayable URL (signed) from a stored file_url / media_url. */
 export async function resolveMediaDisplayUrl(
   supabase: SupabaseClient,

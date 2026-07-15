@@ -53,9 +53,10 @@ const EXT_TO_MIME: Record<string, string> = {
 }
 
 const VOICE_RECORDER_CANDIDATES = [
+  "audio/mp4",
+  "audio/aac",
   "audio/webm;codecs=opus",
   "audio/webm",
-  "audio/mp4",
   "audio/ogg;codecs=opus",
   "audio/ogg",
 ]
@@ -102,6 +103,19 @@ export function voiceMimeToExtension(mime: string): string {
   if (base === "audio/mpeg") return "mp3"
   if (base === "audio/wav") return "wav"
   return "webm"
+}
+
+/** Infer audio MIME for playback when Storage returns an empty/octet-stream type. */
+export function inferAudioMimeFromUrl(fileUrl: string | null | undefined): string {
+  if (!fileUrl) return "audio/webm"
+  const pathOnly = fileUrl.split("#")[0]?.split("?")[0] ?? fileUrl
+  const ext = pathOnly.split(".").pop()?.toLowerCase() ?? ""
+  if (ext === "m4a" || ext === "mp4" || ext === "aac") return "audio/mp4"
+  if (ext === "mp3") return "audio/mpeg"
+  if (ext === "ogg" || ext === "oga") return "audio/ogg"
+  if (ext === "wav") return "audio/wav"
+  if (ext === "webm") return "audio/webm"
+  return "audio/webm"
 }
 
 /** Build a File from recorder chunks using the recorder's real MIME type. */

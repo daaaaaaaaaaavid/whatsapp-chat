@@ -25,7 +25,7 @@ import {
   voiceRecordingFile,
 } from "@/lib/media-mime"
 import { uploadMediaWithProgress } from "@/lib/media-upload"
-import { mediaReferenceUrl } from "@/lib/media-url"
+import { mediaReferenceUrl, withMediaDurationHint } from "@/lib/media-url"
 import {
   Plus,
   SendHorizontal,
@@ -160,6 +160,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
   const textSelectionRef = useRef({ start: 0, end: 0 })
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
+  const recordingStartedAtRef = useRef<number | null>(null)
   const pendingRef = useRef(pending)
   pendingRef.current = pending
   const onTypingRef = useRef(onTyping)
@@ -335,6 +336,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
       kindHint: "image" | "file" | "audio" | "video",
       caption?: string | null,
       reply?: { id: string; message: Message } | null,
+      durationSec?: number | null,
     ) => {
       setUploadStatus({ fileName: file.name, current: 1, total: 1, fileProgress: 0 })
       setUploadError(null)
@@ -379,12 +381,15 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
           setUploadStatus(null)
           throw error
         }
-        const publicUrl = mediaReferenceUrl(supabase, path)
+        let publicUrl = mediaReferenceUrl(supabase, path)
 
         let type: MessageType = "file"
         const lower = file.name.toLowerCase()
         if (kindHint === "audio" || file.type.startsWith("audio/")) {
           type = "audio"
+          if (durationSec && durationSec > 0) {
+            publicUrl = withMediaDurationHint(publicUrl, durationSec)
+          }
         } else if (
           kindHint === "video" ||
           file.type.startsWith("video/") ||
@@ -686,18 +691,23 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
         ? new MediaRecorder(stream, { mimeType })
         : new MediaRecorder(stream)
       chunksRef.current = []
+      recordingStartedAtRef.current = performance.now()
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data)
       }
       recorder.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop())
+        const startedAt = recordingStartedAtRef.current
+        recordingStartedAtRef.current = null
+        const durationSec =
+          startedAt != null ? Math.max(0.1, (performance.now() - startedAt) / 1000) : null
         if (chunksRef.current.length === 0) {
           setUploadError("ההקלטה ריקה — נסה שוב")
           return
         }
         const file = voiceRecordingFile(chunksRef.current, recorder.mimeType || mimeType)
         try {
-          await uploadAndSend(file, "audio")
+          await uploadAndSend(file, "audio", null, null, durationSec)
         } catch {
           // uploadAndSend sets uploadError
         }

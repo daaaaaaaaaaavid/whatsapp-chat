@@ -1,10 +1,21 @@
 "use client"
 
-import { useEffect, useState, type CSSProperties, type MouseEvent } from "react"
+import { Fragment, useEffect, useState, type CSSProperties, type MouseEvent } from "react"
 import { createPortal } from "react-dom"
 import { Mail, MessageCircle } from "lucide-react"
 import { highlightQuery, splitTextWithLinks } from "@/lib/message-content"
 import { decodeFormattedMessage } from "@/lib/message-formatting"
+
+const EMAIL_LINK_STYLE: CSSProperties = {
+  color: "#027eb5",
+  textDecoration: "underline",
+  textUnderlineOffset: "2px",
+  font: "inherit",
+  background: "transparent",
+  border: 0,
+  padding: 0,
+  cursor: "pointer",
+}
 
 export function MessageText({
   text,
@@ -33,6 +44,7 @@ export function MessageText({
   }, [emailMenu])
 
   const openEmailMenu = (event: MouseEvent<HTMLElement>, email: string) => {
+    event.preventDefault()
     event.stopPropagation()
     const rect = event.currentTarget.getBoundingClientRect()
     const menuWidth = Math.min(300, window.innerWidth - 16)
@@ -66,16 +78,15 @@ export function MessageText({
     }
   }
 
+  const formattingStyle: CSSProperties = {
+    fontWeight: formatting.bold ? 700 : undefined,
+    fontStyle: formatting.italic ? "italic" : undefined,
+    color: formatting.color ?? undefined,
+  }
+
   return (
     <>
-      <span
-        className="whitespace-pre-wrap break-words text-[15px] leading-[19px] text-[var(--wa-text)]"
-        style={{
-          fontWeight: formatting.bold ? 700 : undefined,
-          fontStyle: formatting.italic ? "italic" : undefined,
-          color: formatting.color ?? undefined,
-        }}
-      >
+      <span className="whitespace-pre-wrap break-words text-[15px] leading-[19px] text-[var(--wa-text)]">
         {parts.map((p, i) => {
           if (p.type === "link") {
             return (
@@ -84,7 +95,8 @@ export function MessageText({
                 href={p.value}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-[#027eb5] underline underline-offset-2"
+                className="!text-[#027eb5] underline underline-offset-2"
+                style={{ color: "#027eb5", textDecoration: "underline" }}
                 onClick={(e) => e.stopPropagation()}
               >
                 {p.value}
@@ -92,35 +104,45 @@ export function MessageText({
             )
           }
           if (p.type === "email") {
+            // Render outside colored formatting inheritance so the link stays blue
             return (
-              <a
+              <button
                 key={i}
-                href={`mailto:${p.value}`}
-                className="cursor-pointer text-[#027eb5] underline underline-offset-2"
-                style={{ color: "#027eb5", textDecoration: "underline" }}
-                onClick={(event) => {
-                  event.preventDefault()
-                  openEmailMenu(event, p.value)
-                }}
+                type="button"
+                className="!inline !cursor-pointer !border-0 !bg-transparent !p-0 !text-[#027eb5] underline underline-offset-2"
+                style={EMAIL_LINK_STYLE}
+                onClick={(event) => openEmailMenu(event, p.value)}
                 aria-label={`אפשרויות עבור ${p.value}`}
               >
                 {p.value}
-              </a>
+              </button>
             )
           }
-          if (!searchQuery?.trim()) return <span key={i}>{p.value}</span>
+          if (!searchQuery?.trim()) {
+            return (
+              <span key={i} style={formattingStyle}>
+                {p.value}
+              </span>
+            )
+          }
           return (
-            <span key={i}>
+            <Fragment key={i}>
               {highlightQuery(p.value, searchQuery).map((h, j) =>
                 h.hit ? (
-                  <mark key={j} className="rounded-sm bg-[#f6e59c] px-0.5 text-inherit">
+                  <mark
+                    key={j}
+                    className="rounded-sm bg-[#f6e59c] px-0.5 text-inherit"
+                    style={formattingStyle}
+                  >
                     {h.text}
                   </mark>
                 ) : (
-                  <span key={j}>{h.text}</span>
+                  <span key={j} style={formattingStyle}>
+                    {h.text}
+                  </span>
                 ),
               )}
-            </span>
+            </Fragment>
           )
         })}
       </span>
