@@ -16,7 +16,7 @@ import {
 } from "@/lib/google-contacts-client"
 import type { GoogleContact, Profile } from "@/lib/types"
 import { isValidEmail } from "@/lib/validation"
-import { Search, Users, AlertCircle, Mail, RefreshCw } from "lucide-react"
+import { Search, Users, AlertCircle, Mail, RefreshCw, MessageCircle } from "lucide-react"
 
 type Props = {
   open: boolean
@@ -223,6 +223,20 @@ export function NewChatDialog({
     }
   }
 
+  const handleSelfChat = async () => {
+    if (busy) return
+    setBusy(true)
+    setActionError(null)
+    try {
+      const convId = await getOrCreateDirectConversation(currentUserId, currentUserId)
+      onCreated(convId)
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "נכשל בפתיחת השיחה עם עצמך")
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const handleStartByEmail = async (email?: string) => {
     const target = (email ?? query).trim()
     if (busy || !looksLikeEmail(target)) return
@@ -301,6 +315,23 @@ export function NewChatDialog({
             {hasSyncedGoogle
               ? `${googleMatched.length + googleUnmatched.length} אנשי קשר נשמרו · לחץ לעדכון`
               : "חובה לסנכרן פעם אחת כדי לקבל הצעות אוטומטיות"}
+          </div>
+        </div>
+      </button>
+
+      <button
+        type="button"
+        onClick={() => void handleSelfChat()}
+        disabled={busy}
+        className="flex w-full items-center gap-3 px-5 py-3 text-right transition hover:bg-[var(--wa-hover)] disabled:opacity-60"
+      >
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#00a884] text-white">
+          <MessageCircle className="h-6 w-6" />
+        </div>
+        <div className="min-w-0 flex-1 text-right">
+          <div className="font-medium text-[var(--wa-text)]">הודעה לעצמי</div>
+          <div className="text-sm text-[var(--wa-text-secondary)]">
+            שליחת הודעות ושמירת דברים לעצמך
           </div>
         </div>
       </button>
