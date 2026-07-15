@@ -179,8 +179,8 @@ export function VoiceMessage({
     startRaf()
   }
 
-  const pausePlayback = () => {
-    const pos = livePosition()
+  const pausePlayback = (keepOffset?: number) => {
+    const pos = keepOffset != null ? keepOffset : livePosition()
     offsetRef.current = pos
     setCurrent(pos)
     playingRef.current = false
@@ -195,7 +195,9 @@ export function VoiceMessage({
     offsetRef.current = 0
     setPlaying(false)
     setCurrent(0)
-    setDuration(parseMediaDurationHint(fileUrl) ?? 0)
+    const hinted = parseMediaDurationHint(fileUrl) ?? 0
+    setDuration(hinted)
+    durationRef.current = hinted
     setReady(false)
     setLoadError(false)
     setPlayError(null)
@@ -224,6 +226,9 @@ export function VoiceMessage({
         if (Number.isFinite(d) && d > 0) {
           setDuration(d)
           durationRef.current = d
+        } else if (hinted > 0) {
+          setDuration(hinted)
+          durationRef.current = hinted
         }
         setReady(true)
         setBuffering(false)
@@ -280,19 +285,24 @@ export function VoiceMessage({
   }
 
   const seekToRatio = (ratio: number, resumeIfPlaying = true) => {
-    if (!ready || duration <= 0) return
-    const t = Math.max(0, Math.min(1, ratio)) * duration
-    offsetRef.current = t
-    setCurrent(t)
-    if (playingRef.current && resumeIfPlaying) {
+    const total = durationRef.current
+    if (!bufferRef.current || total <= 0) return
+    const t = Math.max(0, Math.min(1, ratio)) * total
+    const wasPlaying = playingRef.current
+
+    if (wasPlaying) {
+      // Preserve the scrubbed offset (do not re-read live position)
+      pausePlayback(t)
+    } else {
+      offsetRef.current = t
+      setCurrent(t)
+    }
+
+    if (resumeIfPlaying && wasPlaying) {
       void playFrom(t).catch((err) => {
         console.error("VoiceMessage seek play failed:", err)
         setPlayError("לא ניתן לדלג")
       })
-    } else if (playingRef.current) {
-      pausePlayback()
-      offsetRef.current = t
-      setCurrent(t)
     }
   }
 
@@ -301,13 +311,13 @@ export function VoiceMessage({
     if (!el) return 0
     const rect = el.getBoundingClientRect()
     if (rect.width <= 0) return 0
-    return (clientX - rect.left) / rect.width
+    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
   }
 
   const onSeekPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     event.preventDefault()
     event.stopPropagation()
-    if (!ready || duration <= 0) return
+    if (!ready || !bufferRef.current || durationRef.current <= 0) return
     const el = event.currentTarget
     el.setPointerCapture(event.pointerId)
     setDragging(true)
@@ -315,16 +325,20 @@ export function VoiceMessage({
     seekToRatio(ratioFromClientX(event.clientX), false)
 
     const onMove = (e: PointerEvent) => {
+      e.preventDefault()
       seekToRatio(ratioFromClientX(e.clientX), false)
     }
     const onUp = (e: PointerEvent) => {
-      el.releasePointerCapture(e.pointerId)
+      try {
+        el.releasePointerCapture(e.pointerId)
+      } catch {
+        // ignore
+      }
       el.removeEventListener("pointermove", onMove)
       el.removeEventListener("pointerup", onUp)
       el.removeEventListener("pointercancel", onUp)
       setDragging(false)
-      const ratio = ratioFromClientX(e.clientX)
-      seekToRatio(ratio, wasPlaying)
+      seekToRatio(ratioFromClientX(e.clientX), wasPlaying)
     }
     el.addEventListener("pointermove", onMove)
     el.addEventListener("pointerup", onUp)
@@ -335,7 +349,7 @@ export function VoiceMessage({
   const displayDuration = duration > 0 ? duration : 0
   const displayTime = playing || current > 0 || dragging ? current : displayDuration
   const busy = buffering
-  const canSeek = ready && displayDuration > 0
+  const canSeek = ready && Boolean(bufferRef.current) && displayDuration > 0
 
   return (
     <div
