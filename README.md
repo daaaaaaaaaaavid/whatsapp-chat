@@ -27,23 +27,23 @@ The app ships public legal pages required for Google OAuth verification:
 Set in `.env.local` (and Vercel → Environment Variables):
 
 ```
-NEXT_PUBLIC_SITE_URL=https://your-app.vercel.app
-NEXT_PUBLIC_SUPPORT_EMAIL=your-group@googlegroups.com
+NEXT_PUBLIC_SITE_URL=https://whatsapp-chat-beta.vercel.app
+NEXT_PUBLIC_SUPPORT_EMAIL=whachat-support@googlegroups.com
 ```
 
 Then in **Google Cloud Console → OAuth consent screen**:
 
-1. **User support email** → your Google Group address
-2. **App home page** → `https://your-app.vercel.app/about`
-3. **Privacy policy** → `https://your-app.vercel.app/privacy`
-4. **Terms of service** → `https://your-app.vercel.app/terms`
+1. **User support email** → `whachat-support@googlegroups.com`
+2. **App home page** → `https://whatsapp-chat-beta.vercel.app/about`
+3. **Privacy policy** → `https://whatsapp-chat-beta.vercel.app/privacy`
+4. **Terms of service** → `https://whatsapp-chat-beta.vercel.app/terms`
 5. **Scopes** → include `https://www.googleapis.com/auth/contacts.readonly`
 6. **Publish App** → submit for **Google verification** (required for sensitive scopes)
 
 In **Supabase → Authentication → URL Configuration**:
 
-- **Site URL** → `https://your-app.vercel.app`
-- **Redirect URLs** → `https://your-app.vercel.app/auth/callback`
+- **Site URL** → `https://whatsapp-chat-beta.vercel.app`
+- **Redirect URLs** → `https://whatsapp-chat-beta.vercel.app/auth/callback`
 
 In **Google Cloud → Credentials → OAuth client → Authorized redirect URIs**:
 
