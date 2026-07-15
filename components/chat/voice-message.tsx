@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react"
 import { LoaderCircle, Mic, Pause, Play, User } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { formatCallDuration } from "@/lib/format"
@@ -21,80 +21,6 @@ function waveformBars(seed: string, count = 36): number[] {
     bars.push(v)
   }
   return bars
-}
-
-function readFiniteDuration(audio: HTMLAudioElement): number {
-  const d = audio.duration
-  return Number.isFinite(d) && d > 0 ? d : 0
-}
-
-function resetPlayhead(audio: HTMLAudioElement) {
-  try {
-    audio.currentTime = 0
-  } catch {
-    // ignore
-  }
-}
-
-/** Some browsers report Infinity for WebM until we seek near the end once. */
-async function resolveDuration(audio: HTMLAudioElement): Promise<number> {
-  const immediate = readFiniteDuration(audio)
-  if (immediate > 0) return immediate
-
-  return new Promise((resolve) => {
-    let settled = false
-    const finish = (value: number) => {
-      if (settled) return
-      settled = true
-      audio.removeEventListener("timeupdate", onTick)
-      audio.removeEventListener("durationchange", onTick)
-      audio.removeEventListener("seeked", onTick)
-      resetPlayhead(audio)
-      resolve(value)
-    }
-    const onTick = () => {
-      const d = readFiniteDuration(audio)
-      if (d > 0) finish(d)
-    }
-    audio.addEventListener("timeupdate", onTick)
-    audio.addEventListener("durationchange", onTick)
-    audio.addEventListener("seeked", onTick)
-    try {
-      audio.currentTime = Number.MAX_SAFE_INTEGER
-    } catch {
-      finish(0)
-      return
-    }
-    window.setTimeout(() => finish(readFiniteDuration(audio)), 1200)
-  })
-}
-
-function waitForAudioReady(audio: HTMLAudioElement, timeoutMs = 8000): Promise<void> {
-  if (audio.readyState >= 2) return Promise.resolve()
-  return new Promise((resolve, reject) => {
-    const timer = window.setTimeout(() => {
-      cleanup()
-      reject(new Error("audio load timeout"))
-    }, timeoutMs)
-    const ok = () => {
-      cleanup()
-      resolve()
-    }
-    const fail = () => {
-      cleanup()
-      reject(new Error("audio error"))
-    }
-    const cleanup = () => {
-      window.clearTimeout(timer)
-      audio.removeEventListener("loadedmetadata", ok)
-      audio.removeEventListener("canplay", ok)
-      audio.removeEventListener("error", fail)
-    }
-    audio.addEventListener("loadedmetadata", ok)
-    audio.addEventListener("canplay", ok)
-    audio.addEventListener("error", fail)
-    audio.load()
-  })
 }
 
 function blobForPlayback(blob: Blob, fileUrl: string): Blob {
@@ -118,6 +44,10 @@ type Props = {
   avatarName?: string | null
 }
 
+/**
+ * Voice notes use decoded AudioBuffer playback so seeking always works,
+ * including for WebM files from MediaRecorder that HTMLAudioElement cannot seek.
+ */
 export function VoiceMessage({
   fileUrl,
   messageId,
@@ -130,8 +60,6 @@ export function VoiceMessage({
   avatarName,
 }: Props) {
   const { url: signedAvatarUrl } = useSignedMediaUrlControls(avatarUrl)
-  const audioRef = useRef<HTMLAudioElement | null>(null)
-  const objectUrlRef = useRef<string | null>(null)
   const hintDuration = parseMediaDurationHint(fileUrl) ?? 0
   const [ready, setReady] = useState(false)
   const [playing, setPlaying] = useState(false)
@@ -141,12 +69,130 @@ export function VoiceMessage({
   const [loadError, setLoadError] = useState(false)
   const [playError, setPlayError] = useState<string | null>(null)
   const [reloadToken, setReloadToken] = useState(0)
+  const [dragging, setDragging] = useState(false)
   const bars = waveformBars(messageId)
+
+  const audioCtxRef = useRef<AudioContext | null>(null)
+  const bufferRef = useRef<AudioBuffer | null>(null)
+  const sourceRef = useRef<AudioBufferSourceNode | null>(null)
+  const startedAtRef = useRef(0)
+  const offsetRef = useRef(0)
+  const playingRef = useRef(false)
+  const rafRef = useRef<number | null>(null)
+  const trackRef = useRef<HTMLDivElement | null>(null)
+  const durationRef = useRef(hintDuration)
+  durationRef.current = duration
 
   const refresh = () => setReloadToken((n) => n + 1)
 
+  const stopSource = () => {
+    if (sourceRef.current) {
+      try {
+        sourceRef.current.onended = null
+        sourceRef.current.stop()
+      } catch {
+        // already stopped
+      }
+      try {
+        sourceRef.current.disconnect()
+      } catch {
+        // ignore
+      }
+      sourceRef.current = null
+    }
+  }
+
+  const stopRaf = () => {
+    if (rafRef.current != null) {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = null
+    }
+  }
+
+  const ensureContext = async () => {
+    const AudioCtx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+    if (!AudioCtx) throw new Error("Web Audio API unavailable")
+    if (!audioCtxRef.current) audioCtxRef.current = new AudioCtx()
+    if (audioCtxRef.current.state === "suspended") {
+      await audioCtxRef.current.resume()
+    }
+    return audioCtxRef.current
+  }
+
+  const livePosition = () => {
+    const ctx = audioCtxRef.current
+    if (!playingRef.current || !ctx) return offsetRef.current
+    const total = durationRef.current
+    return Math.min(total, Math.max(0, offsetRef.current + (ctx.currentTime - startedAtRef.current)))
+  }
+
+  const startRaf = () => {
+    stopRaf()
+    const tick = () => {
+      if (!playingRef.current) return
+      const pos = livePosition()
+      setCurrent(pos)
+      if (pos >= durationRef.current - 0.02) {
+        playingRef.current = false
+        setPlaying(false)
+        offsetRef.current = 0
+        setCurrent(0)
+        stopSource()
+        stopRaf()
+        return
+      }
+      rafRef.current = requestAnimationFrame(tick)
+    }
+    rafRef.current = requestAnimationFrame(tick)
+  }
+
+  const playFrom = async (offset: number) => {
+    const buffer = bufferRef.current
+    if (!buffer) throw new Error("no buffer")
+    const ctx = await ensureContext()
+    stopSource()
+    const startAt = Math.max(0, Math.min(offset, Math.max(0, buffer.duration - 0.01)))
+    const source = ctx.createBufferSource()
+    source.buffer = buffer
+    source.connect(ctx.destination)
+    source.onended = () => {
+      if (sourceRef.current !== source) return
+      const endedAt = livePosition()
+      if (endedAt >= durationRef.current - 0.05) {
+        playingRef.current = false
+        setPlaying(false)
+        offsetRef.current = 0
+        setCurrent(0)
+        sourceRef.current = null
+        stopRaf()
+      }
+    }
+    source.start(0, startAt)
+    sourceRef.current = source
+    offsetRef.current = startAt
+    startedAtRef.current = ctx.currentTime
+    playingRef.current = true
+    setPlaying(true)
+    setCurrent(startAt)
+    startRaf()
+  }
+
+  const pausePlayback = () => {
+    const pos = livePosition()
+    offsetRef.current = pos
+    setCurrent(pos)
+    playingRef.current = false
+    setPlaying(false)
+    stopSource()
+    stopRaf()
+  }
+
   useEffect(() => {
     let cancelled = false
+    playingRef.current = false
+    offsetRef.current = 0
     setPlaying(false)
     setCurrent(0)
     setDuration(parseMediaDurationHint(fileUrl) ?? 0)
@@ -154,39 +200,9 @@ export function VoiceMessage({
     setLoadError(false)
     setPlayError(null)
     setBuffering(true)
-
-    if (audioRef.current) {
-      audioRef.current.pause()
-      audioRef.current = null
-    }
-    if (objectUrlRef.current) {
-      URL.revokeObjectURL(objectUrlRef.current)
-      objectUrlRef.current = null
-    }
-
-    const audio = new Audio()
-    audio.preload = "auto"
-    audioRef.current = audio
-
-    const onTime = () => {
-      setCurrent(audio.currentTime)
-      const live = readFiniteDuration(audio)
-      if (live > 0) {
-        setDuration((prev) => (prev > 0 ? prev : live))
-      }
-    }
-    const onEnded = () => {
-      setPlaying(false)
-      setCurrent(0)
-      resetPlayhead(audio)
-    }
-    const onPlay = () => setPlaying(true)
-    const onPause = () => setPlaying(false)
-
-    audio.addEventListener("timeupdate", onTime)
-    audio.addEventListener("ended", onEnded)
-    audio.addEventListener("play", onPlay)
-    audio.addEventListener("pause", onPause)
+    stopSource()
+    stopRaf()
+    bufferRef.current = null
 
     void (async () => {
       try {
@@ -196,14 +212,19 @@ export function VoiceMessage({
         if (!blob || blob.size === 0) throw new Error("empty media")
 
         const typed = blobForPlayback(blob, fileUrl)
-        const objectUrl = URL.createObjectURL(typed)
-        objectUrlRef.current = objectUrl
-        audio.src = objectUrl
-        await waitForAudioReady(audio)
+        const arrayBuffer = await typed.arrayBuffer()
         if (cancelled) return
-        const resolved = await resolveDuration(audio)
+
+        const ctx = await ensureContext()
+        const decoded = await ctx.decodeAudioData(arrayBuffer.slice(0))
         if (cancelled) return
-        if (resolved > 0) setDuration(resolved)
+
+        bufferRef.current = decoded
+        const d = decoded.duration
+        if (Number.isFinite(d) && d > 0) {
+          setDuration(d)
+          durationRef.current = d
+        }
         setReady(true)
         setBuffering(false)
         setLoadError(false)
@@ -219,44 +240,37 @@ export function VoiceMessage({
 
     return () => {
       cancelled = true
-      audio.pause()
-      audio.removeEventListener("timeupdate", onTime)
-      audio.removeEventListener("ended", onEnded)
-      audio.removeEventListener("play", onPlay)
-      audio.removeEventListener("pause", onPause)
-      audio.removeAttribute("src")
-      try {
-        audio.load()
-      } catch {
-        // ignore
+      playingRef.current = false
+      stopSource()
+      stopRaf()
+      bufferRef.current = null
+      const ctx = audioCtxRef.current
+      audioCtxRef.current = null
+      if (ctx) {
+        void ctx.close().catch(() => {})
       }
-      if (objectUrlRef.current) {
-        URL.revokeObjectURL(objectUrlRef.current)
-        objectUrlRef.current = null
-      }
-      audioRef.current = null
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fileUrl, reloadToken])
 
   const toggle = async () => {
-    const audio = audioRef.current
-    if (!audio || buffering) {
+    if (buffering) {
       if (loadError) refresh()
       return
     }
-    if (!ready && !loadError) return
-    if (!audio.paused) {
-      audio.pause()
+    if (!ready || !bufferRef.current) {
+      if (loadError) refresh()
       return
     }
     setPlayError(null)
     try {
-      if (audio.currentTime > 0 && duration > 0 && audio.currentTime >= duration - 0.05) {
-        resetPlayhead(audio)
-        setCurrent(0)
+      if (playingRef.current) {
+        pausePlayback()
+        return
       }
-      await audio.play()
-      setReady(true)
+      const start =
+        offsetRef.current >= durationRef.current - 0.05 ? 0 : offsetRef.current
+      await playFrom(start)
     } catch (err) {
       console.error("VoiceMessage play failed:", err)
       setLoadError(true)
@@ -265,24 +279,76 @@ export function VoiceMessage({
     }
   }
 
-  const seek = (ratio: number) => {
-    const audio = audioRef.current
-    if (!audio || !duration) return
+  const seekToRatio = (ratio: number, resumeIfPlaying = true) => {
+    if (!ready || duration <= 0) return
     const t = Math.max(0, Math.min(1, ratio)) * duration
-    audio.currentTime = t
+    offsetRef.current = t
     setCurrent(t)
+    if (playingRef.current && resumeIfPlaying) {
+      void playFrom(t).catch((err) => {
+        console.error("VoiceMessage seek play failed:", err)
+        setPlayError("לא ניתן לדלג")
+      })
+    } else if (playingRef.current) {
+      pausePlayback()
+      offsetRef.current = t
+      setCurrent(t)
+    }
+  }
+
+  const ratioFromClientX = (clientX: number) => {
+    const el = trackRef.current
+    if (!el) return 0
+    const rect = el.getBoundingClientRect()
+    if (rect.width <= 0) return 0
+    return (clientX - rect.left) / rect.width
+  }
+
+  const onSeekPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    if (!ready || duration <= 0) return
+    const el = event.currentTarget
+    el.setPointerCapture(event.pointerId)
+    setDragging(true)
+    const wasPlaying = playingRef.current
+    seekToRatio(ratioFromClientX(event.clientX), false)
+
+    const onMove = (e: PointerEvent) => {
+      seekToRatio(ratioFromClientX(e.clientX), false)
+    }
+    const onUp = (e: PointerEvent) => {
+      el.releasePointerCapture(e.pointerId)
+      el.removeEventListener("pointermove", onMove)
+      el.removeEventListener("pointerup", onUp)
+      el.removeEventListener("pointercancel", onUp)
+      setDragging(false)
+      const ratio = ratioFromClientX(e.clientX)
+      seekToRatio(ratio, wasPlaying)
+    }
+    el.addEventListener("pointermove", onMove)
+    el.addEventListener("pointerup", onUp)
+    el.addEventListener("pointercancel", onUp)
   }
 
   const progress = duration > 0 ? current / duration : 0
   const displayDuration = duration > 0 ? duration : 0
-  const displayTime = playing || current > 0 ? current : displayDuration
+  const displayTime = playing || current > 0 || dragging ? current : displayDuration
   const busy = buffering
+  const canSeek = ready && displayDuration > 0
 
   return (
-    <div className="mb-0.5 flex min-w-[240px] max-w-[320px] items-center gap-2 py-0.5" dir="ltr">
+    <div
+      className="mb-0.5 flex min-w-[240px] max-w-[320px] items-center gap-2 py-0.5"
+      dir="ltr"
+      onPointerDown={(e) => e.stopPropagation()}
+    >
       <button
         type="button"
-        onClick={() => void toggle()}
+        onClick={(e) => {
+          e.stopPropagation()
+          void toggle()
+        }}
         disabled={busy}
         className="flex h-8 w-8 shrink-0 items-center justify-center text-[var(--wa-text-secondary)] transition hover:text-[var(--wa-text)] disabled:opacity-50"
         aria-label={playing ? "השהה" : loadError ? "נסה שוב" : "נגן"}
@@ -297,26 +363,47 @@ export function VoiceMessage({
       </button>
 
       <div className="min-w-0 flex-1">
-        <div className="relative flex h-8 items-center gap-[2px]">
-          <input
-            type="range"
-            min={0}
-            max={displayDuration || 1}
-            step={0.05}
-            value={Math.min(current, displayDuration || 0)}
-            disabled={!ready || displayDuration <= 0}
-            onChange={(event) => seek(Number(event.target.value) / (displayDuration || 1))}
-            className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0 disabled:cursor-default"
-            aria-label="דלג בהודעה הקולית"
-            aria-valuetext={`${formatCallDuration(Math.round(current))} מתוך ${formatCallDuration(Math.round(displayDuration))}`}
-          />
+        <div
+          ref={trackRef}
+          className={cn(
+            "relative flex h-8 touch-none items-center gap-[2px]",
+            canSeek ? "cursor-pointer" : "cursor-default",
+          )}
+          onPointerDown={onSeekPointerDown}
+          role="slider"
+          aria-label="דלג בהודעה הקולית"
+          aria-valuemin={0}
+          aria-valuemax={displayDuration || 1}
+          aria-valuenow={current}
+          aria-disabled={!canSeek}
+          tabIndex={canSeek ? 0 : -1}
+          onKeyDown={(e) => {
+            if (!canSeek) return
+            if (e.key === "ArrowLeft" || e.key === "ArrowDown") {
+              e.preventDefault()
+              seekToRatio(progress - 0.05)
+            }
+            if (e.key === "ArrowRight" || e.key === "ArrowUp") {
+              e.preventDefault()
+              seekToRatio(progress + 0.05)
+            }
+            if (e.key === "Home") {
+              e.preventDefault()
+              seekToRatio(0)
+            }
+            if (e.key === "End") {
+              e.preventDefault()
+              seekToRatio(1)
+            }
+          }}
+        >
           {bars.map((h, i) => {
             const filled = i / bars.length <= progress
             return (
               <span
                 key={i}
                 className={cn(
-                  "w-[2.5px] shrink-0 rounded-full",
+                  "pointer-events-none w-[2.5px] shrink-0 rounded-full",
                   filled ? "bg-[#53bdeb]" : isMine ? "bg-[#7a9b74]" : "bg-[#aebac1]",
                 )}
                 style={{ height: `${Math.round(h * 28)}px` }}
@@ -324,7 +411,7 @@ export function VoiceMessage({
             )
           })}
           <span
-            className="pointer-events-none absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#53bdeb] shadow-sm"
+            className="pointer-events-none absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#53bdeb] shadow ring-2 ring-white/80"
             style={{ left: `${Math.max(2, Math.min(98, progress * 100))}%` }}
           />
         </div>

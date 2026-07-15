@@ -772,7 +772,8 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
         })
       }
       mediaRecorderRef.current = recorder
-      recorder.start(250)
+      // Single blob (no timeslices) so playback can seek reliably
+      recorder.start()
       setRecording(true)
     } catch {
       audioInputRef.current?.click()
