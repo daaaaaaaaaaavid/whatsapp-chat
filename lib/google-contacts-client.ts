@@ -102,7 +102,7 @@ export async function fetchGoogleContacts(): Promise<GoogleContactsResult> {
     if (matchedIds.length) {
       const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
-        .select("*")
+        .select("id, display_name, avatar_url, about, last_seen, created_at")
         .in("id", matchedIds)
       if (profilesError) {
         return {

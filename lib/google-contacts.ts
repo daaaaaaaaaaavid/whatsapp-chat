@@ -50,23 +50,44 @@ function personToImport(person: GooglePerson): GoogleContactImport | null {
   }
 }
 
-/** Fetch all connections with an email from Google People API. */
+const MAX_PAGES = 5
+const MAX_CONTACTS = 2000
+const FETCH_TIMEOUT_MS = 20_000
+
+/** Fetch connections with an email from Google People API (bounded). */
 export async function fetchGooglePeopleConnections(
   accessToken: string,
 ): Promise<GoogleContactImport[]> {
   const byResource = new Map<string, GoogleContactImport>()
   let pageToken: string | undefined
+  let pages = 0
 
   do {
+    if (pages >= MAX_PAGES || byResource.size >= MAX_CONTACTS) break
+    pages += 1
+
     const url = new URL(PEOPLE_CONNECTIONS_URL)
     url.searchParams.set("personFields", "names,emailAddresses,photos")
-    url.searchParams.set("pageSize", "1000")
+    url.searchParams.set("pageSize", "500")
     if (pageToken) url.searchParams.set("pageToken", pageToken)
 
-    const res = await fetch(url.toString(), {
-      headers: { Authorization: `Bearer ${accessToken}` },
-      cache: "no-store",
-    })
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+    let res: Response
+    try {
+      res = await fetch(url.toString(), {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        cache: "no-store",
+        signal: controller.signal,
+      })
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") {
+        throw new Error("טעינת אנשי קשר מגוגל ארכה יותר מדי")
+      }
+      throw err
+    } finally {
+      clearTimeout(timer)
+    }
 
     const data = (await res.json()) as ConnectionsResponse
 
@@ -76,6 +97,7 @@ export async function fetchGooglePeopleConnections(
     }
 
     for (const person of data.connections ?? []) {
+      if (byResource.size >= MAX_CONTACTS) break
       const row = personToImport(person)
       if (row) byResource.set(row.google_resource_name, row)
     }

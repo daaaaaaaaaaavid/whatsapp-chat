@@ -47,22 +47,9 @@ export async function POST(req: Request) {
   }
   const { statusId, replyId } = parsed.data
 
-  const { data: status } = await admin
-    .from("statuses")
-    .select("id, user_id, expires_at")
-    .eq("id", statusId)
-    .maybeSingle()
-
-  if (!status) {
-    return NextResponse.json({ error: "status_not_found" }, { status: 404 })
-  }
-
-  if (status.user_id === user.id) {
-    return NextResponse.json({ error: "cannot_notify_self" }, { status: 400 })
-  }
-
-  if (new Date(status.expires_at).getTime() <= Date.now()) {
-    return NextResponse.json({ ok: true, sent: 0, reason: "expired" })
+  const idempotency = checkRateLimit(`push-status-reply-id:${replyId}`, 1, 10 * 60_000)
+  if (!idempotency.ok) {
+    return NextResponse.json({ ok: true, sent: 0, reason: "already_notified" })
   }
 
   const { data: visible } = await supabase
@@ -75,6 +62,20 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 })
   }
 
+  const { data: status } = await admin
+    .from("statuses")
+    .select("id, user_id, expires_at")
+    .eq("id", statusId)
+    .maybeSingle()
+
+  if (!status || status.user_id === user.id) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 })
+  }
+
+  if (new Date(status.expires_at).getTime() <= Date.now()) {
+    return NextResponse.json({ ok: true, sent: 0, reason: "expired" })
+  }
+
   const { data: reply } = await admin
     .from("status_replies")
     .select("content, user_id, status_id")
@@ -84,7 +85,7 @@ export async function POST(req: Request) {
     .maybeSingle()
 
   if (!reply) {
-    return NextResponse.json({ error: "reply_not_found" }, { status: 404 })
+    return NextResponse.json({ error: "forbidden" }, { status: 403 })
   }
 
   const body = (reply.content as string)?.trim() || "הגיב לסטטוס שלך"

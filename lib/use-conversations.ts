@@ -132,7 +132,10 @@ export function useConversations(currentUserId: string) {
       .in("conversation_id", ids)
 
     const profileIds = Array.from(new Set((parts ?? []).map((p) => p.user_id)))
-    const { data: profiles } = await supabase.from("profiles").select("*").in("id", profileIds)
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, display_name, avatar_url, about, last_seen, created_at")
+      .in("id", profileIds)
     const profileMap = new Map<string, Profile>((profiles ?? []).map((p) => [p.id, p as Profile]))
 
     const lastMsgMap = new Map<string, Message>()

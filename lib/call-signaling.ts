@@ -19,27 +19,16 @@ export type CallSignal =
   | { type: "ice"; callId: string; fromUserId: string; candidate: RTCIceCandidateInit }
 
 function buildIceServers(): RTCIceServer[] {
-  const servers: RTCIceServer[] = [
+  // Public STUN only — static TURN credentials must never ship in the browser.
+  // Configure short-lived TURN via a future authenticated server endpoint if needed.
+  return [
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
     { urls: "stun:stun2.l.google.com:19302" },
   ]
-
-  const turnUrls = process.env.NEXT_PUBLIC_TURN_URLS?.trim()
-  const turnUser = process.env.NEXT_PUBLIC_TURN_USERNAME?.trim()
-  const turnCred = process.env.NEXT_PUBLIC_TURN_CREDENTIAL?.trim()
-
-  if (turnUrls && turnUser && turnCred) {
-    const urls = turnUrls.split(",").map((u) => u.trim()).filter(Boolean)
-    if (urls.length) {
-      servers.push({ urls, username: turnUser, credential: turnCred })
-    }
-  }
-
-  return servers
 }
 
-/** STUN (+ optional TURN via NEXT_PUBLIC_TURN_* env). */
+/** STUN servers (TURN credentials are not embedded client-side). */
 export const ICE_SERVERS: RTCConfiguration = {
   iceServers: buildIceServers(),
   iceCandidatePoolSize: 8,
@@ -53,13 +42,53 @@ export function roomCallChannel(callId: string) {
   return `call-room:${callId}`
 }
 
+const privateChannelConfig = {
+  private: true,
+  broadcast: { self: false, ack: true },
+} as const
+
+export async function createCallSession(params: {
+  callId: string
+  conversationId: string
+  callerId: string
+  calleeId: string
+  video: boolean
+}): Promise<void> {
+  const supabase = createClient()
+  const { error } = await supabase.from("call_sessions").insert({
+    id: params.callId,
+    conversation_id: params.conversationId,
+    caller_id: params.callerId,
+    callee_id: params.calleeId,
+    video: params.video,
+  })
+  if (error) {
+    const msg = error.message.toLowerCase()
+    if (msg.includes("call_sessions") || msg.includes("does not exist")) {
+      throw new Error(
+        "חסרה טבלת שיחות. הרץ את supabase/migration-security-hardening.sql ב־Supabase.",
+      )
+    }
+    throw new Error(error.message || "יצירת שיחה נכשלה")
+  }
+}
+
+export async function endCallSession(callId: string): Promise<void> {
+  try {
+    const supabase = createClient()
+    await supabase.from("call_sessions").delete().eq("id", callId)
+  } catch {
+    // best-effort
+  }
+}
+
 export async function subscribeChannel(
   name: string,
   onSignal: (signal: CallSignal) => void,
 ): Promise<RealtimeChannel> {
   const supabase = createClient()
   const channel = supabase.channel(name, {
-    config: { broadcast: { self: false, ack: true } },
+    config: { ...privateChannelConfig },
   })
 
   channel.on("broadcast", { event: "signal" }, ({ payload }) => {
@@ -100,7 +129,7 @@ export async function sendSignal(channel: RealtimeChannel, signal: CallSignal) {
 export async function sendToUser(userId: string, signal: CallSignal) {
   const supabase = createClient()
   const channel = supabase.channel(userCallChannel(userId), {
-    config: { broadcast: { self: false, ack: true } },
+    config: { ...privateChannelConfig },
   })
 
   try {

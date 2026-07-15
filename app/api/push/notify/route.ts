@@ -49,6 +49,12 @@ export async function POST(req: Request) {
   }
   const { conversationId, messageId } = parsed.data
 
+  // Per-message idempotency (best-effort within a single instance)
+  const idempotency = checkRateLimit(`push-msg:${messageId}`, 1, 10 * 60_000)
+  if (!idempotency.ok) {
+    return NextResponse.json({ ok: true, sent: 0, reason: "already_notified" })
+  }
+
   const { data: membership } = await supabase
     .from("conversation_participants")
     .select("user_id")
@@ -69,7 +75,8 @@ export async function POST(req: Request) {
     .maybeSingle()
 
   if (!msg) {
-    return NextResponse.json({ error: "message_not_found" }, { status: 404 })
+    // Avoid leaking whether the message exists
+    return NextResponse.json({ error: "forbidden" }, { status: 403 })
   }
 
   const { data: participants } = await admin

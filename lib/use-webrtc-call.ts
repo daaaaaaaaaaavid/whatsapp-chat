@@ -5,6 +5,8 @@ import type { Conversation, Profile } from "@/lib/types"
 import { convAvatarUrl, convDisplayName, otherParticipantId } from "@/lib/conversation-display"
 import {
   ICE_SERVERS,
+  createCallSession,
+  endCallSession,
   roomCallChannel,
   sendSignal,
   sendToUser,
@@ -205,11 +207,13 @@ export function useWebRtcCall({ currentUser, conversations }: Options) {
   }, [])
 
   const endLocal = useCallback(async () => {
+    const active = callRef.current
     clearRingTimeout()
     clearDisconnectTimer()
     stopAllCallSounds()
     cleanupMedia()
     await leaveRoom()
+    if (active?.callId) void endCallSession(active.callId)
     setCall(null)
     setPhase("idle")
     setMuted(false)
@@ -524,6 +528,13 @@ export function useWebRtcCall({ currentUser, conversations }: Options) {
       scheduleRingTimeout()
 
       try {
+        await createCallSession({
+          callId,
+          conversationId: conversation.id,
+          callerId: currentUser.id,
+          calleeId: peerId,
+          video,
+        })
         await joinRoom(info)
         const pc = ensurePeer(info)
         const stream = localStreamRef.current!
@@ -544,6 +555,7 @@ export function useWebRtcCall({ currentUser, conversations }: Options) {
         })
       } catch (e) {
         setError(e instanceof Error ? e.message : "נכשל בהתחלת שיחה")
+        await endCallSession(callId)
         await endLocal()
       }
     },
@@ -658,6 +670,10 @@ export function useWebRtcCall({ currentUser, conversations }: Options) {
               return
             }
             const conv = conversationsRef.current.find((c) => c.id === signal.conversationId)
+            // Ignore rings for conversations we are not a participant of.
+            if (!conv || !conv.participants?.some((p) => p.user_id === currentUser.id)) {
+              return
+            }
             wasConnectedRef.current = false
             startLoggedRef.current = false
             endingRef.current = false

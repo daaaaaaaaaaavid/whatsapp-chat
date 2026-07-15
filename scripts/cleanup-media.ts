@@ -1,5 +1,5 @@
 import { loadEnvConfig } from "@next/env"
-import { createServiceClient } from "@/lib/supabase/admin"
+import { createServiceClient } from "@/lib/supabase/admin-core"
 import { mediaCleanupSummary, runMediaCleanup } from "@/lib/media-cleanup"
 
 loadEnvConfig(process.cwd())

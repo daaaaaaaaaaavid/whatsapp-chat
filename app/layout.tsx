@@ -20,18 +20,6 @@ export const viewport: Viewport = {
   colorScheme: "light dark",
 }
 
-const themeScript = `
-  (() => {
-    try {
-      const saved = localStorage.getItem("whachat-theme") || "system";
-      const dark = saved === "dark" ||
-        (saved === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
-      document.documentElement.classList.add(dark ? "dark" : "light");
-      document.documentElement.style.colorScheme = dark ? "dark" : "light";
-    } catch {}
-  })();
-`
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -40,7 +28,8 @@ export default function RootLayout({
   return (
     <html lang="he" dir="rtl" className="h-full bg-[var(--wa-panel)]" suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        {/* eslint-disable-next-line @next/next/no-sync-scripts */}
+        <script src="/theme-init.js" />
       </head>
       <body className="h-full min-h-svh overflow-hidden antialiased">
         {children}

@@ -22,7 +22,9 @@ export async function ensureProfileServer(user: User): Promise<Profile> {
   const { data, error } = await supabase
     .from("profiles")
     .upsert(payload, { onConflict: "id" })
-    .select("*")
+    .select(
+      "id, email, display_name, avatar_url, about, last_seen, created_at, chat_prefs, blocked_user_ids, google_contacts_synced_at",
+    )
     .single()
 
   if (error) {

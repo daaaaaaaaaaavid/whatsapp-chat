@@ -47,6 +47,7 @@ export async function ensureProfileClient(user: {
     .upsert(
       {
         id: user.id,
+        // Email is overwritten server-side from auth.users when hardening migration is applied.
         email: user.email ?? null,
         display_name: user.display_name ?? user.email?.split("@")[0] ?? "משתמש",
         about: "זמין",
@@ -54,7 +55,9 @@ export async function ensureProfileClient(user: {
       },
       { onConflict: "id" },
     )
-    .select("*")
+    .select(
+      "id, email, display_name, avatar_url, about, last_seen, created_at, chat_prefs, blocked_user_ids, google_contacts_synced_at",
+    )
     .single()
 
   if (error) {

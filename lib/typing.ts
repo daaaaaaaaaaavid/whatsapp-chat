@@ -14,7 +14,10 @@ export function subscribeTyping(
 ): RealtimeChannel {
   const supabase = createClient()
   const channel = supabase.channel(`typing:${conversationId}`, {
-    config: { broadcast: { self: false } },
+    config: {
+      private: true,
+      broadcast: { self: false },
+    },
   })
 
   channel

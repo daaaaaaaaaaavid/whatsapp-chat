@@ -134,7 +134,7 @@ function LoginForm() {
 
         <p className="mt-6 flex items-center justify-center gap-1.5 text-xs text-[var(--wa-text-secondary)]">
           <Lock className="h-3 w-3" />
-          ההודעות האישיות שלך מוצפנות מקצה לקצה
+          השיחות מוגנות ב־HTTPS ובהרשאות גישה
         </p>
         <AuthLegalFooter />
       </div>

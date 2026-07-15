@@ -341,10 +341,13 @@ create policy "conversations_insert_authenticated"
   with check (auth.uid() = created_by);
 
 drop policy if exists "conversations_update_participant" on public.conversations;
-create policy "conversations_update_participant"
+drop policy if exists "conversations_update_admin" on public.conversations;
+drop policy if exists "conversations_update_member" on public.conversations;
+create policy "conversations_update_member"
   on public.conversations for update
   to authenticated
-  using (public.is_conversation_member(id));
+  using (public.is_conversation_member(id))
+  with check (public.is_conversation_member(id));
 
 -- Participants
 drop policy if exists "participants_select_member" on public.conversation_participants;
@@ -354,12 +357,12 @@ create policy "participants_select_member"
   using (public.is_conversation_member(conversation_id));
 
 drop policy if exists "participants_insert_authenticated" on public.conversation_participants;
-create policy "participants_insert_authenticated"
+drop policy if exists "participants_insert_creator_or_admin" on public.conversation_participants;
+create policy "participants_insert_creator_or_admin"
   on public.conversation_participants for insert
   to authenticated
   with check (
-    user_id = auth.uid()
-    or exists (
+    exists (
       select 1 from public.conversations c
       where c.id = conversation_id and c.created_by = auth.uid()
     )
@@ -386,8 +389,14 @@ drop policy if exists "messages_update_own" on public.messages;
 create policy "messages_update_own"
   on public.messages for update
   to authenticated
-  using (auth.uid() = sender_id)
-  with check (auth.uid() = sender_id);
+  using (
+    auth.uid() = sender_id
+    and public.is_conversation_member(conversation_id)
+  )
+  with check (
+    auth.uid() = sender_id
+    and public.is_conversation_member(conversation_id)
+  );
 
 -- Reads: only within conversations you belong to
 drop policy if exists "reads_select_participant" on public.message_reads;
@@ -550,6 +559,66 @@ begin
   end;
 end $$;
 
+-- Path-aware media read authorization (chat / status / avatar)
+create or replace function public.can_read_media_object(p_name text)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+stable
+as $$
+declare
+  parts text[];
+  owner_id text;
+  second text;
+begin
+  if auth.uid() is null or p_name is null or length(trim(p_name)) = 0 then
+    return false;
+  end if;
+
+  parts := string_to_array(p_name, '/');
+  if array_length(parts, 1) is null or array_length(parts, 1) < 2 then
+    return false;
+  end if;
+
+  owner_id := parts[1];
+  second := parts[2];
+
+  if owner_id = auth.uid()::text then
+    return true;
+  end if;
+
+  if second like 'avatar-%' then
+    return public.is_known_contact(owner_id::uuid);
+  end if;
+
+  if second = 'status' then
+    return exists (
+      select 1
+      from public.statuses s
+      where s.user_id = owner_id::uuid
+        and s.expires_at > now()
+        and s.media_url is not null
+        and position(p_name in s.media_url) > 0
+        and public.can_view_status(s.user_id, s.audience_mode, s.audience_user_ids)
+    );
+  end if;
+
+  if array_length(parts, 1) >= 3 then
+    begin
+      return public.is_conversation_member(second::uuid);
+    exception when others then
+      return false;
+    end;
+  end if;
+
+  return false;
+end;
+$$;
+
+revoke all on function public.can_read_media_object(text) from public;
+grant execute on function public.can_read_media_object(text) to authenticated;
+
 -- Storage bucket for chat media (images, files, voice) — private; use signed URLs
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (
@@ -572,12 +641,17 @@ set public = excluded.public,
     file_size_limit = excluded.file_size_limit,
     allowed_mime_types = excluded.allowed_mime_types;
 
+-- Full path-aware media policies live in migration-security-hardening.sql
 drop policy if exists "media_public_read" on storage.objects;
 drop policy if exists "media_auth_read" on storage.objects;
-create policy "media_auth_read"
+drop policy if exists "media_authorized_read" on storage.objects;
+create policy "media_authorized_read"
   on storage.objects for select
   to authenticated
-  using (bucket_id = 'media');
+  using (
+    bucket_id = 'media'
+    and public.can_read_media_object(name)
+  );
 
 drop policy if exists "media_auth_upload" on storage.objects;
 create policy "media_auth_upload"

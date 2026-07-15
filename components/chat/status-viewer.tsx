@@ -145,7 +145,10 @@ export function StatusViewer({
         return
       }
       const uids = Array.from(new Set(data.map((r) => r.user_id)))
-      const { data: profiles } = await supabase.from("profiles").select("*").in("id", uids)
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, display_name, avatar_url, about, last_seen, created_at")
+        .in("id", uids)
       const pmap = new Map((profiles ?? []).map((p) => [p.id, p as Profile]))
       setReplies(data.map((r) => ({ ...r, profile: pmap.get(r.user_id) })) as StatusReply[])
     } finally {

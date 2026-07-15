@@ -1,13 +1,32 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { fetchGooglePeopleConnections } from "@/lib/google-contacts"
+import { checkRateLimit } from "@/lib/rate-limit"
 import type { Profile } from "@/lib/types"
+
+export const dynamic = "force-dynamic"
 
 type Body = {
   provider_token?: string
 }
 
 export async function POST(req: Request) {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 })
+  }
+
+  const rate = checkRateLimit(`google-sync:${user.id}`, 6, 10 * 60_000)
+  if (!rate.ok) {
+    return NextResponse.json(
+      { error: "rate_limited", message: "יותר מדי סנכרונים. נסה שוב בעוד כמה דקות." },
+      { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } },
+    )
+  }
+
   let payload: Body
   try {
     payload = (await req.json()) as Body
@@ -16,19 +35,11 @@ export async function POST(req: Request) {
   }
 
   const providerToken = payload.provider_token?.trim()
-  if (!providerToken) {
+  if (!providerToken || providerToken.length > 8_000) {
     return NextResponse.json(
       { error: "missing_token", message: "חסר טוקן Google. נסה לסנכרן שוב." },
       { status: 400 },
     )
-  }
-
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 })
   }
 
   let contacts

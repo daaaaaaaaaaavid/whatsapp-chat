@@ -34,11 +34,13 @@ export function ProfileDialog({ open, currentUser, onClose, onUpdated }: Props) 
 
   const save = async (fields: Partial<Profile>) => {
     const supabase = createClient()
+    // Never allow clients to set email — auth.users is the source of truth.
+    const { email: _ignoredEmail, ...safeFields } = fields
     const { data } = await supabase
       .from("profiles")
-      .update(fields)
+      .update(safeFields)
       .eq("id", currentUser.id)
-      .select()
+      .select("id, email, display_name, avatar_url, about, last_seen, created_at")
       .single()
     if (data) onUpdated(data as Profile)
   }

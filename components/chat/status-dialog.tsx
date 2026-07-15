@@ -81,7 +81,10 @@ export function StatusDialog({ open, currentUser, onClose }: Props) {
     setContactsError(contactsResult.error)
     if (!data) return
     const uids = Array.from(new Set(data.map((s) => s.user_id)))
-    const { data: profiles } = await supabase.from("profiles").select("*").in("id", uids)
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, display_name, avatar_url, about, last_seen, created_at")
+      .in("id", uids)
     const pmap = new Map((profiles ?? []).map((p) => [p.id, p as Profile]))
     setStatuses(data.map((s) => ({ ...s, profile: pmap.get(s.user_id) })) as Status[])
   }, [currentUser.id])

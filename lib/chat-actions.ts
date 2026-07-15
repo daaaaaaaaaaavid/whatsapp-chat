@@ -1,6 +1,7 @@
 "use client"
 
 import { createClient, ensureSupabaseConfig } from "@/lib/supabase/client"
+import { OWN_PROFILE_COLUMNS, PUBLIC_PROFILE_COLUMNS } from "@/lib/profile-fields"
 import type { Profile } from "@/lib/types"
 import { groupNameSchema, MAX_GROUP_MEMBERS } from "@/lib/validation"
 
@@ -192,7 +193,7 @@ export async function fetchContacts(currentUserId: string): Promise<FetchUsersRe
     const supabase = createClient()
     const { data, error } = await supabase
       .from("profiles")
-      .select("*")
+      .select(PUBLIC_PROFILE_COLUMNS)
       .neq("id", currentUserId)
       .order("display_name")
 
@@ -219,29 +220,28 @@ export async function fetchContacts(currentUserId: string): Promise<FetchUsersRe
 /** @deprecated Use fetchContacts — directory listing is no longer allowed. */
 export const fetchAllUsers = fetchContacts
 
-/** Look up a registered user by exact email (for starting a new chat). */
+/** Look up a registered user by exact email (server rate-limited; no email returned). */
 export async function findUserByEmail(email: string): Promise<Profile | null> {
   const trimmed = email.trim()
   if (!trimmed) return null
 
-  await ensureSupabaseConfig()
-  const supabase = createClient()
-  const { data, error } = await supabase.rpc("find_user_by_email", {
-    p_email: trimmed,
+  const res = await fetch("/api/users/lookup-email", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: trimmed }),
   })
 
-  if (error) {
-    const msg = error.message.toLowerCase()
-    if (msg.includes("function") && msg.includes("does not exist")) {
-      throw new Error(
-        "חסרה פונקציית חיפוש מייל. הרץ את supabase/migration-contacts-privacy.sql ב־SQL Editor של Supabase.",
-      )
-    }
-    throw new Error(errMessage(error, "נכשל בחיפוש לפי מייל"))
+  if (res.status === 429) {
+    throw new Error("יותר מדי חיפושים. נסה שוב בעוד רגע.")
+  }
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { error?: string } | null
+    if (body?.error === "invalid_email") throw new Error("כתובת מייל לא תקינה")
+    throw new Error("נכשל בחיפוש לפי מייל")
   }
 
-  const rows = (data ?? []) as Profile[]
-  return rows[0] ?? null
+  const body = (await res.json()) as { user?: Profile | null }
+  return body.user ?? null
 }
 
 export async function startChatByEmail(
@@ -267,10 +267,19 @@ export async function leaveConversation(conversationId: string, userId: string):
   if (error) throw new Error(errMessage(error, "נכשל ביציאה מהשיחה"))
 }
 
-/** Create (or reuse) an invite link token for a conversation. */
+/** Create (or reuse) an invite link token for a group (admins only). */
 export async function createConversationInvite(conversationId: string, createdBy: string): Promise<string> {
   await ensureSupabaseConfig()
   const supabase = createClient()
+
+  const { data: conv } = await supabase
+    .from("conversations")
+    .select("is_group")
+    .eq("id", conversationId)
+    .maybeSingle()
+  if (!conv?.is_group) {
+    throw new Error("קישורי הזמנה זמינים לקבוצות בלבד")
+  }
 
   const { data: existing } = await supabase
     .from("conversation_invites")
@@ -284,20 +293,27 @@ export async function createConversationInvite(conversationId: string, createdBy
 
   if (existing?.token) return existing.token
 
-  const token = crypto.randomUUID().replace(/-/g, "").slice(0, 16)
+  // 128-bit hex token (32 chars)
+  const secureToken = `${crypto.randomUUID().replace(/-/g, "")}${crypto.randomUUID().replace(/-/g, "")}`.slice(
+    0,
+    32,
+  )
   const { error } = await supabase.from("conversation_invites").insert({
     conversation_id: conversationId,
     created_by: createdBy,
-    token,
+    token: secureToken,
   })
   if (error) {
     const msg = error.message.toLowerCase()
     if (msg.includes("conversation_invites") || msg.includes("does not exist")) {
       throw new Error("חסרה טבלת הזמנות. הרץ את supabase/migration-invites-prefs.sql ב־Supabase.")
     }
+    if (msg.includes("policy") || msg.includes("row-level")) {
+      throw new Error("רק מנהלי הקבוצה יכולים ליצור קישור הזמנה. הרץ גם migration-security-hardening.sql.")
+    }
     throw new Error(errMessage(error, "נכשל ביצירת קישור הזמנה"))
   }
-  return token
+  return secureToken
 }
 
 export async function joinConversationByInvite(token: string): Promise<string> {
@@ -319,7 +335,7 @@ export async function blockUser(currentUserId: string, blockedUserId: string): P
   const supabase = createClient()
   const { data: profile } = await supabase
     .from("profiles")
-    .select("blocked_user_ids")
+    .select(OWN_PROFILE_COLUMNS)
     .eq("id", currentUserId)
     .maybeSingle()
 
