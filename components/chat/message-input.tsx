@@ -102,6 +102,12 @@ type UploadStatus = {
   fileProgress: number
 }
 
+type RecordingPreview = {
+  file: File
+  url: string
+  durationSec: number
+}
+
 function overallUploadPercent(status: UploadStatus): number {
   if (status.total <= 0) return 0
   const ratio = (status.current - 1 + Math.min(1, Math.max(0, status.fileProgress))) / status.total
@@ -149,6 +155,8 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [sendError, setSendError] = useState<string | null>(null)
   const [recording, setRecording] = useState(false)
+  const [recordingPreview, setRecordingPreview] = useState<RecordingPreview | null>(null)
+  const [sendingRecording, setSendingRecording] = useState(false)
   const [pending, setPending] = useState<PendingItem[]>([])
   const [activeIndex, setActiveIndex] = useState(0)
   const [sendingMedia, setSendingMedia] = useState(false)
@@ -161,6 +169,9 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const recordingStartedAtRef = useRef<number | null>(null)
+  const discardRecordingRef = useRef(false)
+  const recordingPreviewRef = useRef(recordingPreview)
+  recordingPreviewRef.current = recordingPreview
   const pendingRef = useRef(pending)
   pendingRef.current = pending
   const onTypingRef = useRef(onTyping)
@@ -232,6 +243,13 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
   }, [text, resizeTextarea])
 
   useEffect(() => {
+    return () => {
+      const preview = recordingPreviewRef.current
+      if (preview) URL.revokeObjectURL(preview.url)
+    }
+  }, [])
+
+  useEffect(() => {
     setText("")
     textSelectionRef.current = { start: 0, end: 0 }
     setSending(false)
@@ -243,12 +261,18 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
     setUploadError(null)
     setSendError(null)
     setSendingMedia(false)
+    setSendingRecording(false)
+    setRecordingPreview((current) => {
+      if (current) URL.revokeObjectURL(current.url)
+      return null
+    })
     setActiveIndex(0)
     setPending((prev) => {
       revokePending(prev)
       return []
     })
     if (mediaRecorderRef.current?.state === "recording") {
+      discardRecordingRef.current = true
       try {
         mediaRecorderRef.current.stop()
       } catch {
@@ -683,34 +707,69 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
     setRecording(false)
   }
 
+  const discardRecordingPreview = () => {
+    setRecordingPreview((current) => {
+      if (current) URL.revokeObjectURL(current.url)
+      return null
+    })
+  }
+
+  const sendRecordingPreview = async () => {
+    if (!recordingPreview || sendingRecording) return
+    setSendingRecording(true)
+    try {
+      await uploadAndSend(
+        recordingPreview.file,
+        "audio",
+        null,
+        null,
+        recordingPreview.durationSec,
+      )
+      discardRecordingPreview()
+    } catch {
+      // uploadAndSend sets uploadError
+    } finally {
+      setSendingRecording(false)
+    }
+  }
+
   const startRecording = async () => {
     try {
+      discardRecordingPreview()
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       const mimeType = pickVoiceRecorderMime()
       const recorder = mimeType
         ? new MediaRecorder(stream, { mimeType })
         : new MediaRecorder(stream)
       chunksRef.current = []
+      discardRecordingRef.current = false
       recordingStartedAtRef.current = performance.now()
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data)
       }
       recorder.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop())
+        mediaRecorderRef.current = null
         const startedAt = recordingStartedAtRef.current
         recordingStartedAtRef.current = null
         const durationSec =
           startedAt != null ? Math.max(0.1, (performance.now() - startedAt) / 1000) : null
+        if (discardRecordingRef.current) {
+          discardRecordingRef.current = false
+          chunksRef.current = []
+          return
+        }
         if (chunksRef.current.length === 0) {
           setUploadError("ההקלטה ריקה — נסה שוב")
           return
         }
         const file = voiceRecordingFile(chunksRef.current, recorder.mimeType || mimeType)
-        try {
-          await uploadAndSend(file, "audio", null, null, durationSec)
-        } catch {
-          // uploadAndSend sets uploadError
-        }
+        chunksRef.current = []
+        const url = URL.createObjectURL(file)
+        setRecordingPreview((current) => {
+          if (current) URL.revokeObjectURL(current.url)
+          return { file, url, durationSec: durationSec ?? 0.1 }
+        })
       }
       mediaRecorderRef.current = recorder
       recorder.start(250)
@@ -994,7 +1053,47 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
             className="flex items-center gap-2 rounded-full bg-[#ea0038] px-4 py-1.5 text-sm text-white shadow"
           >
             <span className="h-2 w-2 animate-pulse rounded-full bg-[var(--wa-panel)]" />
-            מקליט... לחץ לעצירה ושליחה
+            מקליט... לחץ לעצירה ולהאזנה
+          </button>
+        </div>
+      )}
+
+      {recordingPreview && (
+        <div
+          className="flex items-center gap-2 border-t border-[var(--wa-border)] bg-[var(--wa-header)] px-4 py-2"
+          dir="ltr"
+        >
+          <button
+            type="button"
+            onClick={discardRecordingPreview}
+            disabled={sendingRecording}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#ea0038] transition hover:bg-black/5 disabled:opacity-40"
+            aria-label="מחק הקלטה"
+            title="מחק הקלטה"
+          >
+            <Trash2 className="h-5 w-5" />
+          </button>
+          <audio
+            key={recordingPreview.url}
+            src={recordingPreview.url}
+            controls
+            preload="metadata"
+            className="h-10 min-w-0 flex-1 max-w-full"
+            aria-label="תצוגה מקדימה של ההקלטה"
+          />
+          <button
+            type="button"
+            onClick={() => void sendRecordingPreview()}
+            disabled={sendingRecording}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white transition hover:bg-[#06cf9c] disabled:opacity-50"
+            aria-label="שלח הקלטה"
+            title="שלח הקלטה"
+          >
+            {sendingRecording ? (
+              <LoaderCircle className="h-5 w-5 animate-spin" />
+            ) : (
+              <SendHorizontal className="h-5 w-5 -scale-x-100" />
+            )}
           </button>
         </div>
       )}

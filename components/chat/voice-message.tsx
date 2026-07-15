@@ -297,22 +297,19 @@ export function VoiceMessage({
       </button>
 
       <div className="min-w-0 flex-1">
-        <div
-          className="relative flex h-8 cursor-pointer items-center gap-[2px]"
-          onClick={(e) => {
-            const rect = e.currentTarget.getBoundingClientRect()
-            seek((e.clientX - rect.left) / rect.width)
-          }}
-          role="slider"
-          aria-valuemin={0}
-          aria-valuemax={displayDuration || 1}
-          aria-valuenow={current}
-          tabIndex={0}
-          onKeyDown={(e) => {
-            if (e.key === "ArrowLeft") seek(progress - 0.05)
-            if (e.key === "ArrowRight") seek(progress + 0.05)
-          }}
-        >
+        <div className="relative flex h-8 items-center gap-[2px]">
+          <input
+            type="range"
+            min={0}
+            max={displayDuration || 1}
+            step={0.05}
+            value={Math.min(current, displayDuration || 0)}
+            disabled={!ready || displayDuration <= 0}
+            onChange={(event) => seek(Number(event.target.value) / (displayDuration || 1))}
+            className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0 disabled:cursor-default"
+            aria-label="דלג בהודעה הקולית"
+            aria-valuetext={`${formatCallDuration(Math.round(current))} מתוך ${formatCallDuration(Math.round(displayDuration))}`}
+          />
           {bars.map((h, i) => {
             const filled = i / bars.length <= progress
             return (
