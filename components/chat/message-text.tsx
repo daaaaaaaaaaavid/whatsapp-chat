@@ -32,7 +32,7 @@ export function MessageText({
     return () => window.removeEventListener("keydown", closeOnEscape)
   }, [emailMenu])
 
-  const openEmailMenu = (event: MouseEvent<HTMLButtonElement>, email: string) => {
+  const openEmailMenu = (event: MouseEvent<HTMLElement>, email: string) => {
     event.stopPropagation()
     const rect = event.currentTarget.getBoundingClientRect()
     const menuWidth = Math.min(300, window.innerWidth - 16)
@@ -93,15 +93,19 @@ export function MessageText({
           }
           if (p.type === "email") {
             return (
-              <button
+              <a
                 key={i}
-                type="button"
-                className="inline cursor-pointer border-0 bg-transparent p-0 font-inherit text-[#027eb5] underline underline-offset-2"
-                onClick={(event) => openEmailMenu(event, p.value)}
+                href={`mailto:${p.value}`}
+                className="cursor-pointer text-[#027eb5] underline underline-offset-2"
+                style={{ color: "#027eb5", textDecoration: "underline" }}
+                onClick={(event) => {
+                  event.preventDefault()
+                  openEmailMenu(event, p.value)
+                }}
                 aria-label={`אפשרויות עבור ${p.value}`}
               >
                 {p.value}
-              </button>
+              </a>
             )
           }
           if (!searchQuery?.trim()) return <span key={i}>{p.value}</span>

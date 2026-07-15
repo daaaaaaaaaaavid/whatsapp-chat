@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react"
 import { LoaderCircle, Mic, Pause, Play, User } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { formatCallDuration } from "@/lib/format"
+import { createClient } from "@/lib/supabase/client"
+import { downloadMediaBlob } from "@/lib/media-url"
 import { useSignedMediaUrlControls } from "@/lib/use-signed-media-url"
 import { MessageTicks } from "./message-ticks"
 
@@ -18,6 +20,69 @@ function waveformBars(seed: string, count = 36): number[] {
     bars.push(v)
   }
   return bars
+}
+
+function readFiniteDuration(audio: HTMLAudioElement): number {
+  const d = audio.duration
+  return Number.isFinite(d) && d > 0 ? d : 0
+}
+
+/** Some browsers report Infinity for WebM until we seek to the end once. */
+async function resolveDuration(audio: HTMLAudioElement): Promise<number> {
+  const immediate = readFiniteDuration(audio)
+  if (immediate > 0) return immediate
+
+  return new Promise((resolve) => {
+    let settled = false
+    const finish = (value: number) => {
+      if (settled) return
+      settled = true
+      audio.removeEventListener("timeupdate", onTimeUpdate)
+      resolve(value)
+    }
+    const onTimeUpdate = () => {
+      const d = readFiniteDuration(audio)
+      if (d > 0) {
+        try {
+          audio.currentTime = 0
+        } catch {
+          // ignore
+        }
+        finish(d)
+      }
+    }
+    audio.addEventListener("timeupdate", onTimeUpdate)
+    try {
+      audio.currentTime = 1e101
+    } catch {
+      finish(0)
+      return
+    }
+    window.setTimeout(() => finish(readFiniteDuration(audio)), 1500)
+  })
+}
+
+function waitForAudioReady(audio: HTMLAudioElement): Promise<void> {
+  if (audio.readyState >= 1 && readFiniteDuration(audio) > 0) return Promise.resolve()
+  return new Promise((resolve, reject) => {
+    const ok = () => {
+      cleanup()
+      resolve()
+    }
+    const fail = () => {
+      cleanup()
+      reject(new Error("audio error"))
+    }
+    const cleanup = () => {
+      audio.removeEventListener("loadedmetadata", ok)
+      audio.removeEventListener("canplay", ok)
+      audio.removeEventListener("error", fail)
+    }
+    audio.addEventListener("loadedmetadata", ok)
+    audio.addEventListener("canplay", ok)
+    audio.addEventListener("error", fail)
+    audio.load()
+  })
 }
 
 type Props = {
@@ -44,38 +109,44 @@ export function VoiceMessage({
   avatarUrl,
   avatarName,
 }: Props) {
-  const { url, loading: urlLoading, refresh } = useSignedMediaUrlControls(fileUrl)
   const { url: signedAvatarUrl } = useSignedMediaUrlControls(avatarUrl)
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const objectUrlRef = useRef<string | null>(null)
+  const [ready, setReady] = useState(false)
   const [playing, setPlaying] = useState(false)
   const [duration, setDuration] = useState(0)
   const [current, setCurrent] = useState(0)
+  const [buffering, setBuffering] = useState(true)
   const [loadError, setLoadError] = useState(false)
   const [playError, setPlayError] = useState<string | null>(null)
+  const [reloadToken, setReloadToken] = useState(0)
   const bars = waveformBars(messageId)
 
+  const refresh = () => setReloadToken((n) => n + 1)
+
   useEffect(() => {
+    let cancelled = false
     setPlaying(false)
     setCurrent(0)
     setDuration(0)
+    setReady(false)
     setLoadError(false)
     setPlayError(null)
+    setBuffering(true)
 
-    if (!url) {
+    if (audioRef.current) {
+      audioRef.current.pause()
       audioRef.current = null
-      return
+    }
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current)
+      objectUrlRef.current = null
     }
 
     const audio = new Audio()
-    audio.preload = "metadata"
-    audio.src = url
+    audio.preload = "auto"
     audioRef.current = audio
 
-    const onMeta = () => {
-      if (Number.isFinite(audio.duration) && audio.duration > 0) {
-        setDuration(audio.duration)
-      }
-    }
     const onTime = () => setCurrent(audio.currentTime)
     const onEnded = () => {
       setPlaying(false)
@@ -83,39 +154,65 @@ export function VoiceMessage({
     }
     const onPlay = () => setPlaying(true)
     const onPause = () => setPlaying(false)
-    const onError = () => {
-      setLoadError(true)
-      setPlaying(false)
-    }
 
-    audio.addEventListener("loadedmetadata", onMeta)
-    audio.addEventListener("durationchange", onMeta)
     audio.addEventListener("timeupdate", onTime)
     audio.addEventListener("ended", onEnded)
     audio.addEventListener("play", onPlay)
     audio.addEventListener("pause", onPause)
-    audio.addEventListener("error", onError)
-    audio.load()
+
+    void (async () => {
+      try {
+        const supabase = createClient()
+        const blob = await downloadMediaBlob(supabase, fileUrl)
+        if (cancelled) return
+        if (!blob || blob.size === 0) throw new Error("empty media")
+
+        const objectUrl = URL.createObjectURL(blob)
+        objectUrlRef.current = objectUrl
+        audio.src = objectUrl
+        await waitForAudioReady(audio)
+        if (cancelled) return
+        const d = await resolveDuration(audio)
+        if (cancelled) return
+        if (d > 0) setDuration(d)
+        setReady(true)
+        setBuffering(false)
+        setLoadError(false)
+      } catch (err) {
+        console.error("VoiceMessage load failed:", err)
+        if (!cancelled) {
+          setLoadError(true)
+          setReady(false)
+          setBuffering(false)
+        }
+      }
+    })()
 
     return () => {
+      cancelled = true
       audio.pause()
-      audio.removeAttribute("src")
-      audio.load()
-      audio.removeEventListener("loadedmetadata", onMeta)
-      audio.removeEventListener("durationchange", onMeta)
       audio.removeEventListener("timeupdate", onTime)
       audio.removeEventListener("ended", onEnded)
       audio.removeEventListener("play", onPlay)
       audio.removeEventListener("pause", onPause)
-      audio.removeEventListener("error", onError)
+      audio.removeAttribute("src")
+      try {
+        audio.load()
+      } catch {
+        // ignore
+      }
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current)
+        objectUrlRef.current = null
+      }
       audioRef.current = null
     }
-  }, [url])
+  }, [fileUrl, reloadToken])
 
   const toggle = async () => {
     const audio = audioRef.current
-    if (!audio || !url) {
-      if (loadError || !url) refresh()
+    if (!audio || !ready || buffering) {
+      if (loadError) refresh()
       return
     }
     if (!audio.paused) {
@@ -124,12 +221,12 @@ export function VoiceMessage({
     }
     setPlayError(null)
     try {
-      if (audio.readyState < 2) audio.load()
       await audio.play()
-    } catch {
+    } catch (err) {
+      console.error("VoiceMessage play failed:", err)
       setLoadError(true)
       setPlayError("לא ניתן לנגן")
-      refresh()
+      setReady(false)
     }
   }
 
@@ -144,7 +241,7 @@ export function VoiceMessage({
   const progress = duration > 0 ? current / duration : 0
   const displayDuration = duration > 0 ? duration : 0
   const displayTime = playing || current > 0 ? current : displayDuration
-  const busy = urlLoading && !url
+  const busy = buffering
 
   return (
     <div className="mb-0.5 flex min-w-[240px] max-w-[320px] items-center gap-2 py-0.5" dir="ltr">
@@ -153,7 +250,7 @@ export function VoiceMessage({
         onClick={() => void toggle()}
         disabled={busy}
         className="flex h-8 w-8 shrink-0 items-center justify-center text-[var(--wa-text-secondary)] transition hover:text-[var(--wa-text)] disabled:opacity-50"
-        aria-label={playing ? "השהה" : "נגן"}
+        aria-label={playing ? "השהה" : loadError ? "נסה שוב" : "נגן"}
       >
         {busy ? (
           <LoaderCircle className="h-5 w-5 animate-spin" />
@@ -202,7 +299,7 @@ export function VoiceMessage({
         <div className="mt-0.5 flex items-center justify-between text-[11px] text-[var(--wa-text-secondary)]">
           <span dir="ltr">
             {playError || loadError
-              ? playError || "שגיאה — נסה שוב"
+              ? playError || "שגיאה — לחץ לניסיון חוזר"
               : formatCallDuration(Math.round(displayTime || 0))}
           </span>
           <span className="flex items-center gap-1" dir="ltr">

@@ -24,7 +24,7 @@ export function splitTextWithLinks(text: string): MessageTextPart[] {
     if (m.index > last) parts.push({ type: "text", value: text.slice(last, m.index) })
     const raw = m[0]
     const isLink = /^https?:\/\//i.test(raw)
-    const cleaned = isLink ? raw.replace(/[.,);]+$/, "") : raw
+    const cleaned = raw.replace(/[.,);:!?]+$/, "")
     parts.push({ type: isLink ? "link" : "email", value: cleaned })
     if (cleaned.length < raw.length) {
       parts.push({ type: "text", value: raw.slice(cleaned.length) })

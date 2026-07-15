@@ -62,3 +62,28 @@ export async function resolveMediaDisplayUrl(
   }
   return data.signedUrl
 }
+
+/** Download media as a Blob via the authenticated client (best for audio playback). */
+export async function downloadMediaBlob(
+  supabase: SupabaseClient,
+  fileUrl: string | null | undefined,
+): Promise<Blob | null> {
+  if (!fileUrl) return null
+  const path = parseMediaStoragePath(fileUrl)
+  if (path) {
+    const { data, error } = await supabase.storage.from(MEDIA_BUCKET).download(path)
+    if (!error && data) return data
+    console.error("downloadMediaBlob:", error?.message)
+  }
+
+  const signed = await resolveMediaDisplayUrl(supabase, fileUrl)
+  if (!signed) return null
+  try {
+    const res = await fetch(signed)
+    if (!res.ok) return null
+    return await res.blob()
+  } catch (err) {
+    console.error("downloadMediaBlob fetch:", err)
+    return null
+  }
+}

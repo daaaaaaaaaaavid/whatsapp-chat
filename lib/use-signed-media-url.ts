@@ -71,16 +71,23 @@ export function useSignedMediaUrlControls(fileUrl: string | null | undefined): {
 
     setLoading(true)
     const supabase = createClient()
-    void resolveMediaDisplayUrl(supabase, fileUrl).then((url) => {
-      if (cancelled) return
-      setSigned(url)
-      setLoading(false)
-      if (url) {
-        refreshTimer = setTimeout(() => {
-          if (!cancelled) refresh()
-        }, REFRESH_AFTER_MS)
-      }
-    })
+    void resolveMediaDisplayUrl(supabase, fileUrl)
+      .then((url) => {
+        if (cancelled) return
+        setSigned(url)
+        setLoading(false)
+        if (url) {
+          refreshTimer = setTimeout(() => {
+            if (!cancelled) refresh()
+          }, REFRESH_AFTER_MS)
+        }
+      })
+      .catch((err) => {
+        console.error("useSignedMediaUrlControls:", err)
+        if (cancelled) return
+        setSigned(null)
+        setLoading(false)
+      })
 
     return () => {
       cancelled = true
