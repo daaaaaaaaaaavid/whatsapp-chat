@@ -205,6 +205,7 @@ grant execute on function public.match_my_google_contacts() to authenticated;
 -- 3) Participants — no arbitrary self-join (invite RPC remains SECURITY DEFINER)
 -- =============================================================================
 drop policy if exists "participants_insert_authenticated" on public.conversation_participants;
+drop policy if exists "participants_insert_creator_or_admin" on public.conversation_participants;
 create policy "participants_insert_creator_or_admin"
   on public.conversation_participants for insert
   to authenticated
@@ -269,6 +270,7 @@ create trigger conversations_immutable_cols
 -- Members may update (e.g. updated_at); trigger blocks ownership/metadata abuse.
 drop policy if exists "conversations_update_participant" on public.conversations;
 drop policy if exists "conversations_update_admin" on public.conversations;
+drop policy if exists "conversations_update_member" on public.conversations;
 create policy "conversations_update_member"
   on public.conversations for update
   to authenticated
@@ -323,6 +325,7 @@ create policy "messages_update_own"
 -- 6) Invites — group admins only, stronger tokens, no double-count, no DMs
 -- =============================================================================
 drop policy if exists "invites_insert_member" on public.conversation_invites;
+drop policy if exists "invites_insert_admin" on public.conversation_invites;
 create policy "invites_insert_admin"
   on public.conversation_invites for insert
   to authenticated
@@ -337,6 +340,7 @@ create policy "invites_insert_admin"
   );
 
 drop policy if exists "invites_delete_creator" on public.conversation_invites;
+drop policy if exists "invites_delete_admin" on public.conversation_invites;
 create policy "invites_delete_admin"
   on public.conversation_invites for delete
   to authenticated
@@ -631,31 +635,38 @@ $$;
 revoke all on function public.can_use_realtime_topic(text) from public;
 grant execute on function public.can_use_realtime_topic(text) to authenticated;
 
--- Realtime private channel authorization (no-op if extension/schema missing)
+-- Realtime private channel authorization
+-- Fail loudly if realtime schema/policies cannot be applied (do not swallow).
 do $$
 begin
-  if exists (
+  if not exists (
     select 1 from information_schema.tables
     where table_schema = 'realtime' and table_name = 'messages'
   ) then
-    execute 'alter table realtime.messages enable row level security';
-
-    execute 'drop policy if exists "whachat_realtime_select" on realtime.messages';
-    execute $pol$
-      create policy "whachat_realtime_select"
-        on realtime.messages for select
-        to authenticated
-        using (public.can_use_realtime_topic(realtime.topic()))
-    $pol$;
-
-    execute 'drop policy if exists "whachat_realtime_insert" on realtime.messages';
-    execute $pol$
-      create policy "whachat_realtime_insert"
-        on realtime.messages for insert
-        to authenticated
-        with check (public.can_use_realtime_topic(realtime.topic()))
-    $pol$;
+    raise exception 'realtime.messages missing — enable Realtime in the Supabase project';
   end if;
-exception when others then
-  raise notice 'Realtime policies skipped: %', sqlerrm;
+
+  execute 'alter table realtime.messages enable row level security';
+
+  execute 'drop policy if exists "whachat_realtime_select" on realtime.messages';
+  execute $pol$
+    create policy "whachat_realtime_select"
+      on realtime.messages for select
+      to authenticated
+      using (
+        coalesce(realtime.messages.extension, 'broadcast') in ('broadcast', 'presence')
+        and public.can_use_realtime_topic(realtime.topic())
+      )
+  $pol$;
+
+  execute 'drop policy if exists "whachat_realtime_insert" on realtime.messages';
+  execute $pol$
+    create policy "whachat_realtime_insert"
+      on realtime.messages for insert
+      to authenticated
+      with check (
+        coalesce(realtime.messages.extension, 'broadcast') in ('broadcast', 'presence')
+        and public.can_use_realtime_topic(realtime.topic())
+      )
+  $pol$;
 end $$;

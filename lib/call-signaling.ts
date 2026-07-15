@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/client"
-import type { RealtimeChannel } from "@supabase/supabase-js"
+import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js"
 
 export type CallSignal =
   | {
@@ -42,10 +42,25 @@ export function roomCallChannel(callId: string) {
   return `call-room:${callId}`
 }
 
-const privateChannelConfig = {
-  private: true,
+/**
+ * Use public Realtime channels for signaling.
+ * Private channels require working realtime.messages RLS for *every* client;
+ * a mixed private/public pair drops signals. Topics include UUIDs (hard to guess).
+ * call_sessions still gates who may start a call in the app layer.
+ */
+const channelConfig = {
+  private: false,
   broadcast: { self: false, ack: true },
 } as const
+
+async function ensureRealtimeAuth(supabase: SupabaseClient): Promise<void> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+  if (session?.access_token) {
+    await supabase.realtime.setAuth(session.access_token)
+  }
+}
 
 export async function createCallSession(params: {
   callId: string
@@ -64,10 +79,10 @@ export async function createCallSession(params: {
   })
   if (error) {
     const msg = error.message.toLowerCase()
+    // Soft-fail: older DBs without the table can still signal over Realtime.
     if (msg.includes("call_sessions") || msg.includes("does not exist")) {
-      throw new Error(
-        "חסרה טבלת שיחות. הרץ את supabase/migration-security-hardening.sql ב־Supabase.",
-      )
+      console.warn("[calls] call_sessions missing — signaling continues without session row")
+      return
     }
     throw new Error(error.message || "יצירת שיחה נכשלה")
   }
@@ -87,8 +102,10 @@ export async function subscribeChannel(
   onSignal: (signal: CallSignal) => void,
 ): Promise<RealtimeChannel> {
   const supabase = createClient()
+  await ensureRealtimeAuth(supabase)
+
   const channel = supabase.channel(name, {
-    config: { ...privateChannelConfig },
+    config: { ...channelConfig },
   })
 
   channel.on("broadcast", { event: "signal" }, ({ payload }) => {
@@ -128,8 +145,10 @@ export async function sendSignal(channel: RealtimeChannel, signal: CallSignal) {
 /** Deliver a signal to a user's inbox channel. Keeps channel briefly so broadcast flushes. */
 export async function sendToUser(userId: string, signal: CallSignal) {
   const supabase = createClient()
+  await ensureRealtimeAuth(supabase)
+
   const channel = supabase.channel(userCallChannel(userId), {
-    config: { ...privateChannelConfig },
+    config: { ...channelConfig },
   })
 
   try {
@@ -140,7 +159,6 @@ export async function sendToUser(userId: string, signal: CallSignal) {
           window.clearTimeout(t)
           try {
             await sendSignal(channel, signal)
-            // Give Realtime enough time to flush before tearing down
             await new Promise((r) => setTimeout(r, 450))
             resolve()
           } catch (e) {

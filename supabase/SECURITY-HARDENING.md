@@ -26,6 +26,10 @@ Those can reopen the media bucket to the public.
 
 ## After migrate
 
+Optional follow-up if calls fail to connect:
+1. Run `supabase/migration-fix-realtime-calls.sql`
+2. Redeploy the app (call signaling uses public Realtime topics with UUID names)
+
 Smoke-test with two accounts:
 - Direct chat + group invite
 - Image / voice upload and playback

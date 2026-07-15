@@ -13,9 +13,11 @@ export function subscribeTyping(
   handlers: TypingHandlers,
 ): RealtimeChannel {
   const supabase = createClient()
+  // Public topic (UUID) — private Realtime often fails without dashboard RLS tuning.
+  // Call signaling uses the same public fallback when private auth is unavailable.
   const channel = supabase.channel(`typing:${conversationId}`, {
     config: {
-      private: true,
+      private: false,
       broadcast: { self: false },
     },
   })
