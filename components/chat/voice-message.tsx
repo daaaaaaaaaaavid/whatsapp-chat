@@ -223,7 +223,8 @@ export function VoiceMessage({
 
         bufferRef.current = decoded
         const d = decoded.duration
-        if (Number.isFinite(d) && d > 0) {
+        // Tiny/bogus decode durations (common with some WebM) — keep the wall-clock hint.
+        if (Number.isFinite(d) && d > 0.05) {
           setDuration(d)
           durationRef.current = d
         } else if (hinted > 0) {
@@ -346,10 +347,22 @@ export function VoiceMessage({
   }
 
   const progress = duration > 0 ? current / duration : 0
-  const displayDuration = duration > 0 ? duration : 0
+  const displayDuration = duration > 0 ? duration : hintDuration > 0 ? hintDuration : 0
   const displayTime = playing || current > 0 || dragging ? current : displayDuration
   const busy = buffering
   const canSeek = ready && Boolean(bufferRef.current) && displayDuration > 0
+  const clockLabel = (() => {
+    if (playError || loadError) {
+      // Still show known length when load fails so the bubble isn't "0:00".
+      if (displayDuration > 0) {
+        return `${playError || "שגיאה"} · ${formatCallDuration(Math.max(1, Math.round(displayDuration)))}`
+      }
+      return playError || "שגיאה — לחץ לניסיון חוזר"
+    }
+    if (displayTime <= 0) return formatCallDuration(0)
+    if (playing || current > 0 || dragging) return formatCallDuration(Math.floor(displayTime))
+    return formatCallDuration(Math.max(1, Math.round(displayTime)))
+  })()
 
   return (
     <div
@@ -363,7 +376,7 @@ export function VoiceMessage({
           e.stopPropagation()
           void toggle()
         }}
-        disabled={busy}
+        disabled={busy && !loadError}
         className="flex h-8 w-8 shrink-0 items-center justify-center text-[var(--wa-text-secondary)] transition hover:text-[var(--wa-text)] disabled:opacity-50"
         aria-label={playing ? "השהה" : loadError ? "נסה שוב" : "נגן"}
       >
@@ -430,11 +443,7 @@ export function VoiceMessage({
           />
         </div>
         <div className="mt-0.5 flex items-center justify-between text-[11px] text-[var(--wa-text-secondary)]">
-          <span dir="ltr">
-            {playError || loadError
-              ? playError || "שגיאה — לחץ לניסיון חוזר"
-              : formatCallDuration(Math.round(displayTime || 0))}
-          </span>
+          <span dir="ltr">{clockLabel}</span>
           <span className="flex items-center gap-1" dir="ltr">
             {timeLabel}
             {isMine && <MessageTicks status={status} isGroup={isGroup} viewCount={viewCount} />}

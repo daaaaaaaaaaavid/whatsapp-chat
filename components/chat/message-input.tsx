@@ -125,6 +125,34 @@ function replyPreview(message: Message) {
   return "הודעה"
 }
 
+/** Best-effort duration from an audio File for `#d=` storage hints. */
+async function probeAudioDuration(file: File): Promise<number | null> {
+  const url = URL.createObjectURL(file)
+  try {
+    const audio = document.createElement("audio")
+    audio.preload = "metadata"
+    const duration = await new Promise<number | null>((resolve) => {
+      const finish = (value: number | null) => {
+        audio.removeEventListener("loadedmetadata", onMeta)
+        audio.removeEventListener("error", onErr)
+        resolve(value)
+      }
+      const onMeta = () => {
+        const d = audio.duration
+        finish(Number.isFinite(d) && d > 0 ? d : null)
+      }
+      const onErr = () => finish(null)
+      audio.addEventListener("loadedmetadata", onMeta)
+      audio.addEventListener("error", onErr)
+      audio.src = url
+      window.setTimeout(() => finish(null), 4000)
+    })
+    return duration
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+}
+
 export const MessageInput = forwardRef<MessageInputHandle, Props>(function MessageInput(
   {
     conversationId,
@@ -471,7 +499,10 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
       const mediaFiles = allowed.filter((f) => detectMediaKind(f) !== "audio")
 
       for (const file of audioFiles) {
-        void uploadAndSend(file, "audio").catch(() => {})
+        void (async () => {
+          const durationSec = await probeAudioDuration(file)
+          await uploadAndSend(file, "audio", null, null, durationSec)
+        })().catch(() => {})
       }
 
       if (mediaFiles.length === 0) return
@@ -716,6 +747,11 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
 
   const sendRecordingPreview = async () => {
     if (!recordingPreview || sendingRecording) return
+    if (recordingPreview.file.size < 64) {
+      setUploadError("ההקלטה ריקה — נסה שוב")
+      discardRecordingPreview()
+      return
+    }
     setSendingRecording(true)
     try {
       await uploadAndSend(
@@ -723,7 +759,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
         "audio",
         null,
         null,
-        recordingPreview.durationSec,
+        Math.max(0.1, recordingPreview.durationSec),
       )
       discardRecordingPreview()
     } catch {
@@ -1205,7 +1241,12 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
         hidden
         onChange={(e) => {
           const f = e.target.files?.[0]
-          if (f) void uploadAndSend(f, "audio")
+          if (f) {
+            void (async () => {
+              const durationSec = await probeAudioDuration(f)
+              await uploadAndSend(f, "audio", null, null, durationSec)
+            })().catch(() => {})
+          }
           e.target.value = ""
         }}
       />

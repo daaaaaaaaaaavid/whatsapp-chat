@@ -1,5 +1,11 @@
-/** Chat image/video retention window (days). Avatars and other files are not affected. */
-export const MEDIA_RETENTION_DAYS = 4
+/**
+ * Chat image/video auto-deletion is disabled — media stays with the conversation.
+ * Status media still expires via `expires_at` (see status privacy migration).
+ */
+export const MEDIA_RETENTION_ENABLED = false
+
+/** Kept for scripts/tests; unused while `MEDIA_RETENTION_ENABLED` is false. */
+export const MEDIA_RETENTION_DAYS = 3650
 
 export const MEDIA_EXPIRED_LABEL = "הקובץ לא זמין יותר"
 

@@ -12,7 +12,7 @@ import { MessageTicks } from "./message-ticks"
 import { VoiceMessage } from "./voice-message"
 import { resolveMediaKind } from "./media-gallery"
 import { isExpiredChatMedia, MEDIA_EXPIRED_LABEL } from "@/lib/media-retention"
-import { useSignedMediaUrl } from "@/lib/use-signed-media-url"
+import { useSignedMediaUrlControls } from "@/lib/use-signed-media-url"
 import { SystemCallMessage } from "./system-call-message"
 import { LinkPreview, MessageText } from "./message-text"
 import {
@@ -152,7 +152,11 @@ export function MessageBubble({
   const menuRef = useRef<HTMLDivElement>(null)
   const bubbleRef = useRef<HTMLDivElement>(null)
   const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const displayFileUrl = useSignedMediaUrl(message.file_url)
+  const {
+    url: displayFileUrl,
+    loading: mediaUrlLoading,
+    refresh: refreshMediaUrl,
+  } = useSignedMediaUrlControls(message.file_url)
   const senderProfile = participants.find((p) => p.user_id === message.sender_id)?.profile
   const senderName = senderProfile?.display_name ?? senderProfile?.email ?? "משתמש"
 
@@ -521,6 +525,20 @@ export function MessageBubble({
           </button>
         )}
 
+        {mediaKind === "image" && message.file_url && !displayFileUrl && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              refreshMediaUrl()
+            }}
+            className="mb-1 flex max-w-xs items-center gap-2 rounded-md bg-black/5 px-3 py-3 text-[13px] text-[var(--wa-text-secondary)]"
+          >
+            <ImageOff className="h-5 w-5 shrink-0 opacity-50" />
+            <span>{mediaUrlLoading ? "טוען תמונה…" : "לא ניתן להציג — לחץ לניסיון חוזר"}</span>
+          </button>
+        )}
+
         {mediaKind === "video" && message.file_url && displayFileUrl && (
           <button
             type="button"
@@ -539,6 +557,20 @@ export function MessageBubble({
                 <Video className="h-6 w-6" />
               </span>
             </span>
+          </button>
+        )}
+
+        {mediaKind === "video" && message.file_url && !displayFileUrl && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              refreshMediaUrl()
+            }}
+            className="mb-1 flex max-w-xs items-center gap-2 rounded-md bg-black/5 px-3 py-3 text-[13px] text-[var(--wa-text-secondary)]"
+          >
+            <Video className="h-5 w-5 shrink-0 opacity-50" />
+            <span>{mediaUrlLoading ? "טוען סרטון…" : "לא ניתן להציג — לחץ לניסיון חוזר"}</span>
           </button>
         )}
 

@@ -1,5 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
-import { MEDIA_RETENTION_DAYS, mediaRetentionCutoffIso } from "@/lib/media-retention"
+import {
+  MEDIA_RETENTION_DAYS,
+  MEDIA_RETENTION_ENABLED,
+  mediaRetentionCutoffIso,
+} from "@/lib/media-retention"
 import { parseMediaStoragePath } from "@/lib/media-url"
 
 const BATCH_SIZE = 200
@@ -29,16 +33,30 @@ async function urlStillReferenced(
   fileUrl: string,
   cutoffIso: string,
 ): Promise<boolean> {
+  // Match by storage path so `#d=` / `#whachat=` fragments don't hide live references.
+  const path = parseMediaStoragePath(fileUrl)
+  if (!path) {
+    const { data, error } = await admin
+      .from("messages")
+      .select("id")
+      .eq("file_url", fileUrl)
+      .gte("created_at", cutoffIso)
+      .is("deleted_at", null)
+      .limit(1)
+    if (error) throw error
+    return (data?.length ?? 0) > 0
+  }
+
   const { data, error } = await admin
     .from("messages")
-    .select("id")
-    .eq("file_url", fileUrl)
+    .select("id, file_url")
+    .not("file_url", "is", null)
     .gte("created_at", cutoffIso)
     .is("deleted_at", null)
-    .limit(1)
+    .limit(500)
 
   if (error) throw error
-  return (data?.length ?? 0) > 0
+  return (data ?? []).some((row) => parseMediaStoragePath(row.file_url ?? "") === path)
 }
 
 async function cleanupExpiredChatMedia(
@@ -144,8 +162,14 @@ async function cleanupExpiredStatusMedia(admin: SupabaseClient): Promise<number>
 }
 
 export async function runMediaCleanup(admin: SupabaseClient): Promise<MediaCleanupResult> {
-  const cutoffIso = mediaRetentionCutoffIso()
-  const chat = await cleanupExpiredChatMedia(admin, cutoffIso)
+  const chat = MEDIA_RETENTION_ENABLED
+    ? await cleanupExpiredChatMedia(admin, mediaRetentionCutoffIso())
+    : {
+        expiredMessages: 0,
+        storageDeleted: 0,
+        storageSkipped: 0,
+        storageErrors: 0,
+      }
   const statusesCleaned = await cleanupExpiredStatusMedia(admin)
 
   return {
@@ -156,7 +180,7 @@ export async function runMediaCleanup(admin: SupabaseClient): Promise<MediaClean
 
 export function mediaCleanupSummary(result: MediaCleanupResult): string {
   return [
-    `retention=${MEDIA_RETENTION_DAYS}d`,
+    `chatRetention=${MEDIA_RETENTION_ENABLED ? `${MEDIA_RETENTION_DAYS}d` : "off"}`,
     `messages=${result.expiredMessages}`,
     `storageDeleted=${result.storageDeleted}`,
     `storageSkipped=${result.storageSkipped}`,

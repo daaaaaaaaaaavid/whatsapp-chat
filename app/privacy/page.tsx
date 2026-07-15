@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   description: `מדיניות הפרטיות של ${APP_NAME}, כולל שימוש בגישה לאנשי קשר מגוגל.`,
 }
 
-const LAST_UPDATED = "15 ביולי 2026"
+const LAST_UPDATED = "16 ביולי 2026"
 
 export default function PrivacyPage() {
   const supportEmail = getSupportEmail()
@@ -107,7 +107,7 @@ export default function PrivacyPage() {
         <h2 className="text-base font-semibold">6. שמירת מידע</h2>
         <p className="mt-2 text-[var(--wa-text-secondary)]">
           אנחנו שומרים מידע כל עוד החשבון שלך פעיל וכנדרש לצורך מתן השירות, עמידה בחובות משפטיות, או פתרון מחלוקות.
-          מדיה ישנה עשויה להימחק אוטומטית לפי מדיניות שמירה פנימית של האפליקציה.
+          מדיה בשיחות (תמונות, סרטונים והקלטות) נשמרת עם השיחה. סטטוסים נמחקים אוטומטית לאחר כ־12 שעות.
         </p>
       </section>
 
