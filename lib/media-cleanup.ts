@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { MEDIA_RETENTION_DAYS, mediaRetentionCutoffIso } from "@/lib/media-retention"
+import { parseMediaStoragePath } from "@/lib/media-url"
 
 const BATCH_SIZE = 200
 const MEDIA_BUCKET = "media"
@@ -12,18 +13,7 @@ export type MediaCleanupResult = {
   statusesCleaned: number
 }
 
-/** Extract `{userId}/{...}` path from a Supabase public media URL. */
-export function parseMediaStoragePath(fileUrl: string): string | null {
-  try {
-    const url = new URL(fileUrl)
-    const marker = "/storage/v1/object/public/media/"
-    const idx = url.pathname.indexOf(marker)
-    if (idx === -1) return null
-    return decodeURIComponent(url.pathname.slice(idx + marker.length))
-  } catch {
-    return null
-  }
-}
+export { parseMediaStoragePath }
 
 /** Only delete chat uploads: `{userId}/{conversationId}/{file}` — not avatars or status folders. */
 export function isChatMediaStoragePath(path: string): boolean {

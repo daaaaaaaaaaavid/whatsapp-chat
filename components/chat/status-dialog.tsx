@@ -9,6 +9,7 @@ import { fetchContacts } from "@/lib/chat-actions"
 import type { Profile, Status, StatusAudienceMode } from "@/lib/types"
 import { formatChatListTime } from "@/lib/format"
 import { isAllowedMediaFile, resolveFileMime, UNSUPPORTED_MEDIA_MESSAGE } from "@/lib/media-mime"
+import { mediaReferenceUrl } from "@/lib/media-url"
 import {
   Camera,
   Check,
@@ -253,9 +254,9 @@ export function StatusDialog({ open, currentUser, onClose }: Props) {
           }
           return
         }
-        const { data } = supabase.storage.from("media").getPublicUrl(path)
+        const publicUrl = mediaReferenceUrl(supabase, path)
         // Client-only hash so the viewer classifies media without relying on extension alone.
-        mediaUrl = `${data.publicUrl}#whachat=${isVideoFile ? "video" : "image"}`
+        mediaUrl = `${publicUrl}#whachat=${isVideoFile ? "video" : "image"}`
       }
 
       const { error: insertError } = await supabase.from("statuses").insert({

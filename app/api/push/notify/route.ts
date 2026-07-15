@@ -1,31 +1,23 @@
 import { NextResponse } from "next/server"
-import webpush from "web-push"
 import { createClient } from "@/lib/supabase/server"
 import { createServiceClient } from "@/lib/supabase/admin"
 import { messagePreview } from "@/lib/conversation-display"
+import { checkRateLimit } from "@/lib/rate-limit"
+import { configureVapid, sendWebPushToSubscriptions } from "@/lib/push-send"
+import { pushNotifyBodySchema } from "@/lib/validation"
 import type { Message } from "@/lib/types"
 
 const OFFLINE_MS = 5 * 60 * 1000
 
-type Body = {
-  conversationId?: string
-  messageId?: string
-  title?: string
-  body?: string
-}
-
 export async function POST(req: Request) {
-  const vapidPublic = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY?.trim()
-  const vapidPrivate = process.env.VAPID_PRIVATE_KEY?.trim()
-  const vapidSubject = process.env.VAPID_SUBJECT?.trim() || "mailto:admin@whachat.local"
-
-  if (!vapidPublic || !vapidPrivate) {
-    return NextResponse.json({ ok: false, reason: "vapid_not_configured" }, { status: 200 })
+  const vapid = configureVapid()
+  if (!vapid.ok) {
+    return NextResponse.json({ ok: false, reason: vapid.reason }, { status: 503 })
   }
 
   const admin = createServiceClient()
   if (!admin) {
-    return NextResponse.json({ ok: false, reason: "service_role_missing" }, { status: 200 })
+    return NextResponse.json({ ok: false, reason: "service_role_missing" }, { status: 503 })
   }
 
   const supabase = await createClient()
@@ -36,17 +28,26 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 })
   }
 
-  let payload: Body
+  const rate = checkRateLimit(`push-notify:${user.id}`, 30, 60_000)
+  if (!rate.ok) {
+    return NextResponse.json(
+      { error: "rate_limited" },
+      { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } },
+    )
+  }
+
+  let raw: unknown
   try {
-    payload = (await req.json()) as Body
+    raw = await req.json()
   } catch {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 })
   }
 
-  const conversationId = payload.conversationId
-  if (!conversationId) {
-    return NextResponse.json({ error: "missing_conversation" }, { status: 400 })
+  const parsed = pushNotifyBodySchema.safeParse(raw)
+  if (!parsed.success) {
+    return NextResponse.json({ error: "invalid_body" }, { status: 400 })
   }
+  const { conversationId, messageId } = parsed.data
 
   const { data: membership } = await supabase
     .from("conversation_participants")
@@ -57,6 +58,18 @@ export async function POST(req: Request) {
 
   if (!membership) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 })
+  }
+
+  const { data: msg } = await admin
+    .from("messages")
+    .select("*")
+    .eq("id", messageId)
+    .eq("conversation_id", conversationId)
+    .eq("sender_id", user.id)
+    .maybeSingle()
+
+  if (!msg) {
+    return NextResponse.json({ error: "message_not_found" }, { status: 404 })
   }
 
   const { data: participants } = await admin
@@ -94,19 +107,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, sent: 0, reason: "all_online" })
   }
 
-  let title = payload.title?.trim() || "הודעה חדשה"
-  let body = payload.body?.trim() || "יש לך הודעה חדשה"
-
-  if (payload.messageId) {
-    const { data: msg } = await admin
-      .from("messages")
-      .select("*")
-      .eq("id", payload.messageId)
-      .maybeSingle()
-    if (msg) {
-      body = messagePreview(msg as Message) || body
-    }
-  }
+  let body = messagePreview(msg as Message) || "יש לך הודעה חדשה"
+  let title = "הודעה חדשה"
 
   const { data: sender } = await admin
     .from("profiles")
@@ -124,7 +126,7 @@ export async function POST(req: Request) {
     title = conv.name
     const senderName = sender?.display_name || sender?.email || "מישהו"
     body = `${senderName}: ${body}`
-  } else if (!payload.title) {
+  } else {
     title = sender?.display_name || sender?.email || "הודעה חדשה"
   }
 
@@ -137,8 +139,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, sent: 0, reason: "no_subscriptions" })
   }
 
-  webpush.setVapidDetails(vapidSubject, vapidPublic, vapidPrivate)
-
   const pushPayload = JSON.stringify({
     title,
     body,
@@ -146,33 +146,6 @@ export async function POST(req: Request) {
     url: `/chat?c=${conversationId}`,
   })
 
-  let sent = 0
-  const staleEndpoints: string[] = []
-
-  await Promise.all(
-    subs.map(async (sub) => {
-      try {
-        await webpush.sendNotification(
-          {
-            endpoint: sub.endpoint,
-            keys: { p256dh: sub.p256dh, auth: sub.auth },
-          },
-          pushPayload,
-          { TTL: 60 * 60 },
-        )
-        sent += 1
-      } catch (err) {
-        const status = (err as { statusCode?: number })?.statusCode
-        if (status === 404 || status === 410) {
-          staleEndpoints.push(sub.endpoint)
-        }
-      }
-    }),
-  )
-
-  if (staleEndpoints.length) {
-    await admin.from("push_subscriptions").delete().in("endpoint", staleEndpoints)
-  }
-
+  const sent = await sendWebPushToSubscriptions(admin, subs, pushPayload)
   return NextResponse.json({ ok: true, sent })
 }

@@ -80,25 +80,32 @@ export async function registerPushSubscription(): Promise<boolean> {
 export function notifyOfflineRecipients(opts: {
   conversationId: string
   messageId: string
-  title?: string
-  body: string
 }) {
   void fetch("/api/push/notify", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(opts),
-  }).catch(() => {})
+    body: JSON.stringify({
+      conversationId: opts.conversationId,
+      messageId: opts.messageId,
+    }),
+  }).catch((err) => {
+    console.error("notifyOfflineRecipients failed:", err)
+  })
 }
 
 /** Fire-and-forget: notify the status owner about a new reply. */
 export function notifyStatusOwner(opts: {
   statusId: string
-  replyId?: string
-  body: string
+  replyId: string
 }) {
   void fetch("/api/push/notify-status-reply", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(opts),
-  }).catch(() => {})
+    body: JSON.stringify({
+      statusId: opts.statusId,
+      replyId: opts.replyId,
+    }),
+  }).catch((err) => {
+    console.error("notifyStatusOwner failed:", err)
+  })
 }

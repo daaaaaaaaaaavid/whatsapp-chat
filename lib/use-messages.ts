@@ -4,9 +4,13 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import type { Message, MessageRead } from "@/lib/types"
 
+export const MESSAGE_PAGE_SIZE = 50
+
 export function useMessages(conversationId: string | null, currentUserId: string) {
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(false)
+  const [loadingOlder, setLoadingOlder] = useState(false)
+  const [hasMore, setHasMore] = useState(false)
   const readsRef = useRef<Map<string, MessageRead[]>>(new Map())
   const conversationIdRef = useRef(conversationId)
   conversationIdRef.current = conversationId
@@ -22,9 +26,25 @@ export function useMessages(conversationId: string | null, currentUserId: string
     return msgs.map((m) => ({ ...m, reads: map.get(m.id) ?? [] }))
   }, [])
 
+  const hydrateReplies = useCallback((msgs: Message[]) => {
+    const byId = new Map(msgs.map((m) => [m.id, m]))
+    return msgs.map((m) => ({
+      ...m,
+      reply_to: m.reply_to_id ? (byId.get(m.reply_to_id) ?? m.reply_to ?? null) : null,
+    }))
+  }, [])
+
+  const loadReads = useCallback(async (msgIds: string[]) => {
+    if (!msgIds.length) return [] as MessageRead[]
+    const supabase = createClient()
+    const { data } = await supabase.from("message_reads").select("*").in("message_id", msgIds)
+    return (data ?? []) as MessageRead[]
+  }, [])
+
   const load = useCallback(async () => {
     if (!conversationId) {
       setMessages([])
+      setHasMore(false)
       setLoading(false)
       return
     }
@@ -32,43 +52,93 @@ export function useMessages(conversationId: string | null, currentUserId: string
     setLoading(true)
     const supabase = createClient()
 
+    // Latest page first (descending), then reverse for chronological UI
     const { data: msgs, error } = await supabase
       .from("messages")
       .select("*")
       .eq("conversation_id", forId)
-      .order("created_at", { ascending: true })
+      .order("created_at", { ascending: false })
+      .limit(MESSAGE_PAGE_SIZE)
 
     if (conversationIdRef.current !== forId) return
 
     if (error) {
       console.error("Failed to load messages:", error.message)
       setMessages([])
+      setHasMore(false)
       setLoading(false)
       return
     }
 
-    const msgIds = (msgs ?? []).map((m) => m.id)
-    let reads: MessageRead[] = []
-    if (msgIds.length) {
-      const { data } = await supabase.from("message_reads").select("*").in("message_id", msgIds)
-      reads = (data ?? []) as MessageRead[]
-    }
+    const page = ([...(msgs ?? [])] as Message[]).reverse()
+    setHasMore((msgs ?? []).length >= MESSAGE_PAGE_SIZE)
 
+    const reads = await loadReads(page.map((m) => m.id))
     if (conversationIdRef.current !== forId) return
-    const withReads = attachReads((msgs ?? []) as Message[], reads)
-    const byId = new Map(withReads.map((m) => [m.id, m]))
-    const withReplies = withReads.map((m) => ({
-      ...m,
-      reply_to: m.reply_to_id ? (byId.get(m.reply_to_id) ?? null) : null,
-    }))
+
+    const withReads = hydrateReplies(attachReads(page, reads))
     setMessages((prev) => {
       const pending = prev.filter(
-        (m) => m.pending && m.conversation_id === forId && !(msgs ?? []).some((s) => s.id === m.id),
+        (m) => m.pending && m.conversation_id === forId && !page.some((s) => s.id === m.id),
       )
-      return [...withReplies, ...pending]
+      return [...withReads, ...pending]
     })
     setLoading(false)
-  }, [conversationId, attachReads])
+  }, [conversationId, attachReads, hydrateReplies, loadReads])
+
+  const loadOlder = useCallback(async () => {
+    if (!conversationId || loadingOlder || !hasMore) return
+    const oldest = messages.find((m) => !m.pending)
+    if (!oldest) return
+
+    const forId = conversationId
+    setLoadingOlder(true)
+    const supabase = createClient()
+
+    const { data: msgs, error } = await supabase
+      .from("messages")
+      .select("*")
+      .eq("conversation_id", forId)
+      .lt("created_at", oldest.created_at)
+      .order("created_at", { ascending: false })
+      .limit(MESSAGE_PAGE_SIZE)
+
+    if (conversationIdRef.current !== forId) {
+      setLoadingOlder(false)
+      return
+    }
+
+    if (error) {
+      console.error("Failed to load older messages:", error.message)
+      setLoadingOlder(false)
+      return
+    }
+
+    const page = ([...(msgs ?? [])] as Message[]).reverse()
+    setHasMore((msgs ?? []).length >= MESSAGE_PAGE_SIZE)
+
+    const reads = await loadReads(page.map((m) => m.id))
+    if (conversationIdRef.current !== forId) {
+      setLoadingOlder(false)
+      return
+    }
+
+    const withReads = hydrateReplies(attachReads(page, reads))
+    setMessages((prev) => {
+      const existing = new Set(prev.map((m) => m.id))
+      const fresh = withReads.filter((m) => !existing.has(m.id))
+      return hydrateReplies([...fresh, ...prev])
+    })
+    setLoadingOlder(false)
+  }, [
+    conversationId,
+    loadingOlder,
+    hasMore,
+    messages,
+    attachReads,
+    hydrateReplies,
+    loadReads,
+  ])
 
   const addOptimistic = useCallback((message: Message) => {
     setMessages((prev) => {
@@ -114,7 +184,6 @@ export function useMessages(conversationId: string | null, currentUserId: string
                 m.id === newMsg.id ? { ...hydrated, reads: m.reads ?? [] } : m,
               )
             }
-            // Replace matching optimistic bubble from the same sender
             const tempIdx = prev.findIndex(
               (m) =>
                 m.pending &&
@@ -160,6 +229,9 @@ export function useMessages(conversationId: string | null, currentUserId: string
   return {
     messages,
     loading,
+    loadingOlder,
+    hasMore,
+    loadOlder,
     reload: load,
     setMessages,
     addOptimistic,

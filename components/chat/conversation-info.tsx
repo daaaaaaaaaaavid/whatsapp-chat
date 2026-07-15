@@ -11,7 +11,32 @@ import {
 import { Avatar } from "./avatar"
 import { convAvatarUrl, convDisplayName, isSelfConversation, otherParticipantId } from "@/lib/conversation-display"
 import { mediaItemsFromMessages, type GalleryItem } from "./media-gallery"
+import { useSignedMediaUrl } from "@/lib/use-signed-media-url"
 import { X, Bell, BellOff, Ban, Trash2, Users, Archive, Star, ImageIcon, Pin, Link2, Check, Play } from "lucide-react"
+
+function InfoMediaThumb({ item, onOpen }: { item: GalleryItem; onOpen: () => void }) {
+  const url = useSignedMediaUrl(item.url)
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="relative aspect-square overflow-hidden bg-[#e9edef]"
+    >
+      {item.type === "image" && url ? (
+        <img src={url} alt="" className="h-full w-full object-cover" loading="lazy" />
+      ) : item.type === "video" ? (
+        <div className="flex h-full w-full flex-col items-center justify-center gap-1 bg-[#111b21] text-white">
+          <Play className="h-6 w-6 fill-white" />
+          <span className="text-[10px] text-white/70">סרטון</span>
+        </div>
+      ) : (
+        <div className="flex h-full w-full items-center justify-center text-xs text-[var(--wa-text-secondary)]">
+          קובץ
+        </div>
+      )}
+    </button>
+  )
+}
 
 type Props = {
   conversation: Conversation
@@ -237,28 +262,14 @@ export function ConversationInfo({
           ) : (
             <div className="grid grid-cols-3 gap-0.5 px-0.5 pb-2">
               {filteredMedia.slice(0, 24).map((item: GalleryItem) => (
-                <button
+                <InfoMediaThumb
                   key={item.id}
-                  type="button"
-                  onClick={() => {
+                  item={item}
+                  onOpen={() => {
                     onOpenMedia?.(item.id)
                     onClose()
                   }}
-                  className="relative aspect-square overflow-hidden bg-[#e9edef]"
-                >
-                  {item.type === "image" ? (
-                    <img src={item.url} alt="" className="h-full w-full object-cover" loading="lazy" />
-                  ) : item.type === "video" ? (
-                    <div className="flex h-full w-full flex-col items-center justify-center gap-1 bg-[#111b21] text-white">
-                      <Play className="h-6 w-6 fill-white" />
-                      <span className="text-[10px] text-white/70">סרטון</span>
-                    </div>
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-xs text-[var(--wa-text-secondary)]">
-                      קובץ
-                    </div>
-                  )}
-                </button>
+                />
               ))}
             </div>
           )}

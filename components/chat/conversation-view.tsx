@@ -25,6 +25,7 @@ import {
 import { Avatar } from "./avatar"
 import { MessageBubble } from "./message-bubble"
 import { MessageInput, type MessageInputHandle } from "./message-input"
+import { ChatThreadHeader } from "./chat-thread-header"
 import { ThreadPanel } from "./thread-panel"
 import { MediaGallery, mediaItemsFromMessages } from "./media-gallery"
 import { ForwardDialog } from "./forward-dialog"
@@ -37,7 +38,6 @@ import {
   ArrowRight,
   Search,
   MoreVertical,
-  Lock,
   X,
   Phone,
   Video,
@@ -93,8 +93,17 @@ export function ConversationView({
   initialGalleryMessageId,
   onGalleryOpened,
 }: Props) {
-  const { messages, loading, setMessages, addOptimistic, confirmOptimistic, failOptimistic } =
-    useMessages(conversation.id, currentUser.id)
+  const {
+    messages,
+    loading,
+    loadingOlder,
+    hasMore,
+    loadOlder,
+    setMessages,
+    addOptimistic,
+    confirmOptimistic,
+    failOptimistic,
+  } = useMessages(conversation.id, currentUser.id)
   const bottomRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const messageInputRef = useRef<MessageInputHandle>(null)
@@ -239,10 +248,20 @@ export function ConversationView({
     const onScroll = () => {
       const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
       stickToBottomRef.current = distanceFromBottom < 120
+      if (el.scrollTop < 80 && hasMore && !loadingOlder) {
+        const prevHeight = el.scrollHeight
+        void loadOlder().then(() => {
+          requestAnimationFrame(() => {
+            if (scrollRef.current) {
+              scrollRef.current.scrollTop = scrollRef.current.scrollHeight - prevHeight + el.scrollTop
+            }
+          })
+        })
+      }
     }
     el.addEventListener("scroll", onScroll, { passive: true })
     return () => el.removeEventListener("scroll", onScroll)
-  }, [conversation.id])
+  }, [conversation.id, hasMore, loadingOlder, loadOlder])
 
   useEffect(() => {
     if (loading || searchOpen) return
@@ -812,10 +831,11 @@ export function ConversationView({
 
       <div ref={scrollRef} className="wa-chat-bg wa-scroll flex-1 overflow-y-auto px-[5%] py-4">
         <div className="mx-auto flex max-w-3xl flex-col">
-          <div className="mx-auto mb-4 flex items-center gap-1.5 rounded-lg bg-[#fdf4c5] px-3 py-1.5 text-center text-xs text-[var(--wa-text-secondary)] shadow-sm">
-            <Lock className="h-3 w-3" />
-            הודעות פרטיות — רק משתתפי השיחה יכולים לקרוא אותן
-          </div>
+          <ChatThreadHeader
+            hasMore={hasMore}
+            loadingOlder={loadingOlder}
+            onLoadOlder={() => void loadOlder()}
+          />
 
           {loading ? (
             <div className="py-8 text-center text-sm text-[var(--wa-text-secondary)]">טוען הודעות...</div>

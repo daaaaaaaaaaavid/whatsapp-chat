@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { ensureProfileServer } from "@/lib/ensure-profile"
+import { safeRedirectPath } from "@/lib/safe-redirect"
 import { type NextRequest, NextResponse } from "next/server"
 
 function clearNextCookie(response: NextResponse) {
@@ -8,13 +9,13 @@ function clearNextCookie(response: NextResponse) {
 
 function readNextPath(request: NextRequest): string {
   const fromQuery = request.nextUrl.searchParams.get("next")
-  if (fromQuery?.startsWith("/")) return fromQuery
+  if (fromQuery) return safeRedirectPath(fromQuery)
 
   const fromCookie = request.cookies.get("oauth_next")?.value
   if (fromCookie) {
     try {
       const decoded = decodeURIComponent(fromCookie)
-      if (decoded.startsWith("/")) return decoded
+      return safeRedirectPath(decoded)
     } catch {
       // ignore bad cookie
     }

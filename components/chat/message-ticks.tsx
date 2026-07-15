@@ -12,12 +12,11 @@ export function MessageTicks({ status, isGroup, viewCount = 0 }: Props) {
   if (status === "sending") return <Clock className="h-3.5 w-3.5 text-[var(--wa-text-secondary)]" />
 
   if (isGroup) {
-    const seen = viewCount > 0
+    if (viewCount <= 0) {
+      return <CheckCheck className="h-4 w-4 text-[var(--wa-text-secondary)]" />
+    }
     return (
-      <span
-        className={seen ? "flex items-center gap-0.5 text-[#53bdeb]" : "flex items-center gap-0.5 text-[var(--wa-text-secondary)]"}
-        dir="ltr"
-      >
+      <span className="flex items-center gap-0.5 text-[#53bdeb]" dir="ltr">
         <Eye className="h-3.5 w-3.5" />
         <span className="text-[11px] leading-none">{viewCount}</span>
       </span>

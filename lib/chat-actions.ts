@@ -2,6 +2,7 @@
 
 import { createClient, ensureSupabaseConfig } from "@/lib/supabase/client"
 import type { Profile } from "@/lib/types"
+import { groupNameSchema, MAX_GROUP_MEMBERS } from "@/lib/validation"
 
 function errMessage(error: unknown, fallback: string) {
   if (error && typeof error === "object" && "message" in error) {
@@ -142,20 +143,28 @@ export async function createGroupConversation(
   name: string,
   memberIds: string[],
 ): Promise<string> {
+  const parsedName = groupNameSchema.safeParse(name)
+  if (!parsedName.success) {
+    throw new Error(parsedName.error.issues[0]?.message ?? "שם קבוצה לא תקין")
+  }
+  const members = Array.from(new Set([currentUserId, ...memberIds]))
+  if (members.length > MAX_GROUP_MEMBERS) {
+    throw new Error(`ניתן להוסיף עד ${MAX_GROUP_MEMBERS} חברים לקבוצה`)
+  }
+
   await ensureSupabaseConfig()
   const supabase = createClient()
   const conversationId = crypto.randomUUID()
   const { error } = await supabase.from("conversations").insert({
     id: conversationId,
     is_group: true,
-    name,
+    name: parsedName.data,
     created_by: currentUserId,
   })
   if (error) {
     throw new Error(errMessage(error, "נכשל ביצירת קבוצה. ודא שהרצת את schema.sql ב־Supabase."))
   }
 
-  const members = Array.from(new Set([currentUserId, ...memberIds]))
   const { error: partsError } = await supabase.from("conversation_participants").insert(
     members.map((uid) => ({
       conversation_id: conversationId,

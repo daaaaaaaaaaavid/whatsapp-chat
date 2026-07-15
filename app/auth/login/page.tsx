@@ -4,6 +4,7 @@ import type React from "react"
 
 import { createClient, ensureSupabaseConfig } from "@/lib/supabase/client"
 import { signInWithGoogle } from "@/lib/auth-google"
+import { safeRedirectPath } from "@/lib/safe-redirect"
 import { GoogleSignInButton } from "@/components/auth/google-sign-in-button"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
@@ -20,7 +21,7 @@ function LoginForm() {
   const [googleLoading, setGoogleLoading] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
-  const nextPath = searchParams.get("next") || "/chat"
+  const nextPath = safeRedirectPath(searchParams.get("next"))
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -32,7 +33,7 @@ function LoginForm() {
       const supabase = createClient()
       const { error } = await supabase.auth.signInWithPassword({ email, password })
       if (error) throw error
-      router.push(nextPath.startsWith("/") ? nextPath : "/chat")
+      router.push(nextPath)
       router.refresh()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "אירעה שגיאה")
@@ -45,7 +46,7 @@ function LoginForm() {
     setGoogleLoading(true)
     setError(null)
     try {
-      await signInWithGoogle(nextPath.startsWith("/") ? nextPath : "/chat")
+      await signInWithGoogle(nextPath)
     } catch (err: unknown) {
       setError(
         err instanceof Error

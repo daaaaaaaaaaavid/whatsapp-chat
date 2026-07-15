@@ -5,22 +5,21 @@ import { createPortal } from "react-dom"
 import type { Message, Participant } from "@/lib/types"
 import { formatTime, formatFileSize, avatarColor } from "@/lib/format"
 import { callSystemLabel, parseCallSystemPayload } from "@/lib/call-system-message"
-import { extractUrls, highlightQuery, parseReplyContent, splitTextWithLinks } from "@/lib/message-content"
-import { decodeFormattedMessage, plainMessageText } from "@/lib/message-formatting"
+import { extractUrls, parseReplyContent } from "@/lib/message-content"
+import { plainMessageText } from "@/lib/message-formatting"
+import { messageTickStatus } from "@/lib/message-status"
 import { MessageTicks } from "./message-ticks"
 import { VoiceMessage } from "./voice-message"
 import { resolveMediaKind } from "./media-gallery"
 import { isExpiredChatMedia, MEDIA_EXPIRED_LABEL } from "@/lib/media-retention"
+import { useSignedMediaUrl } from "@/lib/use-signed-media-url"
+import { SystemCallMessage } from "./system-call-message"
+import { LinkPreview, MessageText } from "./message-text"
 import {
   Ban,
   FileText,
   Download,
   Trash2,
-  Phone,
-  PhoneIncoming,
-  PhoneOutgoing,
-  PhoneMissed,
-  PhoneOff,
   Video,
   ImageOff,
   ChevronDown,
@@ -83,122 +82,6 @@ type Props = {
   searchQuery?: string
   /** Narrower panel (thread side pane). */
   compact?: boolean
-}
-
-function SystemCallMessage({ message }: { message: Message }) {
-  const payload = parseCallSystemPayload(message.content)
-  const label = payload ? callSystemLabel(payload) : "הודעת מערכת"
-  const event = payload?.event
-  const isVideo = payload?.video
-
-  let Icon = Phone
-  if (event === "incoming") Icon = PhoneIncoming
-  else if (event === "outgoing") Icon = PhoneOutgoing
-  else if (event === "missed") Icon = PhoneMissed
-  else if (event === "rejected") Icon = PhoneOff
-  else if (event === "ended") Icon = PhoneOff
-
-  const iconColor =
-    event === "missed" || event === "rejected"
-      ? "text-[#ea0038]"
-      : event === "ended"
-        ? "text-[var(--wa-text-secondary)]"
-        : "text-[#00a884]"
-
-  return (
-    <div className="my-2 flex justify-center px-2">
-      <div className="inline-flex max-w-[90%] items-center gap-2 rounded-lg bg-white/90 px-3 py-1.5 text-xs text-[var(--wa-text-secondary)] shadow-sm">
-        {isVideo ? (
-          <Video className={cn("h-3.5 w-3.5 shrink-0", iconColor)} />
-        ) : (
-          <Icon className={cn("h-3.5 w-3.5 shrink-0", iconColor)} />
-        )}
-        <span>{label}</span>
-        <span className="text-[#8696a0]" dir="ltr">
-          {formatTime(message.created_at)}
-        </span>
-      </div>
-    </div>
-  )
-}
-
-function MessageText({
-  text,
-  searchQuery,
-}: {
-  text: string
-  searchQuery?: string
-}) {
-  const { text: displayText, formatting } = decodeFormattedMessage(text)
-  const parts = splitTextWithLinks(displayText)
-  return (
-    <span
-      className="whitespace-pre-wrap break-words text-[15px] leading-[19px] text-[var(--wa-text)]"
-      style={{
-        fontWeight: formatting.bold ? 700 : undefined,
-        fontStyle: formatting.italic ? "italic" : undefined,
-        color: formatting.color ?? undefined,
-      }}
-    >
-      {parts.map((p, i) => {
-        if (p.type === "link") {
-          return (
-            <a
-              key={i}
-              href={p.value}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[#027eb5] underline underline-offset-2"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {p.value}
-            </a>
-          )
-        }
-        if (!searchQuery?.trim()) return <span key={i}>{p.value}</span>
-        return (
-          <span key={i}>
-            {highlightQuery(p.value, searchQuery).map((h, j) =>
-              h.hit ? (
-                <mark key={j} className="rounded-sm bg-[#f6e59c] px-0.5 text-inherit">
-                  {h.text}
-                </mark>
-              ) : (
-                <span key={j}>{h.text}</span>
-              ),
-            )}
-          </span>
-        )
-      })}
-    </span>
-  )
-}
-
-function LinkPreview({ url }: { url: string }) {
-  let host = url
-  try {
-    host = new URL(url).hostname.replace(/^www\./, "")
-  } catch {
-    // keep raw
-  }
-  return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="mb-1 mt-1 block overflow-hidden rounded-md border border-black/10 bg-black/[0.03] text-right transition hover:bg-black/[0.06]"
-      onClick={(e) => e.stopPropagation()}
-    >
-      <div className="border-r-4 border-[#00a884] px-3 py-2">
-        <div className="truncate text-xs font-medium text-[#027eb5]" dir="ltr">
-          {host}
-        </div>
-        <div className="truncate text-[13px] text-[var(--wa-text-secondary)]" dir="ltr">
-          {url}
-        </div>
-      </div>
-    </a>
-  )
 }
 
 function replyPreviewText(message: Message) {
@@ -267,6 +150,7 @@ export function MessageBubble({
   const menuRef = useRef<HTMLDivElement>(null)
   const bubbleRef = useRef<HTMLDivElement>(null)
   const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const displayFileUrl = useSignedMediaUrl(message.file_url)
   const senderProfile = participants.find((p) => p.user_id === message.sender_id)?.profile
   const senderName = senderProfile?.display_name ?? senderProfile?.email ?? "משתמש"
 
@@ -274,9 +158,7 @@ export function MessageBubble({
   const callPayload = parseCallSystemPayload(message.content)
 
   const readCount = (message.reads ?? []).filter((r) => r.user_id !== message.sender_id).length
-  let status: "sending" | "sent" | "delivered" | "read" = "sent"
-  if (message.pending || message.id.startsWith("temp-")) status = "sending"
-  else if (readCount > 0) status = readCount >= totalOthers && totalOthers > 0 ? "read" : "delivered"
+  const status = messageTickStatus(message, totalOthers)
 
   const updateMenuPlacement = () => {
     const el = bubbleRef.current
@@ -622,7 +504,7 @@ export function MessageBubble({
           </div>
         )}
 
-        {mediaKind === "image" && message.file_url && (
+        {mediaKind === "image" && message.file_url && displayFileUrl && (
           <button
             type="button"
             onClick={openMedia}
@@ -630,21 +512,21 @@ export function MessageBubble({
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={message.file_url || "/placeholder.svg"}
+              src={displayFileUrl}
               alt="תמונה"
               className="max-h-80 w-full cursor-pointer object-cover transition hover:brightness-95"
             />
           </button>
         )}
 
-        {mediaKind === "video" && message.file_url && (
+        {mediaKind === "video" && message.file_url && displayFileUrl && (
           <button
             type="button"
             onClick={openMedia}
             className="relative mb-1 block w-full max-w-xs overflow-hidden rounded-md text-right"
           >
             <video
-              src={message.file_url}
+              src={displayFileUrl}
               className="max-h-80 w-full cursor-pointer object-cover"
               muted
               playsInline
@@ -658,9 +540,9 @@ export function MessageBubble({
           </button>
         )}
 
-        {message.type === "audio" && message.file_url && (
+        {message.type === "audio" && message.file_url && displayFileUrl && (
           <VoiceMessage
-            url={message.file_url}
+            url={displayFileUrl}
             messageId={message.id}
             isMine={isMine}
             timeLabel={formatTime(message.created_at)}

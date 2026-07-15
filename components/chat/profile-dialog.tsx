@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { Modal } from "./modal"
 import { Avatar } from "./avatar"
 import { createClient } from "@/lib/supabase/client"
+import { mediaReferenceUrl } from "@/lib/media-url"
 import type { Profile } from "@/lib/types"
 import { Camera, Check, Pencil } from "lucide-react"
 import { ThemeToggle } from "@/components/theme-toggle"
@@ -48,9 +49,9 @@ export function ProfileDialog({ open, currentUser, onClose, onUpdated }: Props) 
     const path = `${currentUser.id}/avatar-${Date.now()}.${ext}`
     const { error } = await supabase.storage.from("media").upload(path, file, { upsert: true })
     if (error) return
-    const { data } = supabase.storage.from("media").getPublicUrl(path)
-    setAvatarUrl(data.publicUrl)
-    await save({ avatar_url: data.publicUrl })
+    const publicUrl = mediaReferenceUrl(supabase, path)
+    setAvatarUrl(publicUrl)
+    await save({ avatar_url: publicUrl })
   }
 
   return (

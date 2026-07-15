@@ -2,7 +2,7 @@ import type { Profile } from "@/lib/types"
 import type { User } from "@supabase/supabase-js"
 import { createClient as createBrowserClient, ensureSupabaseConfig } from "@/lib/supabase/client"
 
-function displayNameFromUser(user: User) {
+export function displayNameFromUser(user: User) {
   const meta = user.user_metadata ?? {}
   return (
     (meta.display_name as string | undefined)?.trim() ||
@@ -13,7 +13,7 @@ function displayNameFromUser(user: User) {
   )
 }
 
-function avatarFromUser(user: User) {
+export function avatarFromUser(user: User) {
   const meta = user.user_metadata ?? {}
   return (
     (meta.avatar_url as string | undefined)?.trim() ||

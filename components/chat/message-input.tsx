@@ -16,8 +16,13 @@ import { createClient } from "@/lib/supabase/client"
 import type { Message, MessageType } from "@/lib/types"
 import { parseCallSystemPayload, callSystemLabel } from "@/lib/call-system-message"
 import { notifyOfflineRecipients } from "@/lib/push-client"
-import { messagePreview } from "@/lib/conversation-display"
-import { isAllowedMediaFile, resolveFileMime, UNSUPPORTED_MEDIA_MESSAGE } from "@/lib/media-mime"
+import {
+  isAllowedMediaFile,
+  MAX_MEDIA_BYTES,
+  resolveFileMime,
+  UNSUPPORTED_MEDIA_MESSAGE,
+} from "@/lib/media-mime"
+import { mediaReferenceUrl } from "@/lib/media-url"
 import {
   Plus,
   SendHorizontal,
@@ -45,6 +50,14 @@ import {
   plainMessageText,
   type MessageFormatting,
 } from "@/lib/message-formatting"
+import {
+  detectMediaKind,
+  formatUploadFileSize,
+  revokePending,
+  toPendingItem,
+  type PendingMediaItem,
+} from "@/lib/pending-media"
+import { MAX_MESSAGE_LENGTH } from "@/lib/validation"
 
 const EmojiPicker = dynamic(() => import("@/components/chat/emoji-picker"), {
   ssr: false,
@@ -76,13 +89,7 @@ export type MessageInputHandle = {
   stageFiles: (files: FileList | File[]) => void
 }
 
-type PendingItem = {
-  id: string
-  file: File
-  previewUrl: string | null
-  kind: "image" | "video" | "file"
-  caption: string
-}
+type PendingItem = PendingMediaItem
 
 type UploadStatus = {
   fileName: string
@@ -99,40 +106,6 @@ function replyPreview(message: Message) {
   if (call) return callSystemLabel(call)
   if (message.content) return plainMessageText(message.content)
   return "הודעה"
-}
-
-function detectMediaKind(file: File): "image" | "video" | "file" | "audio" {
-  const lower = file.name.toLowerCase()
-  if (file.type.startsWith("audio/") || /\.(ogg|mp3|m4a|wav|aac)$/.test(lower)) return "audio"
-  if (file.type.startsWith("video/") || /\.(mp4|webm|mov|m4v|avi|mkv|3gp)$/.test(lower)) return "video"
-  if (file.type.startsWith("image/") || /\.(jpe?g|png|gif|webp|bmp|heic|avif)$/.test(lower)) return "image"
-  return "file"
-}
-
-function formatFileSize(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
-function toPendingItem(file: File): PendingItem | null {
-  const kind = detectMediaKind(file)
-  if (kind === "audio") return null
-  const previewUrl =
-    kind === "image" || kind === "video" ? URL.createObjectURL(file) : null
-  return {
-    id: crypto.randomUUID(),
-    file,
-    previewUrl,
-    kind,
-    caption: "",
-  }
-}
-
-function revokePending(items: PendingItem[]) {
-  for (const item of items) {
-    if (item.previewUrl) URL.revokeObjectURL(item.previewUrl)
-  }
 }
 
 export const MessageInput = forwardRef<MessageInputHandle, Props>(function MessageInput(
@@ -339,7 +312,6 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
       notifyOfflineRecipients({
         conversationId,
         messageId: real.id,
-        body: messagePreview(real),
       })
       return real
     },
@@ -361,6 +333,11 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
           setUploadStatus(null)
           throw new Error(UNSUPPORTED_MEDIA_MESSAGE)
         }
+        if (file.size > MAX_MEDIA_BYTES) {
+          setUploadError("הקובץ גדול מדי (מקסימום 50MB)")
+          setUploadStatus(null)
+          throw new Error("file too large")
+        }
         const supabase = createClient()
         const ext = file.name.split(".").pop() || "bin"
         const path = `${currentUserId}/${conversationId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
@@ -373,9 +350,9 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
         if (error) {
           const msg = error.message.toLowerCase()
           if (msg.includes("bucket") || msg.includes("not found")) {
-            setUploadError("חסר bucket בשם media ב־Supabase. הרץ את migration-media-storage.sql")
+            setUploadError("חסר bucket בשם media ב־Supabase. הרץ את migration-private-media.sql")
           } else if (msg.includes("policy") || msg.includes("row-level") || msg.includes("security")) {
-            setUploadError("אין הרשאה להעלות. הרץ את migration-media-storage.sql ב־Supabase")
+            setUploadError("אין הרשאה להעלות. הרץ את migration-private-media.sql ב־Supabase")
           } else if (msg.includes("mime") || msg.includes("type") || msg.includes("not allowed")) {
             setUploadError(UNSUPPORTED_MEDIA_MESSAGE)
           } else {
@@ -384,7 +361,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
           setUploadStatus(null)
           throw error
         }
-        const { data } = supabase.storage.from("media").getPublicUrl(path)
+        const publicUrl = mediaReferenceUrl(supabase, path)
 
         let type: MessageType = "file"
         const lower = file.name.toLowerCase()
@@ -406,7 +383,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
 
         await sendMessage({
           type,
-          file_url: data.publicUrl,
+          file_url: publicUrl,
           file_name: file.name,
           file_size: file.size,
           content: caption?.trim() || null,
@@ -506,6 +483,10 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
     e?.preventDefault()
     const trimmed = text.trim()
     if (!trimmed || sending) return
+    if (trimmed.length > MAX_MESSAGE_LENGTH) {
+      setSendError(`ההודעה ארוכה מדי (מקסימום ${MAX_MESSAGE_LENGTH} תווים)`)
+      return
+    }
     setSending(true)
     setSendError(null)
     setShowEmoji(false)
@@ -611,6 +592,10 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
           total: items.length,
         })
 
+        if (item.file.size > MAX_MEDIA_BYTES) {
+          setUploadError("הקובץ גדול מדי (מקסימום 50MB)")
+          throw new Error("file too large")
+        }
         const supabase = createClient()
         const ext = item.file.name.split(".").pop() || "bin"
         const path = `${currentUserId}/${conversationId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
@@ -623,9 +608,9 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
         if (error) {
           const msg = error.message.toLowerCase()
           if (msg.includes("bucket") || msg.includes("not found")) {
-            setUploadError("חסר bucket בשם media ב־Supabase. הרץ את migration-media-storage.sql")
+            setUploadError("חסר bucket בשם media ב־Supabase. הרץ את migration-private-media.sql")
           } else if (msg.includes("policy") || msg.includes("row-level") || msg.includes("security")) {
-            setUploadError("אין הרשאה להעלות. הרץ את migration-media-storage.sql ב־Supabase")
+            setUploadError("אין הרשאה להעלות. הרץ את migration-private-media.sql ב־Supabase")
           } else if (msg.includes("mime") || msg.includes("type") || msg.includes("not allowed")) {
             setUploadError(UNSUPPORTED_MEDIA_MESSAGE)
           } else {
@@ -633,12 +618,12 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
           }
           throw error
         }
-        const { data } = supabase.storage.from("media").getPublicUrl(path)
+        const publicUrl = mediaReferenceUrl(supabase, path)
 
         const captionText = item.caption.trim()
         await sendMessage({
           type: item.kind,
-          file_url: data.publicUrl,
+          file_url: publicUrl,
           file_name: item.file.name,
           file_size: item.file.size,
           content: captionText || null,
@@ -760,7 +745,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
                 </div>
                 <div>
                   <div className="max-w-xs truncate text-lg font-medium">{active.file.name}</div>
-                  <div className="mt-1 text-sm text-white/50">{formatFileSize(active.file.size)}</div>
+                  <div className="mt-1 text-sm text-white/50">{formatUploadFileSize(active.file.size)}</div>
                 </div>
               </div>
             )}

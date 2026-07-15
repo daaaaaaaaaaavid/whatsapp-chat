@@ -4,7 +4,41 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import type { Conversation, Message, Participant, Profile } from "@/lib/types"
 
-async function fetchLastMessageMap(
+type SummaryRow = {
+  conversation_id: string
+  last_message_id: string | null
+  last_message_content: string | null
+  last_message_type: string | null
+  last_message_sender_id: string | null
+  last_message_created_at: string | null
+  last_message_file_name: string | null
+  last_message_deleted_at: string | null
+  unread_count: number | string | null
+}
+
+function summaryToMessage(row: SummaryRow): Message | null {
+  if (!row.last_message_id || !row.last_message_created_at || !row.last_message_sender_id) {
+    return null
+  }
+  return {
+    id: row.last_message_id,
+    conversation_id: row.conversation_id,
+    sender_id: row.last_message_sender_id,
+    content: row.last_message_content,
+    type: (row.last_message_type as Message["type"]) || "text",
+    file_url: null,
+    file_name: row.last_message_file_name,
+    file_size: null,
+    reply_to_id: null,
+    created_at: row.last_message_created_at,
+    edited_at: null,
+    deleted_at: row.last_message_deleted_at,
+    is_forwarded: false,
+    reads: [],
+  }
+}
+
+async function fetchLastMessageMapLegacy(
   conversationIds: string[],
 ): Promise<Map<string, Message>> {
   const supabase = createClient()
@@ -40,7 +74,6 @@ async function fetchLastMessageMap(
     )
   }
 
-  // Attach read receipts for last messages (for ticks in the chat list)
   const lastIds = [...lastMsgMap.values()].map((m) => m.id)
   if (lastIds.length) {
     const { data: reads } = await supabase
@@ -102,25 +135,60 @@ export function useConversations(currentUserId: string) {
     const { data: profiles } = await supabase.from("profiles").select("*").in("id", profileIds)
     const profileMap = new Map<string, Profile>((profiles ?? []).map((p) => [p.id, p as Profile]))
 
-    const lastMsgMap = await fetchLastMessageMap(ids)
-
+    const lastMsgMap = new Map<string, Message>()
     const unreadMap = new Map<string, number>()
-    const { data: recentForUnread } = await supabase
-      .from("messages")
-      .select("id, conversation_id, sender_id")
-      .in("conversation_id", ids)
-      .neq("sender_id", currentUserId)
-      .order("created_at", { ascending: false })
-      .limit(Math.max(300, ids.length * 40))
 
-    const { data: myReads } = await supabase
-      .from("message_reads")
-      .select("message_id")
-      .eq("user_id", currentUserId)
-    const readSet = new Set((myReads ?? []).map((r) => r.message_id))
-    for (const m of recentForUnread ?? []) {
-      if (!readSet.has(m.id)) {
-        unreadMap.set(m.conversation_id, (unreadMap.get(m.conversation_id) ?? 0) + 1)
+    const { data: summaries, error: summaryError } = await supabase.rpc("my_conversation_summaries")
+    if (!summaryError && Array.isArray(summaries)) {
+      for (const row of summaries as SummaryRow[]) {
+        const msg = summaryToMessage(row)
+        if (msg) lastMsgMap.set(row.conversation_id, msg)
+        unreadMap.set(row.conversation_id, Number(row.unread_count ?? 0))
+      }
+      // Attach read receipts for last-message ticks
+      const lastIds = [...lastMsgMap.values()].map((m) => m.id)
+      if (lastIds.length) {
+        const { data: reads } = await supabase
+          .from("message_reads")
+          .select("*")
+          .in("message_id", lastIds)
+        const byMsg = new Map<string, NonNullable<Message["reads"]>>()
+        for (const r of reads ?? []) {
+          const arr = byMsg.get(r.message_id) ?? []
+          arr.push(r)
+          byMsg.set(r.message_id, arr)
+        }
+        for (const [cid, msg] of lastMsgMap) {
+          lastMsgMap.set(cid, { ...msg, reads: byMsg.get(msg.id) ?? [] })
+        }
+      }
+    } else {
+      // Fallback before migration is applied
+      const legacy = await fetchLastMessageMapLegacy(ids)
+      for (const [cid, msg] of legacy) lastMsgMap.set(cid, msg)
+
+      const { data: recentForUnread } = await supabase
+        .from("messages")
+        .select("id, conversation_id, sender_id")
+        .in("conversation_id", ids)
+        .neq("sender_id", currentUserId)
+        .order("created_at", { ascending: false })
+        .limit(Math.max(300, ids.length * 40))
+
+      const recentIds = (recentForUnread ?? []).map((m) => m.id)
+      const readSet = new Set<string>()
+      if (recentIds.length) {
+        const { data: myReads } = await supabase
+          .from("message_reads")
+          .select("message_id")
+          .eq("user_id", currentUserId)
+          .in("message_id", recentIds)
+        for (const r of myReads ?? []) readSet.add(r.message_id)
+      }
+      for (const m of recentForUnread ?? []) {
+        if (!readSet.has(m.id)) {
+          unreadMap.set(m.conversation_id, (unreadMap.get(m.conversation_id) ?? 0) + 1)
+        }
       }
     }
 

@@ -20,6 +20,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { notifyStatusOwner } from "@/lib/push-client"
+import { useSignedMediaUrl } from "@/lib/use-signed-media-url"
 
 export type GroupedStatus = { profile: Profile; statuses: Status[] }
 
@@ -96,6 +97,7 @@ export function StatusViewer({
 
   const hasMedia = Boolean(status?.media_url)
   const isVideo = hasMedia && status?.media_url ? isVideoUrl(status.media_url) : false
+  const displayMediaUrl = useSignedMediaUrl(status?.media_url)
   const paused = userPaused || holding || Boolean(reply.trim()) || showEmoji || showReplies || Boolean(replyError)
   const progressRef = useRef(0)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -319,11 +321,12 @@ export function StatusViewer({
         setReplyError(error.message || "שליחת התגובה נכשלה")
         return
       }
-      notifyStatusOwner({
-        statusId: status.id,
-        replyId: data?.id,
-        body: trimmed,
-      })
+      if (data?.id) {
+        notifyStatusOwner({
+          statusId: status.id,
+          replyId: data.id,
+        })
+      }
       setReply("")
       setReplySent(true)
       setShowEmoji(false)
@@ -536,13 +539,13 @@ export function StatusViewer({
             }}
           />
 
-          {hasMedia && status.media_url ? (
+          {hasMedia && status.media_url && displayMediaUrl ? (
             <>
               {isVideo ? (
                 <video
                   ref={videoRef}
                   key={status.id}
-                  src={status.media_url}
+                  src={displayMediaUrl}
                   className="h-full w-full object-cover"
                   playsInline
                   autoPlay
@@ -559,7 +562,7 @@ export function StatusViewer({
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   key={status.id}
-                  src={status.media_url}
+                  src={displayMediaUrl}
                   alt=""
                   className="h-full w-full object-cover"
                   onLoad={() => setMediaLoading(false)}

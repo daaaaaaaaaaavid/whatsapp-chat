@@ -11,6 +11,7 @@ import {
   syncGoogleContactsOrConnect,
 } from "@/lib/google-contacts-client"
 import type { GoogleContact, Profile } from "@/lib/types"
+import { isValidEmail } from "@/lib/validation"
 import { Check, Search, ArrowLeft, X, Mail, AlertCircle, RefreshCw } from "lucide-react"
 
 type Props = {
@@ -21,7 +22,7 @@ type Props = {
 }
 
 function looksLikeEmail(value: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
+  return isValidEmail(value)
 }
 
 type Suggestion =

@@ -299,6 +299,25 @@ $$;
 revoke all on function public.is_conversation_member(uuid) from public;
 grant execute on function public.is_conversation_member(uuid) to authenticated;
 
+create or replace function public.is_conversation_admin(p_conversation_id uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1
+    from public.conversation_participants
+    where conversation_id = p_conversation_id
+      and user_id = auth.uid()
+      and is_admin = true
+  );
+$$;
+
+revoke all on function public.is_conversation_admin(uuid) from public;
+grant execute on function public.is_conversation_admin(uuid) to authenticated;
+
 -- Conversations: only participants / creator
 drop policy if exists "conversations_select_participant" on public.conversations;
 create policy "conversations_select_participant"
@@ -340,11 +359,11 @@ create policy "participants_insert_authenticated"
   to authenticated
   with check (
     user_id = auth.uid()
-    or public.is_conversation_member(conversation_id)
     or exists (
       select 1 from public.conversations c
       where c.id = conversation_id and c.created_by = auth.uid()
     )
+    or public.is_conversation_admin(conversation_id)
   );
 
 -- Messages
@@ -388,7 +407,15 @@ drop policy if exists "reads_upsert_own" on public.message_reads;
 create policy "reads_upsert_own"
   on public.message_reads for insert
   to authenticated
-  with check (auth.uid() = user_id);
+  with check (
+    auth.uid() = user_id
+    and exists (
+      select 1
+      from public.messages m
+      where m.id = message_id
+        and public.is_conversation_member(m.conversation_id)
+    )
+  );
 
 drop policy if exists "reads_update_own" on public.message_reads;
 create policy "reads_update_own"
@@ -523,22 +550,21 @@ begin
   end;
 end $$;
 
--- Storage bucket for chat media (images, files, voice)
+-- Storage bucket for chat media (images, files, voice) — private; use signed URLs
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (
   'media',
   'media',
-  true,
+  false,
   52428800,
   array[
-    'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml',
+    'image/jpeg', 'image/png', 'image/gif', 'image/webp',
     'image/bmp', 'image/heic', 'image/heif', 'image/avif',
     'video/mp4', 'video/webm', 'video/quicktime', 'video/x-msvideo', 'video/3gpp', 'video/x-matroska',
     'audio/mpeg', 'audio/webm', 'audio/ogg', 'audio/wav', 'audio/mp4', 'audio/aac',
     'application/pdf',
     'application/msword',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'application/octet-stream'
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
   ]
 )
 on conflict (id) do update
@@ -547,9 +573,10 @@ set public = excluded.public,
     allowed_mime_types = excluded.allowed_mime_types;
 
 drop policy if exists "media_public_read" on storage.objects;
-create policy "media_public_read"
+drop policy if exists "media_auth_read" on storage.objects;
+create policy "media_auth_read"
   on storage.objects for select
-  to public
+  to authenticated
   using (bucket_id = 'media');
 
 drop policy if exists "media_auth_upload" on storage.objects;
@@ -719,3 +746,74 @@ create policy "push_subscriptions_delete_own"
 
 -- End of synced migrations (google_contacts + push_subscriptions)
 
+
+-- Conversation inbox summaries (last message + unread)
+create or replace function public.my_conversation_summaries()
+returns table (
+  conversation_id uuid,
+  last_message_id uuid,
+  last_message_content text,
+  last_message_type text,
+  last_message_sender_id uuid,
+  last_message_created_at timestamptz,
+  last_message_file_name text,
+  last_message_deleted_at timestamptz,
+  unread_count bigint
+)
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  with my_convs as (
+    select cp.conversation_id
+    from public.conversation_participants cp
+    where cp.user_id = auth.uid()
+  ),
+  last_msgs as (
+    select distinct on (m.conversation_id)
+      m.conversation_id,
+      m.id as last_message_id,
+      m.content as last_message_content,
+      m.type as last_message_type,
+      m.sender_id as last_message_sender_id,
+      m.created_at as last_message_created_at,
+      m.file_name as last_message_file_name,
+      m.deleted_at as last_message_deleted_at
+    from public.messages m
+    inner join my_convs mc on mc.conversation_id = m.conversation_id
+    order by m.conversation_id, m.created_at desc
+  ),
+  unread as (
+    select
+      m.conversation_id,
+      count(*)::bigint as unread_count
+    from public.messages m
+    inner join my_convs mc on mc.conversation_id = m.conversation_id
+    where m.sender_id <> auth.uid()
+      and m.deleted_at is null
+      and not exists (
+        select 1
+        from public.message_reads r
+        where r.message_id = m.id
+          and r.user_id = auth.uid()
+      )
+    group by m.conversation_id
+  )
+  select
+    mc.conversation_id,
+    lm.last_message_id,
+    lm.last_message_content,
+    lm.last_message_type,
+    lm.last_message_sender_id,
+    lm.last_message_created_at,
+    lm.last_message_file_name,
+    lm.last_message_deleted_at,
+    coalesce(u.unread_count, 0) as unread_count
+  from my_convs mc
+  left join last_msgs lm on lm.conversation_id = mc.conversation_id
+  left join unread u on u.conversation_id = mc.conversation_id;
+$$;
+
+revoke all on function public.my_conversation_summaries() from public;
+grant execute on function public.my_conversation_summaries() to authenticated;

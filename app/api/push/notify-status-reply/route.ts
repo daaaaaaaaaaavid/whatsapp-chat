@@ -1,28 +1,21 @@
 import { NextResponse } from "next/server"
-import webpush from "web-push"
 import { createClient } from "@/lib/supabase/server"
 import { createServiceClient } from "@/lib/supabase/admin"
+import { checkRateLimit } from "@/lib/rate-limit"
+import { configureVapid, sendWebPushToSubscriptions } from "@/lib/push-send"
+import { pushStatusReplyBodySchema } from "@/lib/validation"
 
 const OFFLINE_MS = 5 * 60 * 1000
 
-type Body = {
-  statusId?: string
-  replyId?: string
-  body?: string
-}
-
 export async function POST(req: Request) {
-  const vapidPublic = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY?.trim()
-  const vapidPrivate = process.env.VAPID_PRIVATE_KEY?.trim()
-  const vapidSubject = process.env.VAPID_SUBJECT?.trim() || "mailto:admin@whachat.local"
-
-  if (!vapidPublic || !vapidPrivate) {
-    return NextResponse.json({ ok: false, reason: "vapid_not_configured" }, { status: 200 })
+  const vapid = configureVapid()
+  if (!vapid.ok) {
+    return NextResponse.json({ ok: false, reason: vapid.reason }, { status: 503 })
   }
 
   const admin = createServiceClient()
   if (!admin) {
-    return NextResponse.json({ ok: false, reason: "service_role_missing" }, { status: 200 })
+    return NextResponse.json({ ok: false, reason: "service_role_missing" }, { status: 503 })
   }
 
   const supabase = await createClient()
@@ -33,17 +26,26 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 })
   }
 
-  let payload: Body
+  const rate = checkRateLimit(`push-status-reply:${user.id}`, 20, 60_000)
+  if (!rate.ok) {
+    return NextResponse.json(
+      { error: "rate_limited" },
+      { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } },
+    )
+  }
+
+  let raw: unknown
   try {
-    payload = (await req.json()) as Body
+    raw = await req.json()
   } catch {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 })
   }
 
-  const statusId = payload.statusId
-  if (!statusId) {
-    return NextResponse.json({ error: "missing_status" }, { status: 400 })
+  const parsed = pushStatusReplyBodySchema.safeParse(raw)
+  if (!parsed.success) {
+    return NextResponse.json({ error: "invalid_body" }, { status: 400 })
   }
+  const { statusId, replyId } = parsed.data
 
   const { data: status } = await admin
     .from("statuses")
@@ -63,7 +65,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, sent: 0, reason: "expired" })
   }
 
-  // Replier must be able to see the status (known contact)
   const { data: visible } = await supabase
     .from("statuses")
     .select("id")
@@ -74,19 +75,19 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 })
   }
 
-  let body = payload.body?.trim() || "הגיב לסטטוס שלך"
+  const { data: reply } = await admin
+    .from("status_replies")
+    .select("content, user_id, status_id")
+    .eq("id", replyId)
+    .eq("status_id", statusId)
+    .eq("user_id", user.id)
+    .maybeSingle()
 
-  if (payload.replyId) {
-    const { data: reply } = await admin
-      .from("status_replies")
-      .select("content, user_id, status_id")
-      .eq("id", payload.replyId)
-      .maybeSingle()
-    if (reply && reply.status_id === statusId && reply.user_id === user.id) {
-      body = (reply.content as string)?.trim() || body
-    }
+  if (!reply) {
+    return NextResponse.json({ error: "reply_not_found" }, { status: 404 })
   }
 
+  const body = (reply.content as string)?.trim() || "הגיב לסטטוס שלך"
   const ownerId = status.user_id as string
 
   const { data: owner } = await admin
@@ -122,8 +123,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, sent: 0, reason: "no_subscriptions" })
   }
 
-  webpush.setVapidDetails(vapidSubject, vapidPublic, vapidPrivate)
-
   const pushPayload = JSON.stringify({
     title,
     body,
@@ -132,33 +131,6 @@ export async function POST(req: Request) {
     statusId,
   })
 
-  let sent = 0
-  const staleEndpoints: string[] = []
-
-  await Promise.all(
-    subs.map(async (sub) => {
-      try {
-        await webpush.sendNotification(
-          {
-            endpoint: sub.endpoint,
-            keys: { p256dh: sub.p256dh, auth: sub.auth },
-          },
-          pushPayload,
-          { TTL: 60 * 60 },
-        )
-        sent += 1
-      } catch (err) {
-        const statusCode = (err as { statusCode?: number })?.statusCode
-        if (statusCode === 404 || statusCode === 410) {
-          staleEndpoints.push(sub.endpoint)
-        }
-      }
-    }),
-  )
-
-  if (staleEndpoints.length) {
-    await admin.from("push_subscriptions").delete().in("endpoint", staleEndpoints)
-  }
-
+  const sent = await sendWebPushToSubscriptions(admin, subs, pushPayload)
   return NextResponse.json({ ok: true, sent })
 }

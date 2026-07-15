@@ -1,6 +1,7 @@
 "use client"
 
 import { avatarColor, initials } from "@/lib/format"
+import { useSignedMediaUrl } from "@/lib/use-signed-media-url"
 import { Bookmark, Users } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -15,6 +16,7 @@ type AvatarProps = {
 
 export function Avatar({ name, url, size = 40, isGroup = false, isSelf = false, className }: AvatarProps) {
   const dimension = { width: size, height: size }
+  const signedUrl = useSignedMediaUrl(url)
 
   if (isSelf) {
     return (
@@ -33,7 +35,7 @@ export function Avatar({ name, url, size = 40, isGroup = false, isSelf = false, 
   if (url) {
     return (
       <img
-        src={url || "/placeholder.svg"}
+        src={signedUrl || "/placeholder.svg"}
         alt={name ?? "avatar"}
         style={dimension}
         className={cn("shrink-0 rounded-full object-cover", className)}

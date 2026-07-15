@@ -1,11 +1,12 @@
 "use client"
 
 import { createClient, ensureSupabaseConfig } from "@/lib/supabase/client"
+import { safeRedirectPath } from "@/lib/safe-redirect"
 
 const NEXT_COOKIE = "oauth_next"
 
 function setNextPath(nextPath: string) {
-  const safe = nextPath.startsWith("/") ? nextPath : "/chat"
+  const safe = safeRedirectPath(nextPath)
   document.cookie = `${NEXT_COOKIE}=${encodeURIComponent(safe)}; path=/; max-age=600; SameSite=Lax`
 }
 

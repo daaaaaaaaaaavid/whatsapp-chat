@@ -16,6 +16,7 @@ import {
   X,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useSignedMediaUrl } from "@/lib/use-signed-media-url"
 import { Avatar } from "./avatar"
 
 export type GalleryItem = {
@@ -28,7 +29,7 @@ export type GalleryItem = {
   senderId: string
 }
 
-const IMAGE_EXT = /\.(jpe?g|png|gif|webp|bmp|svg|heic|avif)(\?|$)/i
+const IMAGE_EXT = /\.(jpe?g|png|gif|webp|bmp|heic|avif)(\?|$)/i
 const VIDEO_EXT = /\.(mp4|webm|mov|m4v|avi|mkv|3gp)(\?|$)/i
 
 /** Resolve display kind from message type + filename/url. */
@@ -45,6 +46,37 @@ export function resolveMediaKind(
   if (VIDEO_EXT.test(probe)) return "video"
   if (type === "file" && fileUrl) return "file"
   return null
+}
+
+function GalleryThumb({
+  thumb,
+  duration,
+}: {
+  thumb: GalleryItem
+  duration?: number
+}) {
+  const url = useSignedMediaUrl(thumb.url)
+  if (thumb.type === "image") {
+    return url ? <img src={url} alt="" className="h-full w-full object-cover" /> : null
+  }
+  if (thumb.type === "video") {
+    return (
+      <>
+        {url ? (
+          <video src={url} muted playsInline preload="metadata" className="h-full w-full object-cover" />
+        ) : null}
+        <span className="absolute bottom-1 left-1 flex items-center gap-0.5 rounded bg-black/60 px-1 py-0.5 text-[10px] font-medium text-white">
+          <Video className="h-2.5 w-2.5" />
+          {duration != null ? formatCallDuration(Math.round(duration)) : "—"}
+        </span>
+      </>
+    )
+  }
+  return (
+    <div className="flex h-full w-full items-center justify-center bg-[#2a3942]">
+      <Download className="h-6 w-6 text-[#8696a0]" />
+    </div>
+  )
 }
 
 export function mediaItemsFromMessages(messages: Message[]): GalleryItem[] {
@@ -103,6 +135,7 @@ export function MediaGallery({
   const stripRef = useRef<HTMLDivElement>(null)
   const [mounted, setMounted] = useState(false)
   const [videoDurations, setVideoDurations] = useState<Record<string, number>>({})
+  const displayUrl = useSignedMediaUrl(item?.url)
 
   useEffect(() => setMounted(true), [])
 
@@ -145,16 +178,27 @@ export function MediaGallery({
   }, [index])
 
   useEffect(() => {
-    for (const it of items) {
-      if (it.type !== "video" || videoDurations[it.id] != null) continue
-      const v = document.createElement("video")
-      v.preload = "metadata"
-      v.src = it.url
-      v.onloadedmetadata = () => {
-        if (Number.isFinite(v.duration)) {
-          setVideoDurations((prev) => (prev[it.id] != null ? prev : { ...prev, [it.id]: v.duration }))
+    let cancelled = false
+    void (async () => {
+      const { createClient } = await import("@/lib/supabase/client")
+      const { resolveMediaDisplayUrl } = await import("@/lib/media-url")
+      const supabase = createClient()
+      for (const it of items) {
+        if (it.type !== "video" || videoDurations[it.id] != null) continue
+        const signed = await resolveMediaDisplayUrl(supabase, it.url)
+        if (!signed || cancelled) continue
+        const v = document.createElement("video")
+        v.preload = "metadata"
+        v.src = signed
+        v.onloadedmetadata = () => {
+          if (Number.isFinite(v.duration)) {
+            setVideoDurations((prev) => (prev[it.id] != null ? prev : { ...prev, [it.id]: v.duration }))
+          }
         }
       }
+    })()
+    return () => {
+      cancelled = true
     }
   }, [items, videoDurations])
 
@@ -226,7 +270,7 @@ export function MediaGallery({
         )}
 
         <a
-          href={item.url}
+          href={displayUrl ?? item.url}
           download={item.name ?? undefined}
           target="_blank"
           rel="noopener noreferrer"
@@ -288,18 +332,18 @@ export function MediaGallery({
           className="flex max-h-full max-w-full items-center justify-center"
           onClick={(e) => e.stopPropagation()}
         >
-          {item.type === "image" && (
+          {item.type === "image" && displayUrl && (
             <img
-              src={item.url}
+              src={displayUrl}
               alt={item.name ?? "תמונה"}
               className="max-h-[calc(100svh-10.5rem)] max-w-[min(100vw-2rem,960px)] object-contain select-none"
               draggable={false}
             />
           )}
-          {item.type === "video" && (
+          {item.type === "video" && displayUrl && (
             <video
               key={item.id}
-              src={item.url}
+              src={displayUrl}
               controls
               autoPlay
               playsInline
@@ -318,7 +362,7 @@ export function MediaGallery({
                 )}
               </div>
               <a
-                href={item.url}
+                href={displayUrl ?? item.url}
                 download={item.name ?? undefined}
                 target="_blank"
                 rel="noopener noreferrer"
@@ -349,29 +393,10 @@ export function MediaGallery({
             aria-label={`מדיה ${i + 1}`}
             aria-current={i === index}
           >
-            {thumb.type === "image" ? (
-              <img src={thumb.url} alt="" className="h-full w-full object-cover" />
-            ) : thumb.type === "video" ? (
-              <>
-                <video
-                  src={thumb.url}
-                  muted
-                  playsInline
-                  preload="metadata"
-                  className="h-full w-full object-cover"
-                />
-                <span className="absolute bottom-1 left-1 flex items-center gap-0.5 rounded bg-black/60 px-1 py-0.5 text-[10px] font-medium text-white">
-                  <Video className="h-2.5 w-2.5" />
-                  {videoDurations[thumb.id] != null
-                    ? formatCallDuration(Math.round(videoDurations[thumb.id]))
-                    : "—"}
-                </span>
-              </>
-            ) : (
-              <div className="flex h-full w-full items-center justify-center bg-[#2a3942]">
-                <Download className="h-6 w-6 text-[#8696a0]" />
-              </div>
-            )}
+            <GalleryThumb
+              thumb={thumb}
+              duration={videoDurations[thumb.id]}
+            />
           </button>
         ))}
       </div>
