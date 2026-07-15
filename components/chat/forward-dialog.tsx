@@ -108,7 +108,7 @@ export function ForwardDialog({
                 key={c.id}
                 type="button"
                 onClick={() => toggle(c.id)}
-                className="flex w-full items-center gap-3 px-4 py-3 text-right hover:bg-[var(--wa-hover)]"
+                className="wa-interactive-row flex w-full items-center gap-3 px-4 py-3 text-right hover:bg-[var(--wa-hover)]"
               >
                 <span
                   className={`flex h-5 w-5 items-center justify-center rounded-full border ${

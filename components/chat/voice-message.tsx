@@ -1,9 +1,10 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { Mic, Pause, Play, User } from "lucide-react"
+import { LoaderCircle, Mic, Pause, Play, User } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { formatCallDuration } from "@/lib/format"
+import { useSignedMediaUrlControls } from "@/lib/use-signed-media-url"
 import { MessageTicks } from "./message-ticks"
 
 /** Deterministic fake waveform bars from a seed (message id). */
@@ -20,7 +21,8 @@ function waveformBars(seed: string, count = 36): number[] {
 }
 
 type Props = {
-  url: string
+  /** Stored media reference (public-style path URL), not a short-lived signed URL. */
+  fileUrl: string
   messageId: string
   isMine: boolean
   timeLabel: string
@@ -32,7 +34,7 @@ type Props = {
 }
 
 export function VoiceMessage({
-  url,
+  fileUrl,
   messageId,
   isMine,
   timeLabel,
@@ -42,15 +44,31 @@ export function VoiceMessage({
   avatarUrl,
   avatarName,
 }: Props) {
+  const { url, loading: urlLoading, refresh } = useSignedMediaUrlControls(fileUrl)
+  const { url: signedAvatarUrl } = useSignedMediaUrlControls(avatarUrl)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const [playing, setPlaying] = useState(false)
   const [duration, setDuration] = useState(0)
   const [current, setCurrent] = useState(0)
+  const [loadError, setLoadError] = useState(false)
+  const [playError, setPlayError] = useState<string | null>(null)
   const bars = waveformBars(messageId)
 
   useEffect(() => {
-    const audio = new Audio(url)
+    setPlaying(false)
+    setCurrent(0)
+    setDuration(0)
+    setLoadError(false)
+    setPlayError(null)
+
+    if (!url) {
+      audioRef.current = null
+      return
+    }
+
+    const audio = new Audio()
     audio.preload = "metadata"
+    audio.src = url
     audioRef.current = audio
 
     const onMeta = () => {
@@ -65,6 +83,10 @@ export function VoiceMessage({
     }
     const onPlay = () => setPlaying(true)
     const onPause = () => setPlaying(false)
+    const onError = () => {
+      setLoadError(true)
+      setPlaying(false)
+    }
 
     audio.addEventListener("loadedmetadata", onMeta)
     audio.addEventListener("durationchange", onMeta)
@@ -72,26 +94,42 @@ export function VoiceMessage({
     audio.addEventListener("ended", onEnded)
     audio.addEventListener("play", onPlay)
     audio.addEventListener("pause", onPause)
+    audio.addEventListener("error", onError)
+    audio.load()
 
     return () => {
       audio.pause()
+      audio.removeAttribute("src")
+      audio.load()
       audio.removeEventListener("loadedmetadata", onMeta)
       audio.removeEventListener("durationchange", onMeta)
       audio.removeEventListener("timeupdate", onTime)
       audio.removeEventListener("ended", onEnded)
       audio.removeEventListener("play", onPlay)
       audio.removeEventListener("pause", onPause)
+      audio.removeEventListener("error", onError)
       audioRef.current = null
     }
   }, [url])
 
-  const toggle = () => {
+  const toggle = async () => {
     const audio = audioRef.current
-    if (!audio) return
-    if (audio.paused) {
-      void audio.play().catch(() => {})
-    } else {
+    if (!audio || !url) {
+      if (loadError || !url) refresh()
+      return
+    }
+    if (!audio.paused) {
       audio.pause()
+      return
+    }
+    setPlayError(null)
+    try {
+      if (audio.readyState < 2) audio.load()
+      await audio.play()
+    } catch {
+      setLoadError(true)
+      setPlayError("לא ניתן לנגן")
+      refresh()
     }
   }
 
@@ -106,16 +144,24 @@ export function VoiceMessage({
   const progress = duration > 0 ? current / duration : 0
   const displayDuration = duration > 0 ? duration : 0
   const displayTime = playing || current > 0 ? current : displayDuration
+  const busy = urlLoading && !url
 
   return (
     <div className="mb-0.5 flex min-w-[240px] max-w-[320px] items-center gap-2 py-0.5" dir="ltr">
       <button
         type="button"
-        onClick={toggle}
-        className="flex h-8 w-8 shrink-0 items-center justify-center text-[var(--wa-text-secondary)] transition hover:text-[var(--wa-text)]"
+        onClick={() => void toggle()}
+        disabled={busy}
+        className="flex h-8 w-8 shrink-0 items-center justify-center text-[var(--wa-text-secondary)] transition hover:text-[var(--wa-text)] disabled:opacity-50"
         aria-label={playing ? "השהה" : "נגן"}
       >
-        {playing ? <Pause className="h-5 w-5 fill-current" /> : <Play className="h-5 w-5 fill-current" />}
+        {busy ? (
+          <LoaderCircle className="h-5 w-5 animate-spin" />
+        ) : playing ? (
+          <Pause className="h-5 w-5 fill-current" />
+        ) : (
+          <Play className="h-5 w-5 fill-current" />
+        )}
       </button>
 
       <div className="min-w-0 flex-1">
@@ -154,7 +200,11 @@ export function VoiceMessage({
           />
         </div>
         <div className="mt-0.5 flex items-center justify-between text-[11px] text-[var(--wa-text-secondary)]">
-          <span dir="ltr">{formatCallDuration(Math.round(displayTime || 0))}</span>
+          <span dir="ltr">
+            {playError || loadError
+              ? playError || "שגיאה — נסה שוב"
+              : formatCallDuration(Math.round(displayTime || 0))}
+          </span>
           <span className="flex items-center gap-1" dir="ltr">
             {timeLabel}
             {isMine && <MessageTicks status={status} isGroup={isGroup} viewCount={viewCount} />}
@@ -164,8 +214,9 @@ export function VoiceMessage({
 
       <div className="relative shrink-0">
         <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full bg-[#c5e1e8]">
-          {avatarUrl ? (
-            <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
+          {signedAvatarUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={signedAvatarUrl} alt="" className="h-full w-full object-cover" />
           ) : (
             <User className="h-7 w-7 text-[#5a9aa8]" />
           )}

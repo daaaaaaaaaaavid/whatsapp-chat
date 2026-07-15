@@ -156,7 +156,7 @@ export function CallsPanel({ conversations, currentUser, onCall }: Props) {
             return (
               <div
                 key={id}
-                className="flex w-full items-center gap-3 px-3 py-3 transition hover:bg-[var(--wa-hover)]"
+                className="wa-interactive-row flex w-full items-center gap-3 px-3 py-3 hover:bg-[var(--wa-hover)]"
               >
                 <Avatar
                   name={name}

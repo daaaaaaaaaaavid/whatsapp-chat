@@ -42,7 +42,7 @@ export function CommunitiesPanel({ conversations, currentUser, onSelect }: Props
                   <button
                     type="button"
                     onClick={() => onSelect(conv)}
-                    className="flex w-full items-center gap-3 px-4 py-3 text-right transition hover:bg-[var(--wa-hover)]"
+                    className="wa-interactive-row flex w-full items-center gap-3 px-4 py-3 text-right hover:bg-[var(--wa-hover)]"
                   >
                     <Avatar name={name} url={avatar} size={49} />
                     <div className="min-w-0 flex-1 border-b border-[var(--wa-border)] pb-3">

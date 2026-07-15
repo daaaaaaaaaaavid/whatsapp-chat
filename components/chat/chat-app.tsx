@@ -39,6 +39,7 @@ import { registerPushSubscription, ensureServiceWorker } from "@/lib/push-client
 import { messagePreview, convDisplayName, isSelfConversation } from "@/lib/conversation-display"
 import { LoadingScreen } from "./loading-screen"
 import { MessageToastStack, type MessageToastItem } from "./message-toast"
+import { startChatByEmail } from "@/lib/chat-actions"
 
 type Props = {
   currentUser: Profile
@@ -398,6 +399,17 @@ export function ChatApp({ currentUser: initialUser }: Props) {
     [reload],
   )
 
+  const handleStartChatByEmail = useCallback(
+    async (email: string) => {
+      const conversationId = await startChatByEmail(currentUser.id, email)
+      await reload()
+      setActiveId(conversationId)
+      setShowInfo(false)
+      setNavTab("chats")
+    },
+    [currentUser.id, reload],
+  )
+
   const handleLogout = async () => {
     const supabase = createClient()
     await supabase.auth.signOut()
@@ -528,6 +540,7 @@ export function ChatApp({ currentUser: initialUser }: Props) {
                   isPinned={prefs.pinned.includes(activeConversation.id)}
                   initialGalleryMessageId={infoGalleryMessageId}
                   onGalleryOpened={() => setInfoGalleryMessageId(null)}
+                  onStartChatByEmail={handleStartChatByEmail}
                 />
               </div>
               {showInfo && (

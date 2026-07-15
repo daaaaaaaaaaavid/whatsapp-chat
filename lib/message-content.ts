@@ -1,6 +1,13 @@
 import { parseCallSystemPayload, callSystemLabel } from "@/lib/call-system-message"
 
 const URL_RE = /(https?:\/\/[^\s<>"']+)/gi
+const EMAIL_RE = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi
+const LINK_OR_EMAIL_RE = new RegExp(`(${URL_RE.source}|${EMAIL_RE.source})`, "gi")
+
+export type MessageTextPart = {
+  type: "text" | "link" | "email"
+  value: string
+}
 
 export function extractUrls(text: string): string[] {
   const matches = text.match(URL_RE)
@@ -8,16 +15,17 @@ export function extractUrls(text: string): string[] {
   return Array.from(new Set(matches.map((u) => u.replace(/[.,);]+$/, ""))))
 }
 
-export function splitTextWithLinks(text: string): Array<{ type: "text" | "link"; value: string }> {
-  const parts: Array<{ type: "text" | "link"; value: string }> = []
+export function splitTextWithLinks(text: string): MessageTextPart[] {
+  const parts: MessageTextPart[] = []
   let last = 0
-  const re = new RegExp(URL_RE.source, "gi")
+  const re = new RegExp(LINK_OR_EMAIL_RE.source, "gi")
   let m: RegExpExecArray | null
   while ((m = re.exec(text)) !== null) {
     if (m.index > last) parts.push({ type: "text", value: text.slice(last, m.index) })
     const raw = m[0]
-    const cleaned = raw.replace(/[.,);]+$/, "")
-    parts.push({ type: "link", value: cleaned })
+    const isLink = /^https?:\/\//i.test(raw)
+    const cleaned = isLink ? raw.replace(/[.,);]+$/, "") : raw
+    parts.push({ type: isLink ? "link" : "email", value: cleaned })
     if (cleaned.length < raw.length) {
       parts.push({ type: "text", value: raw.slice(cleaned.length) })
     }

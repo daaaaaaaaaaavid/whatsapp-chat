@@ -204,7 +204,7 @@ export function ChatList({
                     setMenuId(conv.id)
                   }}
                   className={cn(
-                    "flex w-full items-center gap-3 px-3 py-3 text-right transition hover:bg-[var(--wa-hover)]",
+                    "wa-interactive-row flex w-full items-center gap-3 px-3 py-3 text-right hover:bg-[var(--wa-hover)]",
                     isActive && "bg-[var(--wa-header)]",
                   )}
                 >

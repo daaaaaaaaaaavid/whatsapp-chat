@@ -19,9 +19,12 @@ import { notifyOfflineRecipients } from "@/lib/push-client"
 import {
   isAllowedMediaFile,
   MAX_MEDIA_BYTES,
+  pickVoiceRecorderMime,
   resolveFileMime,
   UNSUPPORTED_MEDIA_MESSAGE,
+  voiceRecordingFile,
 } from "@/lib/media-mime"
+import { uploadMediaWithProgress } from "@/lib/media-upload"
 import { mediaReferenceUrl } from "@/lib/media-url"
 import {
   Plus,
@@ -95,6 +98,14 @@ type UploadStatus = {
   fileName: string
   current: number
   total: number
+  /** 0–1 progress within the current file */
+  fileProgress: number
+}
+
+function overallUploadPercent(status: UploadStatus): number {
+  if (status.total <= 0) return 0
+  const ratio = (status.current - 1 + Math.min(1, Math.max(0, status.fileProgress))) / status.total
+  return Math.round(Math.min(100, Math.max(0, ratio * 100)))
 }
 
 function replyPreview(message: Message) {
@@ -325,7 +336,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
       caption?: string | null,
       reply?: { id: string; message: Message } | null,
     ) => {
-      setUploadStatus({ fileName: file.name, current: 1, total: 1 })
+      setUploadStatus({ fileName: file.name, current: 1, total: 1, fileProgress: 0 })
       setUploadError(null)
       try {
         if (!isAllowedMediaFile(file)) {
@@ -343,9 +354,16 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
         const path = `${currentUserId}/${conversationId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
 
         const contentType = resolveFileMime(file)
-        const { error } = await supabase.storage.from("media").upload(path, file, {
+        const { error } = await uploadMediaWithProgress(supabase, path, file, {
           contentType,
           upsert: false,
+          onProgress: (p) => {
+            setUploadStatus((prev) =>
+              prev
+                ? { ...prev, fileName: file.name, current: 1, total: 1, fileProgress: p.ratio }
+                : { fileName: file.name, current: 1, total: 1, fileProgress: p.ratio },
+            )
+          },
         })
         if (error) {
           const msg = error.message.toLowerCase()
@@ -590,6 +608,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
           fileName: item.file.name,
           current: i + 1,
           total: items.length,
+          fileProgress: 0,
         })
 
         if (item.file.size > MAX_MEDIA_BYTES) {
@@ -601,9 +620,17 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
         const path = `${currentUserId}/${conversationId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
 
         const contentType = resolveFileMime(item.file)
-        const { error } = await supabase.storage.from("media").upload(path, item.file, {
+        const { error } = await uploadMediaWithProgress(supabase, path, item.file, {
           contentType,
           upsert: false,
+          onProgress: (p) => {
+            setUploadStatus({
+              fileName: item.file.name,
+              current: i + 1,
+              total: items.length,
+              fileProgress: p.ratio,
+            })
+          },
         })
         if (error) {
           const msg = error.message.toLowerCase()
@@ -654,15 +681,21 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const recorder = new MediaRecorder(stream)
+      const mimeType = pickVoiceRecorderMime()
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream)
       chunksRef.current = []
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data)
       }
       recorder.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop())
-        const blob = new Blob(chunksRef.current, { type: "audio/webm" })
-        const file = new File([blob], `voice-${Date.now()}.webm`, { type: "audio/webm" })
+        if (chunksRef.current.length === 0) {
+          setUploadError("ההקלטה ריקה — נסה שוב")
+          return
+        }
+        const file = voiceRecordingFile(chunksRef.current, recorder.mimeType || mimeType)
         try {
           await uploadAndSend(file, "audio")
         } catch {
@@ -670,7 +703,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
         }
       }
       mediaRecorderRef.current = recorder
-      recorder.start()
+      recorder.start(250)
       setRecording(true)
     } catch {
       audioInputRef.current?.click()
@@ -758,19 +791,16 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
                 <div className="w-[min(86vw,360px)] rounded-2xl border border-white/10 bg-[#1f2c34] p-5 text-center text-white shadow-2xl">
                   <LoaderCircle className="mx-auto h-11 w-11 animate-spin text-[#00a884]" />
                   <div className="mt-3 truncate text-sm font-medium">{uploadStatus.fileName}</div>
-                  {uploadStatus.total > 1 && (
-                    <div className="mt-1 text-xs text-white/55">
-                      {uploadStatus.current} / {uploadStatus.total}
-                    </div>
-                  )}
+                  <div className="mt-1 text-xs text-white/55">
+                    {uploadStatus.total > 1
+                      ? `${uploadStatus.current} / ${uploadStatus.total} · ${overallUploadPercent(uploadStatus)}%`
+                      : `${overallUploadPercent(uploadStatus)}%`}
+                  </div>
                   <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/10">
                     <div
-                      className="h-full rounded-full bg-[#00a884] transition-[width] duration-300"
+                      className="h-full rounded-full bg-[#00a884] transition-[width] duration-150"
                       style={{
-                        width: `${Math.max(
-                          8,
-                          ((uploadStatus.current - 1) / uploadStatus.total) * 100,
-                        )}%`,
+                        width: `${Math.max(2, overallUploadPercent(uploadStatus))}%`,
                       }}
                     />
                   </div>
@@ -856,11 +886,19 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
         >
           <LoaderCircle className="h-6 w-6 shrink-0 animate-spin text-[#00a884]" />
           <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-medium text-[var(--wa-text)]">
-              {uploadStatus.fileName}
+            <div className="flex items-center justify-between gap-2">
+              <div className="truncate text-sm font-medium text-[var(--wa-text)]">
+                {uploadStatus.fileName}
+              </div>
+              <div className="shrink-0 text-xs text-[var(--wa-text-secondary)]" dir="ltr">
+                {overallUploadPercent(uploadStatus)}%
+              </div>
             </div>
             <div className="mt-1 h-1 overflow-hidden rounded-full bg-[var(--wa-border)]">
-              <div className="h-full w-1/3 animate-pulse rounded-full bg-[#00a884]" />
+              <div
+                className="h-full rounded-full bg-[#00a884] transition-[width] duration-150"
+                style={{ width: `${Math.max(2, overallUploadPercent(uploadStatus))}%` }}
+              />
             </div>
           </div>
         </div>

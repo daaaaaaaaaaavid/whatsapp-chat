@@ -30,6 +30,7 @@ type Props = {
   onEdited: (message: Message) => void
   onTyping?: (typing: boolean) => void
   onForward?: (message: Message) => void
+  onStartChatByEmail?: (email: string) => Promise<void>
 }
 
 export function ThreadPanel({
@@ -48,6 +49,7 @@ export function ThreadPanel({
   onEdited,
   onTyping,
   onForward,
+  onStartChatByEmail,
 }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -106,6 +108,7 @@ export function ThreadPanel({
       reaction={prefs.reactions[message.id] ?? null}
       isStarred={prefs.starredMessages.includes(message.id)}
       isPinned={prefs.pinnedMessages.includes(message.id)}
+      onStartChatByEmail={onStartChatByEmail}
       compact
     />
   )

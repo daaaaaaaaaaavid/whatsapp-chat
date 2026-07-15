@@ -236,6 +236,53 @@ textarea {
     color 160ms ease;
 }
 
+/* Subtle, layout-safe feedback for interactive controls and conversation rows. */
+@media (hover: hover) and (pointer: fine) {
+  button:not(:disabled):not(.fixed) {
+    transition:
+      translate 160ms ease,
+      scale 120ms ease,
+      background-color 160ms ease,
+      border-color 160ms ease,
+      color 160ms ease,
+      box-shadow 160ms ease,
+      filter 160ms ease;
+  }
+
+  button:not(:disabled):not(.fixed):hover {
+    translate: 0 -1px;
+    filter: brightness(1.015);
+  }
+
+  button:not(:disabled):not(.fixed):active {
+    translate: 0 0;
+    scale: 0.98;
+  }
+
+  .wa-interactive-row {
+    transition:
+      translate 180ms ease,
+      background-color 180ms ease,
+      box-shadow 180ms ease;
+  }
+
+  .wa-interactive-row:hover {
+    translate: 2px 0;
+    box-shadow: inset -3px 0 0 color-mix(in srgb, var(--wa-teal) 72%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button,
+  .wa-interactive-row,
+  .wa-loading-bar {
+    transition: none;
+    animation: none;
+    translate: none;
+    scale: none;
+  }
+}
+
 /* WhaChat chat area background */
 .wa-chat-bg {
   background-color: var(--wa-chat-bg);

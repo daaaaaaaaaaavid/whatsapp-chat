@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest"
-import { ALLOWED_MEDIA_MIMES, isAllowedMediaFile, resolveFileMime } from "@/lib/media-mime"
+import {
+  ALLOWED_MEDIA_MIMES,
+  isAllowedMediaFile,
+  normalizeMime,
+  resolveFileMime,
+  voiceMimeToExtension,
+  voiceRecordingFile,
+} from "@/lib/media-mime"
 
 describe("media-mime", () => {
   it("does not allow SVG or octet-stream", () => {
@@ -16,5 +23,20 @@ describe("media-mime", () => {
   it("rejects svg files", () => {
     const file = new File(["<svg/>"], "evil.svg", { type: "image/svg+xml" })
     expect(isAllowedMediaFile(file)).toBe(false)
+  })
+
+  it("strips codec parameters from mime types", () => {
+    expect(normalizeMime("audio/webm;codecs=opus")).toBe("audio/webm")
+    const file = new File(["x"], "voice.webm", { type: "audio/webm;codecs=opus" })
+    expect(resolveFileMime(file)).toBe("audio/webm")
+    expect(isAllowedMediaFile(file)).toBe(true)
+  })
+
+  it("builds voice files from recorder mime", () => {
+    expect(voiceMimeToExtension("audio/mp4")).toBe("m4a")
+    const file = voiceRecordingFile([new Blob(["abc"], { type: "audio/webm;codecs=opus" })], "audio/webm;codecs=opus")
+    expect(file.type).toBe("audio/webm")
+    expect(file.name.endsWith(".webm")).toBe(true)
+    expect(isAllowedMediaFile(file)).toBe(true)
   })
 })

@@ -80,6 +80,7 @@ type Props = {
   isStarred?: boolean
   isPinned?: boolean
   searchQuery?: string
+  onStartChatByEmail?: (email: string) => Promise<void>
   /** Narrower panel (thread side pane). */
   compact?: boolean
 }
@@ -141,6 +142,7 @@ export function MessageBubble({
   isStarred,
   isPinned,
   searchQuery,
+  onStartChatByEmail,
   compact,
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -540,9 +542,9 @@ export function MessageBubble({
           </button>
         )}
 
-        {message.type === "audio" && message.file_url && displayFileUrl && (
+        {message.type === "audio" && message.file_url && (
           <VoiceMessage
-            url={displayFileUrl}
+            fileUrl={message.file_url}
             messageId={message.id}
             isMine={isMine}
             timeLabel={formatTime(message.created_at)}
@@ -574,7 +576,11 @@ export function MessageBubble({
         )}
 
         {bodyText && message.type !== "audio" && (
-          <MessageText text={bodyText} searchQuery={searchQuery} />
+          <MessageText
+            text={bodyText}
+            searchQuery={searchQuery}
+            onStartChatByEmail={onStartChatByEmail}
+          />
         )}
 
         {urls[0] && message.type === "text" && <LinkPreview url={urls[0]} />}

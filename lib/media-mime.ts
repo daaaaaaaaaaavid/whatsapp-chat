@@ -52,11 +52,24 @@ const EXT_TO_MIME: Record<string, string> = {
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 }
 
+const VOICE_RECORDER_CANDIDATES = [
+  "audio/webm;codecs=opus",
+  "audio/webm",
+  "audio/mp4",
+  "audio/ogg;codecs=opus",
+  "audio/ogg",
+]
+
+/** Strip codec parameters (`audio/webm;codecs=opus` → `audio/webm`). */
+export function normalizeMime(type: string): string {
+  return type.split(";")[0]?.trim().toLowerCase() || ""
+}
+
 export function resolveFileMime(file: File): string {
-  if (file.type && ALLOWED_MEDIA_MIMES.has(file.type)) return file.type
+  const raw = file.type ? normalizeMime(file.type) : ""
+  if (raw && ALLOWED_MEDIA_MIMES.has(raw)) return raw
   const ext = file.name.split(".").pop()?.toLowerCase() ?? ""
   if (ext && EXT_TO_MIME[ext]) return EXT_TO_MIME[ext]
-  if (file.type && ALLOWED_MEDIA_MIMES.has(file.type)) return file.type
   return ""
 }
 
@@ -70,3 +83,34 @@ export const UNSUPPORTED_MEDIA_MESSAGE =
 
 /** Max upload size aligned with bucket limit (50MB). */
 export const MAX_MEDIA_BYTES = 50 * 1024 * 1024
+
+/** Best MediaRecorder MIME the current browser supports. */
+export function pickVoiceRecorderMime(): string | undefined {
+  if (typeof MediaRecorder === "undefined" || typeof MediaRecorder.isTypeSupported !== "function") {
+    return undefined
+  }
+  for (const candidate of VOICE_RECORDER_CANDIDATES) {
+    if (MediaRecorder.isTypeSupported(candidate)) return candidate
+  }
+  return undefined
+}
+
+export function voiceMimeToExtension(mime: string): string {
+  const base = normalizeMime(mime)
+  if (base === "audio/mp4" || base === "audio/aac") return "m4a"
+  if (base === "audio/ogg") return "ogg"
+  if (base === "audio/mpeg") return "mp3"
+  if (base === "audio/wav") return "wav"
+  return "webm"
+}
+
+/** Build a File from recorder chunks using the recorder's real MIME type. */
+export function voiceRecordingFile(chunks: Blob[], recorderMime?: string): File {
+  const preferred = recorderMime ? normalizeMime(recorderMime) : ""
+  const chunkType = chunks.find((c) => c.type)?.type
+  const rawType = preferred || (chunkType ? normalizeMime(chunkType) : "") || "audio/webm"
+  const type = ALLOWED_MEDIA_MIMES.has(rawType) ? rawType : "audio/webm"
+  const ext = voiceMimeToExtension(type)
+  const blob = new Blob(chunks, { type })
+  return new File([blob], `voice-${Date.now()}.${ext}`, { type })
+}

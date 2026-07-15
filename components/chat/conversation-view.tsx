@@ -66,6 +66,7 @@ type Props = {
   isPinned: boolean
   initialGalleryMessageId?: string | null
   onGalleryOpened?: () => void
+  onStartChatByEmail?: (email: string) => Promise<void>
 }
 
 function isOnline(lastSeen: string | null | undefined) {
@@ -92,6 +93,7 @@ export function ConversationView({
   isPinned,
   initialGalleryMessageId,
   onGalleryOpened,
+  onStartChatByEmail,
 }: Props) {
   const {
     messages,
@@ -918,6 +920,7 @@ export function ConversationView({
                   isStarred={prefs.starredMessages.includes(message.id)}
                   isPinned={prefs.pinnedMessages.includes(message.id)}
                   searchQuery={searchOpen ? searchQuery : ""}
+                  onStartChatByEmail={onStartChatByEmail}
                 />
               </div>
             ))
@@ -1021,6 +1024,7 @@ export function ConversationView({
           }}
           onTyping={handleTyping}
           onForward={(message) => setForwardMessages([message])}
+          onStartChatByEmail={onStartChatByEmail}
         />
       </div>
     )}

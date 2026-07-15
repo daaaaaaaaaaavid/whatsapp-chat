@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 
 const MEDIA_BUCKET = "media"
-const SIGNED_TTL_SECONDS = 60 * 60 // 1 hour
+export const SIGNED_TTL_SECONDS = 60 * 60 // 1 hour
 
 /** Extract `{ userId/... }` path from a stored media URL or return a raw path. */
 export function parseMediaStoragePath(fileUrl: string): string | null {
