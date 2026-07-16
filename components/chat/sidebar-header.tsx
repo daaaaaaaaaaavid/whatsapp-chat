@@ -7,13 +7,21 @@ import { ThemeToggle } from "@/components/theme-toggle"
 
 type Props = {
   currentUserId: string
+  space?: "personal" | "work"
   onNewChat: () => void
   onNewGroup: () => void
   onOpenProfile: () => void
   onLogout: () => void
 }
 
-export function SidebarHeader({ currentUserId, onNewChat, onNewGroup, onOpenProfile, onLogout }: Props) {
+export function SidebarHeader({
+  currentUserId,
+  space = "personal",
+  onNewChat,
+  onNewGroup,
+  onOpenProfile,
+  onLogout,
+}: Props) {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -27,8 +35,13 @@ export function SidebarHeader({ currentUserId, onNewChat, onNewGroup, onOpenProf
 
   return (
     <header className="flex h-[60px] items-center justify-between bg-[var(--wa-panel)] px-4 pt-1">
-      <h1>
+      <h1 className="flex items-center gap-2">
         <Logo size={7} withWordmark wordmarkClassName="text-[22px]" />
+        {space === "work" && (
+          <span className="rounded-md bg-[#1a73e8]/15 px-2 py-0.5 text-xs font-medium text-[#1a73e8]">
+            עבודה
+          </span>
+        )}
       </h1>
       <div className="flex items-center gap-1 text-[var(--wa-text-secondary)]">
         <button

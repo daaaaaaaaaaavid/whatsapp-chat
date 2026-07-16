@@ -2,7 +2,7 @@
 
 import type { Profile } from "@/lib/types"
 import { Avatar } from "./avatar"
-import { MessageSquare, Phone, CircleDashed, UsersRound, Settings } from "lucide-react"
+import { MessageSquare, Phone, CircleDashed, UsersRound, Briefcase, Settings } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export type NavTab = "chats" | "calls" | "status" | "communities" | "settings"
@@ -11,19 +11,32 @@ type Props = {
   active: NavTab
   currentUser: Profile
   unreadTotal: number
+  /** When true, communities tab shows Work Spaces */
+  workMode?: boolean
   onChange: (tab: NavTab) => void
   onOpenProfile: () => void
 }
 
-const items: { id: NavTab; label: string; icon: typeof MessageSquare }[] = [
-  { id: "chats", label: "צ'אטים", icon: MessageSquare },
-  { id: "calls", label: "שיחות", icon: Phone },
-  { id: "status", label: "סטטוס", icon: CircleDashed },
-  { id: "communities", label: "קהילות", icon: UsersRound },
-  { id: "settings", label: "הגדרות", icon: Settings },
-]
+export function NavRail({
+  active,
+  currentUser,
+  unreadTotal,
+  workMode = false,
+  onChange,
+  onOpenProfile,
+}: Props) {
+  const items: { id: NavTab; label: string; icon: typeof MessageSquare }[] = [
+    { id: "chats", label: "צ'אטים", icon: MessageSquare },
+    { id: "calls", label: "שיחות", icon: Phone },
+    { id: "status", label: "סטטוס", icon: CircleDashed },
+    {
+      id: "communities",
+      label: workMode ? "Spaces" : "קהילות",
+      icon: workMode ? Briefcase : UsersRound,
+    },
+    { id: "settings", label: "הגדרות", icon: Settings },
+  ]
 
-export function NavRail({ active, currentUser, unreadTotal, onChange, onOpenProfile }: Props) {
   return (
     <nav className="flex w-[60px] shrink-0 flex-col items-center border-l border-[var(--wa-border)] bg-[var(--wa-header)] py-3">
       <div className="flex flex-1 flex-col items-center gap-1">
@@ -39,7 +52,10 @@ export function NavRail({ active, currentUser, unreadTotal, onChange, onOpenProf
               aria-current={isActive ? "page" : undefined}
               className={cn(
                 "relative flex h-11 w-11 items-center justify-center rounded-full text-[var(--wa-text-secondary)] transition hover:bg-black/5",
-                isActive && "bg-[var(--wa-accent-soft)] text-[#00a884]",
+                isActive &&
+                  (workMode && id === "communities"
+                    ? "bg-[#1a73e8]/15 text-[#1a73e8]"
+                    : "bg-[var(--wa-accent-soft)] text-[#00a884]"),
               )}
             >
               <Icon className="h-5 w-5" strokeWidth={isActive ? 2.25 : 1.75} />

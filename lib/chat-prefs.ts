@@ -1,3 +1,6 @@
+import type { ChatSpace } from "@/lib/chat-space"
+import { DEFAULT_WORK_QUIET } from "@/lib/chat-space"
+
 export type ChatPrefs = {
   archived: string[]
   favorites: string[]
@@ -11,6 +14,17 @@ export type ChatPrefs = {
   hiddenMessages: string[]
   /** messageId -> emoji chosen by this user (local until DB reactions exist) */
   reactions: Record<string, string>
+  /**
+   * Conversation IDs tagged as Work for this user only.
+   * Untagged = Personal. Same conversation row — no duplicated messages/storage.
+   */
+  workConversations: string[]
+  /** Which inbox the user is viewing */
+  activeSpace: ChatSpace
+  /** When true, Work notifications are silenced during quiet hours */
+  workQuietHoursEnabled: boolean
+  workQuietStart: string
+  workQuietEnd: string
 }
 
 const EMPTY: ChatPrefs = {
@@ -22,10 +36,23 @@ const EMPTY: ChatPrefs = {
   pinnedMessages: [],
   hiddenMessages: [],
   reactions: {},
+  workConversations: [],
+  activeSpace: "personal",
+  workQuietHoursEnabled: DEFAULT_WORK_QUIET.enabled,
+  workQuietStart: DEFAULT_WORK_QUIET.start,
+  workQuietEnd: DEFAULT_WORK_QUIET.end,
 }
 
 function key(userId: string) {
   return `wa-chat-prefs:${userId}`
+}
+
+function normalizeSpace(value: unknown): ChatSpace {
+  return value === "work" ? "work" : "personal"
+}
+
+function normalizeHm(value: unknown, fallback: string): string {
+  return typeof value === "string" && /^\d{1,2}:\d{2}$/.test(value.trim()) ? value.trim() : fallback
 }
 
 export function loadChatPrefs(userId: string): ChatPrefs {
@@ -46,6 +73,14 @@ export function loadChatPrefs(userId: string): ChatPrefs {
         parsed.reactions && typeof parsed.reactions === "object" && !Array.isArray(parsed.reactions)
           ? parsed.reactions
           : {},
+      workConversations: Array.isArray(parsed.workConversations) ? parsed.workConversations : [],
+      activeSpace: normalizeSpace(parsed.activeSpace),
+      workQuietHoursEnabled:
+        typeof parsed.workQuietHoursEnabled === "boolean"
+          ? parsed.workQuietHoursEnabled
+          : DEFAULT_WORK_QUIET.enabled,
+      workQuietStart: normalizeHm(parsed.workQuietStart, DEFAULT_WORK_QUIET.start),
+      workQuietEnd: normalizeHm(parsed.workQuietEnd, DEFAULT_WORK_QUIET.end),
     }
   } catch {
     return { ...EMPTY, reactions: {} }
@@ -71,6 +106,11 @@ export function saveChatPrefs(userId: string, prefs: ChatPrefs) {
             pinnedMessages: prefs.pinnedMessages,
             hiddenMessages: prefs.hiddenMessages,
             reactions: prefs.reactions,
+            workConversations: prefs.workConversations,
+            activeSpace: prefs.activeSpace,
+            workQuietHoursEnabled: prefs.workQuietHoursEnabled,
+            workQuietStart: prefs.workQuietStart,
+            workQuietEnd: prefs.workQuietEnd,
           },
         })
         .eq("id", userId)
@@ -94,6 +134,19 @@ export function mergeRemoteChatPrefs(userId: string, remote: Partial<ChatPrefs> 
       remote.reactions && typeof remote.reactions === "object" && !Array.isArray(remote.reactions)
         ? remote.reactions
         : local.reactions,
+    workConversations: Array.isArray(remote.workConversations)
+      ? remote.workConversations
+      : local.workConversations,
+    activeSpace:
+      remote.activeSpace === "work" || remote.activeSpace === "personal"
+        ? remote.activeSpace
+        : local.activeSpace,
+    workQuietHoursEnabled:
+      typeof remote.workQuietHoursEnabled === "boolean"
+        ? remote.workQuietHoursEnabled
+        : local.workQuietHoursEnabled,
+    workQuietStart: normalizeHm(remote.workQuietStart, local.workQuietStart),
+    workQuietEnd: normalizeHm(remote.workQuietEnd, local.workQuietEnd),
   }
   localStorage.setItem(key(userId), JSON.stringify(merged))
   return merged

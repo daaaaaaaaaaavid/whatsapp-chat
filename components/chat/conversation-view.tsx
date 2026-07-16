@@ -60,6 +60,7 @@ type Props = {
   onToggleArchive: () => void
   onToggleFavorite: () => void
   onTogglePinned: () => void
+  onMoveToSpace?: (space: "personal" | "work") => void
   onMessageActivity?: (message: Message) => void
   onConversationOpened?: (conversationId: string) => void
   isArchived: boolean
@@ -87,6 +88,7 @@ export function ConversationView({
   onToggleArchive,
   onToggleFavorite,
   onTogglePinned,
+  onMoveToSpace,
   onMessageActivity,
   onConversationOpened,
   isArchived,
@@ -762,6 +764,23 @@ export function ConversationView({
                 >
                   {isArchived ? "הוצא מארכיון" : "העבר לארכיון"}
                 </button>
+                {onMoveToSpace && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false)
+                      const next = prefs.workConversations.includes(conversation.id)
+                        ? "personal"
+                        : "work"
+                      onMoveToSpace(next)
+                    }}
+                    className="block w-full px-5 py-2.5 text-right text-sm text-[var(--wa-text)] hover:bg-[var(--wa-hover)]"
+                  >
+                    {prefs.workConversations.includes(conversation.id)
+                      ? "העבר לאישי"
+                      : "העבר לעבודה"}
+                  </button>
+                )}
               </div>
             </>
           )}

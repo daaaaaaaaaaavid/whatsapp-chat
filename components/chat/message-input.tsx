@@ -15,7 +15,7 @@ import {
 import { createClient } from "@/lib/supabase/client"
 import type { Message, MessageType } from "@/lib/types"
 import { parseCallSystemPayload, callSystemLabel } from "@/lib/call-system-message"
-import { notifyOfflineRecipients } from "@/lib/push-client"
+import { notifyOfflineRecipients, notifyGoogleChat } from "@/lib/push-client"
 import {
   isAllowedMediaFile,
   MAX_MEDIA_BYTES,
@@ -390,6 +390,10 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
       }
       onSent(real, tempId)
       notifyOfflineRecipients({
+        conversationId,
+        messageId: real.id,
+      })
+      notifyGoogleChat({
         conversationId,
         messageId: real.id,
       })

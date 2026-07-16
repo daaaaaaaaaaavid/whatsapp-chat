@@ -93,6 +93,23 @@ export function notifyOfflineRecipients(opts: {
   })
 }
 
+/** Fire-and-forget: forward a Space channel message to Google Chat webhook (if configured). */
+export function notifyGoogleChat(opts: {
+  conversationId: string
+  messageId: string
+}) {
+  void fetch("/api/google-chat/notify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      conversationId: opts.conversationId,
+      messageId: opts.messageId,
+    }),
+  }).catch((err) => {
+    console.error("notifyGoogleChat failed:", err)
+  })
+}
+
 /** Fire-and-forget: notify the status owner about a new reply. */
 export function notifyStatusOwner(opts: {
   statusId: string

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { joinConversationByInvite } from "@/lib/chat-actions"
+import { joinWorkSpaceByInvite } from "@/lib/space-actions"
 import { Logo } from "@/components/brand/logo"
 
 type Props = {
@@ -13,7 +14,7 @@ type Props = {
 export function InviteClient({ token }: Props) {
   const router = useRouter()
   const [status, setStatus] = useState<"loading" | "ok" | "error">("loading")
-  const [message, setMessage] = useState("מצטרף לשיחה...")
+  const [message, setMessage] = useState("מצטרף...")
 
   useEffect(() => {
     let cancelled = false
@@ -26,11 +27,30 @@ export function InviteClient({ token }: Props) {
           router.replace(`/auth/login?next=${next}`)
           return
         }
-        const conversationId = await joinConversationByInvite(token)
-        if (cancelled) return
-        setStatus("ok")
-        setMessage("הצטרפת בהצלחה! מעביר לצ'אט...")
-        router.replace(`/chat?c=${conversationId}`)
+
+        // Space invites use ws_ prefix; otherwise try conversation then space.
+        if (token.startsWith("ws_")) {
+          const spaceId = await joinWorkSpaceByInvite(token)
+          if (cancelled) return
+          setStatus("ok")
+          setMessage("הצטרפת ל־Space! מעביר...")
+          router.replace(`/chat?tab=communities&space=${spaceId}`)
+          return
+        }
+
+        try {
+          const conversationId = await joinConversationByInvite(token)
+          if (cancelled) return
+          setStatus("ok")
+          setMessage("הצטרפת בהצלחה! מעביר לצ'אט...")
+          router.replace(`/chat?c=${conversationId}`)
+        } catch {
+          const spaceId = await joinWorkSpaceByInvite(token)
+          if (cancelled) return
+          setStatus("ok")
+          setMessage("הצטרפת ל־Space! מעביר...")
+          router.replace(`/chat?tab=communities&space=${spaceId}`)
+        }
       } catch (err) {
         if (cancelled) return
         setStatus("error")

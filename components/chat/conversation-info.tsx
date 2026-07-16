@@ -12,7 +12,8 @@ import { Avatar } from "./avatar"
 import { convAvatarUrl, convDisplayName, isSelfConversation, otherParticipantId } from "@/lib/conversation-display"
 import { mediaItemsFromMessages, type GalleryItem } from "./media-gallery"
 import { useSignedMediaUrl } from "@/lib/use-signed-media-url"
-import { X, Bell, BellOff, Ban, Trash2, Users, Archive, Star, ImageIcon, Pin, Link2, Check, Play } from "lucide-react"
+import { X, Bell, BellOff, Ban, Trash2, Users, Archive, Star, ImageIcon, Pin, Link2, Check, Play, Briefcase, User } from "lucide-react"
+import type { ChatSpace } from "@/lib/chat-space"
 
 function InfoMediaThumb({ item, onOpen }: { item: GalleryItem; onOpen: () => void }) {
   const url = useSignedMediaUrl(item.url)
@@ -46,10 +47,12 @@ type Props = {
   onToggleFavorite?: () => void
   onToggleMute?: () => void
   onTogglePinned?: () => void
+  onMoveToSpace?: (space: ChatSpace) => void
   isArchived?: boolean
   isFavorite?: boolean
   isMuted?: boolean
   isPinned?: boolean
+  conversationSpace?: ChatSpace
   onOpenMedia?: (messageId: string) => void
   onLeftOrDeleted?: () => void
 }
@@ -62,10 +65,12 @@ export function ConversationInfo({
   onToggleFavorite,
   onToggleMute,
   onTogglePinned,
+  onMoveToSpace,
   isArchived,
   isFavorite,
   isMuted,
   isPinned,
+  conversationSpace = "personal",
   onOpenMedia,
   onLeftOrDeleted,
 }: Props) {
@@ -329,6 +334,20 @@ export function ConversationInfo({
                 <Bell className="h-5 w-5 text-[var(--wa-text-secondary)]" />
               )}
               {isMuted ? "ביטול השתקת התראות" : "השתקת התראות"}
+            </button>
+          )}
+          {onMoveToSpace && (
+            <button
+              type="button"
+              onClick={() => onMoveToSpace(conversationSpace === "work" ? "personal" : "work")}
+              className="flex w-full items-center gap-4 px-6 py-4 text-right text-[var(--wa-text)] transition hover:bg-[var(--wa-hover)]"
+            >
+              {conversationSpace === "work" ? (
+                <User className="h-5 w-5 text-[var(--wa-text-secondary)]" />
+              ) : (
+                <Briefcase className="h-5 w-5 text-[#1a73e8]" />
+              )}
+              {conversationSpace === "work" ? "העבר לאישי" : "העבר לעבודה"}
             </button>
           )}
           {!isSelf && !conversation.is_group && (

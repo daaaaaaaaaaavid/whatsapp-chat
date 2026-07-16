@@ -95,9 +95,43 @@ export type Conversation = {
   created_by: string | null
   created_at: string
   updated_at: string
+  /** When set, this group is a channel inside a Work Space */
+  work_space_id?: string | null
   participants?: Participant[]
   last_message?: Message | null
   unread_count?: number
+}
+
+export type WorkSpaceRole = "admin" | "member"
+
+export type WorkSpace = {
+  id: string
+  name: string
+  description: string | null
+  avatar_url: string | null
+  created_by: string | null
+  created_at: string
+  role?: WorkSpaceRole
+  member_count?: number
+  channel_count?: number
+  /** Present for all members: whether forwarding is on */
+  google_chat_forward_enabled?: boolean
+  /**
+   * Incoming webhook URL — only returned to Space admins.
+   * Never expose to non-admins in API responses.
+   */
+  google_chat_webhook_url?: string | null
+  /** True when a webhook is configured (non-admins see this instead of the URL) */
+  google_chat_webhook_configured?: boolean
+}
+
+export type WorkSpaceMember = {
+  id: string
+  space_id: string
+  user_id: string
+  role: WorkSpaceRole
+  joined_at: string
+  profile?: Profile
 }
 
 export type StatusAudienceMode = "contacts" | "contacts_except" | "selected_contacts"

@@ -8,15 +8,25 @@ import { mediaReferenceUrl } from "@/lib/media-url"
 import type { Profile } from "@/lib/types"
 import { Camera, Check, Pencil } from "lucide-react"
 import { ThemeToggle } from "@/components/theme-toggle"
+import type { ChatPrefs } from "@/lib/chat-prefs"
 
 type Props = {
   open: boolean
   currentUser: Profile
+  prefs?: ChatPrefs
+  onPrefsChange?: (next: ChatPrefs) => void
   onClose: () => void
   onUpdated: (p: Profile) => void
 }
 
-export function ProfileDialog({ open, currentUser, onClose, onUpdated }: Props) {
+export function ProfileDialog({
+  open,
+  currentUser,
+  prefs,
+  onPrefsChange,
+  onClose,
+  onUpdated,
+}: Props) {
   const [name, setName] = useState(currentUser.display_name ?? "")
   const [about, setAbout] = useState(currentUser.about ?? "זמין")
   const [avatarUrl, setAvatarUrl] = useState(currentUser.avatar_url)
@@ -164,6 +174,43 @@ export function ProfileDialog({ open, currentUser, onClose, onUpdated }: Props) 
             הבחירה נשמרת אישית עבור החשבון הזה במכשיר הנוכחי.
           </p>
         </div>
+
+        {prefs && onPrefsChange && (
+          <div className="border-t border-[var(--wa-border)] px-6 py-4">
+            <label className="text-sm text-[#008069]">שעות שקט — מצב עבודה</label>
+            <p className="mt-1 text-xs text-[var(--wa-text-secondary)]">
+              בשעות אלה התראות מצ׳אטי עבודה מושתקות (גם כשאתה במצב עבודה).
+            </p>
+            <label className="mt-3 flex items-center gap-2 text-sm text-[var(--wa-text)]">
+              <input
+                type="checkbox"
+                checked={prefs.workQuietHoursEnabled}
+                onChange={(e) =>
+                  onPrefsChange({ ...prefs, workQuietHoursEnabled: e.target.checked })
+                }
+                className="h-4 w-4 accent-[#00a884]"
+              />
+              הפעל שעות שקט
+            </label>
+            <div className="mt-3 flex items-center gap-3" dir="ltr">
+              <input
+                type="time"
+                value={prefs.workQuietStart}
+                disabled={!prefs.workQuietHoursEnabled}
+                onChange={(e) => onPrefsChange({ ...prefs, workQuietStart: e.target.value })}
+                className="rounded-md border border-[var(--wa-border)] bg-transparent px-2 py-1.5 text-sm text-[var(--wa-text)] disabled:opacity-40"
+              />
+              <span className="text-xs text-[var(--wa-text-secondary)]">עד</span>
+              <input
+                type="time"
+                value={prefs.workQuietEnd}
+                disabled={!prefs.workQuietHoursEnabled}
+                onChange={(e) => onPrefsChange({ ...prefs, workQuietEnd: e.target.value })}
+                className="rounded-md border border-[var(--wa-border)] bg-transparent px-2 py-1.5 text-sm text-[var(--wa-text)] disabled:opacity-40"
+              />
+            </div>
+          </div>
+        )}
       </div>
     </Modal>
   )

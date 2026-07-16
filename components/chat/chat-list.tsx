@@ -12,9 +12,10 @@ import {
 import { formatChatListTime } from "@/lib/format"
 import { MessageTicks } from "./message-ticks"
 import { messageTickStatus } from "@/lib/message-status"
-import { Archive, Laptop, Pin, Search, Star, X } from "lucide-react"
+import { Archive, Laptop, Pin, Search, Star, X, Briefcase, User } from "lucide-react"
 import { useMemo, useState } from "react"
 import { cn } from "@/lib/utils"
+import type { ChatSpace } from "@/lib/chat-space"
 
 type FilterId = "all" | "unread" | "favorites" | "groups"
 
@@ -24,10 +25,12 @@ type Props = {
   currentUser: Profile
   activeId: string | null
   prefs: ChatPrefs
+  activeSpace: ChatSpace
   onSelect: (conv: Conversation) => void
   onToggleArchive: (id: string) => void
   onToggleFavorite: (id: string) => void
   onTogglePinned: (id: string) => void
+  onMoveToSpace: (id: string, space: ChatSpace) => void
 }
 
 const FILTERS: { id: FilterId; label: string }[] = [
@@ -43,10 +46,12 @@ export function ChatList({
   currentUser,
   activeId,
   prefs,
+  activeSpace,
   onSelect,
   onToggleArchive,
   onToggleFavorite,
   onTogglePinned,
+  onMoveToSpace,
 }: Props) {
   const [query, setQuery] = useState("")
   const [filter, setFilter] = useState<FilterId>("all")
@@ -293,6 +298,26 @@ export function ChatList({
                         }}
                       >
                         {archivedSet.has(conv.id) ? "הוצא מארכיון" : "העבר לארכיון"}
+                      </button>
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-2 px-4 py-2 text-right text-sm text-[var(--wa-text)] hover:bg-[var(--wa-hover)]"
+                        onClick={() => {
+                          onMoveToSpace(conv.id, activeSpace === "work" ? "personal" : "work")
+                          setMenuId(null)
+                        }}
+                      >
+                        {activeSpace === "work" ? (
+                          <>
+                            <User className="h-4 w-4 text-[var(--wa-text-secondary)]" />
+                            העבר לאישי
+                          </>
+                        ) : (
+                          <>
+                            <Briefcase className="h-4 w-4 text-[var(--wa-text-secondary)]" />
+                            העבר לעבודה
+                          </>
+                        )}
                       </button>
                     </div>
                   </>

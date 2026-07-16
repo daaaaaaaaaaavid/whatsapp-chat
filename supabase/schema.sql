@@ -17,6 +17,9 @@ create table if not exists public.profiles (
 alter table public.profiles add column if not exists chat_prefs jsonb not null default '{}'::jsonb;
 alter table public.profiles add column if not exists google_contacts_synced_at timestamptz;
 
+-- Work Spaces live in dedicated tables; see migration-work-spaces.sql
+-- conversations.work_space_id links group channels to a space (no message duplication).
+
 -- Conversations
 create table if not exists public.conversations (
   id uuid primary key default gen_random_uuid(),
@@ -25,8 +28,12 @@ create table if not exists public.conversations (
   avatar_url text,
   created_by uuid references auth.users (id) on delete set null,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  work_space_id uuid
 );
+
+alter table public.conversations
+  add column if not exists work_space_id uuid;
 
 -- Participants
 create table if not exists public.conversation_participants (
