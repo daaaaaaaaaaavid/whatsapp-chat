@@ -32,6 +32,7 @@ import { ForwardDialog } from "./forward-dialog"
 import { convAvatarUrl, convDisplayName, isSelfConversation } from "@/lib/conversation-display"
 import { formatDateDivider, formatChatListTime } from "@/lib/format"
 import { parseCallSystemPayload } from "@/lib/call-system-message"
+import { parsePollPayload } from "@/lib/poll"
 import {
   ChevronDown,
   ChevronUp,
@@ -899,6 +900,8 @@ export function ConversationView({
                   onEdit={
                     message.sender_id === currentUser.id &&
                     message.type !== "system" &&
+                    message.type !== "poll" &&
+                    !parsePollPayload(message.content) &&
                     !message.deleted_at
                       ? () => {
                           setReplyTo(null)
@@ -916,6 +919,7 @@ export function ConversationView({
                   isSelected={selectedIds.includes(message.id)}
                   currentUserAvatarUrl={currentUser.avatar_url}
                   currentUserName={currentUser.display_name}
+                  currentUserId={currentUser.id}
                   reaction={prefs.reactions[message.id] ?? null}
                   isStarred={prefs.starredMessages.includes(message.id)}
                   isPinned={prefs.pinnedMessages.includes(message.id)}

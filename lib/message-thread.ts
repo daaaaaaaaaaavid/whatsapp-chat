@@ -55,7 +55,9 @@ export function threadReplyPreview(message: Message): string {
   if (message.type === "video") return "סרטון"
   if (message.type === "audio") return "הודעה קולית"
   if (message.type === "file") return message.file_name ?? "קובץ"
+  if (message.type === "poll") return "📊 סקר"
   const text = (message.content ?? "").trim()
   if (!text) return "הודעה"
+  if (text.startsWith("{") && text.includes('"kind":"poll"')) return "📊 סקר"
   return text.length > 80 ? `${text.slice(0, 80)}…` : text
 }

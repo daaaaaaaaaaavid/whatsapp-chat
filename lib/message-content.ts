@@ -43,6 +43,7 @@ export function isCallSystemContent(content: string | null | undefined): boolean
 export function displayMessageContent(content: string | null | undefined, type?: string): string {
   const payload = parseCallSystemPayload(content)
   if (payload) return callSystemLabel(payload)
+  if (type === "poll") return "📊 סקר"
   return content ?? ""
 }
 

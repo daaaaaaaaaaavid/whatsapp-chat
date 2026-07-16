@@ -19,7 +19,7 @@ export type GoogleContact = {
   matched_profile_id: string | null
 }
 
-export type MessageType = "text" | "image" | "file" | "audio" | "video" | "system"
+export type MessageType = "text" | "image" | "file" | "audio" | "video" | "system" | "poll"
 
 /** Structured payload for system call messages (stored as JSON in content). */
 export type CallSystemPayload = {
@@ -27,6 +27,27 @@ export type CallSystemPayload = {
   event: "incoming" | "outgoing" | "ended" | "missed" | "rejected"
   video: boolean
   durationSec?: number
+}
+
+/** Structured payload for poll messages (stored as JSON in content). */
+export type PollOption = {
+  id: string
+  text: string
+}
+
+export type PollPayload = {
+  kind: "poll"
+  question: string
+  options: PollOption[]
+  allowMultiple?: boolean
+}
+
+export type PollVote = {
+  id: string
+  message_id: string
+  user_id: string
+  option_id: string
+  created_at: string
 }
 
 export type Message = {

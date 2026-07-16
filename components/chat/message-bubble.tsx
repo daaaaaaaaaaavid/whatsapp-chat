@@ -7,9 +7,11 @@ import { formatTime, formatFileSize, avatarColor } from "@/lib/format"
 import { callSystemLabel, parseCallSystemPayload } from "@/lib/call-system-message"
 import { extractUrls, parseReplyContent } from "@/lib/message-content"
 import { plainMessageText } from "@/lib/message-formatting"
+import { parsePollPayload, pollPreviewLabel } from "@/lib/poll"
 import { messageTickStatus } from "@/lib/message-status"
 import { MessageTicks } from "./message-ticks"
 import { VoiceMessage } from "./voice-message"
+import { PollMessage } from "./poll-message"
 import { resolveMediaKind } from "./media-gallery"
 import { isExpiredChatMedia, MEDIA_EXPIRED_LABEL } from "@/lib/media-retention"
 import { useSignedMediaUrlControls } from "@/lib/use-signed-media-url"
@@ -76,6 +78,7 @@ type Props = {
   isSelected?: boolean
   currentUserAvatarUrl?: string | null
   currentUserName?: string | null
+  currentUserId?: string
   reaction?: string | null
   isStarred?: boolean
   isPinned?: boolean
@@ -92,6 +95,8 @@ function replyPreviewText(message: Message) {
   if (message.type === "video") return "סרטון"
   if (message.type === "audio") return "הודעה קולית"
   if (message.type === "file") return message.file_name ?? "קובץ"
+  const poll = parsePollPayload(message.content)
+  if (poll || message.type === "poll") return poll ? pollPreviewLabel(poll) : "📊 סקר"
   const call = parseCallSystemPayload(message.content)
   if (call) return callSystemLabel(call)
   const legacy = parseReplyContent(message.content)
@@ -101,6 +106,12 @@ function replyPreviewText(message: Message) {
 }
 
 function copyMessageText(message: Message) {
+  const poll = parsePollPayload(message.content)
+  if (poll || message.type === "poll") {
+    const lines = [poll?.question ?? "סקר", ...(poll?.options.map((o) => `• ${o.text}`) ?? [])]
+    void navigator.clipboard.writeText(lines.filter(Boolean).join("\n"))
+    return
+  }
   const reply = parseReplyContent(message.content)
   const body = message.reply_to_id ? message.content : (reply?.body ?? message.content)
   const parts: string[] = []
@@ -138,6 +149,7 @@ export function MessageBubble({
   isSelected,
   currentUserAvatarUrl,
   currentUserName,
+  currentUserId,
   reaction: reactionProp,
   isStarred,
   isPinned,
@@ -162,6 +174,8 @@ export function MessageBubble({
 
   const reaction = reactionProp ?? null
   const callPayload = parseCallSystemPayload(message.content)
+  const pollPayload = parsePollPayload(message.content)
+  const isPoll = message.type === "poll" || Boolean(pollPayload)
 
   const readCount = (message.reads ?? []).filter((r) => r.user_id !== message.sender_id).length
   const status = messageTickStatus(message, totalOthers)
@@ -286,12 +300,15 @@ export function MessageBubble({
       }
     : legacyReply
   const bodyText = structuredTarget ? message.content : (legacyReply?.body ?? message.content)
-  const urls = bodyText ? extractUrls(plainMessageText(bodyText)) : []
+  const pollBody = isPoll ? pollPayload : null
+  const displayBodyText = pollBody ? null : bodyText
+  const urls = displayBodyText ? extractUrls(plainMessageText(displayBodyText)) : []
   const canEdit =
     isMine &&
     Boolean(onEdit) &&
     !message.pending &&
     !message.id.startsWith("temp-") &&
+    !isPoll &&
     (message.type === "text" || Boolean(bodyText?.trim()))
 
   const pickReaction = (emoji: string) => {
@@ -588,6 +605,16 @@ export function MessageBubble({
           />
         )}
 
+        {pollBody && currentUserId && (
+          <PollMessage
+            messageId={message.id}
+            payload={pollBody}
+            currentUserId={currentUserId}
+            participants={participants}
+            pending={message.pending}
+          />
+        )}
+
         {mediaKind === "file" && message.file_url && (
           <button
             type="button"
@@ -607,15 +634,15 @@ export function MessageBubble({
           </button>
         )}
 
-        {bodyText && message.type !== "audio" && (
+        {displayBodyText && message.type !== "audio" && (
           <MessageText
-            text={bodyText}
+            text={displayBodyText}
             searchQuery={searchQuery}
             onStartChatByEmail={onStartChatByEmail}
           />
         )}
 
-        {urls[0] && message.type === "text" && <LinkPreview url={urls[0]} />}
+        {urls[0] && message.type === "text" && !isPoll && <LinkPreview url={urls[0]} />}
 
         {message.type !== "audio" && (
           <span className="float-right ml-2 mt-1 flex items-center gap-1 text-[11px] text-[var(--wa-text-secondary)]" dir="ltr">

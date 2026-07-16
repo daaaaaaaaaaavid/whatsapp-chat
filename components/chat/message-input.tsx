@@ -43,8 +43,12 @@ import {
   Italic,
   Palette,
   LoaderCircle,
+  BarChart3,
 } from "lucide-react"
 import { parseReplyContent } from "@/lib/message-content"
+import { encodePollPayload, parsePollPayload, pollPreviewLabel } from "@/lib/poll"
+import type { PollPayload } from "@/lib/types"
+import { PollDialog } from "./poll-dialog"
 import {
   decodeFormattedMessage,
   DEFAULT_MESSAGE_FORMATTING,
@@ -119,6 +123,8 @@ function replyPreview(message: Message) {
   if (message.type === "video") return "סרטון"
   if (message.type === "audio") return "הודעה קולית"
   if (message.type === "file") return message.file_name ?? "קובץ"
+  const poll = parsePollPayload(message.content)
+  if (poll || message.type === "poll") return poll ? pollPreviewLabel(poll) : "📊 סקר"
   const call = parseCallSystemPayload(message.content)
   if (call) return callSystemLabel(call)
   if (message.content) return plainMessageText(message.content)
@@ -176,6 +182,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
   const [text, setText] = useState("")
   const [sending, setSending] = useState(false)
   const [showAttach, setShowAttach] = useState(false)
+  const [showPoll, setShowPoll] = useState(false)
   const [showEmoji, setShowEmoji] = useState(false)
   const [showFormatting, setShowFormatting] = useState(false)
   const [formatting, setFormatting] = useState<MessageFormatting>({ ...DEFAULT_MESSAGE_FORMATTING })
@@ -282,6 +289,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
     textSelectionRef.current = { start: 0, end: 0 }
     setSending(false)
     setShowAttach(false)
+    setShowPoll(false)
     setShowEmoji(false)
     setShowFormatting(false)
     setFormatting({ ...DEFAULT_MESSAGE_FORMATTING })
@@ -356,6 +364,14 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
       if (error && payload.reply_to_id && /reply_to_id/i.test(error.message)) {
         const { reply_to_id: _omit, ...withoutReply } = row
         ;({ data, error } = await supabase.from("messages").insert(withoutReply).select("*").single())
+      }
+      // Fallback: store poll as text JSON if poll type not migrated yet
+      if (error && row.type === "poll" && /type|check|poll/i.test(error.message)) {
+        ;({ data, error } = await supabase
+          .from("messages")
+          .insert({ ...row, type: "text" })
+          .select("*")
+          .single())
       }
       if (error) {
         onSendFailed?.(tempId)
@@ -1210,8 +1226,45 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
             <FileText className="h-5 w-5 text-[#7f66ff]" />
             מסמך
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              setShowAttach(false)
+              setShowPoll(true)
+            }}
+            className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-[var(--wa-text)] transition hover:bg-[var(--wa-header)]"
+          >
+            <BarChart3 className="h-5 w-5 text-[#ffbc38]" />
+            סקר
+          </button>
         </div>
       )}
+
+      <PollDialog
+        open={showPoll}
+        onClose={() => setShowPoll(false)}
+        onSubmit={async (payload: PollPayload) => {
+          setSendError(null)
+          try {
+            await sendMessage({
+              type: "poll",
+              content: encodePollPayload(payload),
+              reply_to_id: replyTo?.id ?? null,
+              reply_to: replyTo ?? null,
+            })
+            if (!keepReplyAfterSend) onCancelReply?.()
+          } catch (err) {
+            const msg =
+              err instanceof Error
+                ? err.message
+                : err && typeof err === "object" && "message" in err
+                  ? String((err as { message?: unknown }).message ?? "")
+                  : "שליחת הסקר נכשלה"
+            setSendError(msg || "שליחת הסקר נכשלה")
+            throw err
+          }
+        }}
+      />
 
       <input
         ref={imageInputRef}

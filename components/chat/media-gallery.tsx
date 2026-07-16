@@ -40,7 +40,7 @@ export function resolveMediaKind(
 ): "image" | "video" | "file" | null {
   if (type === "image") return "image"
   if (type === "video") return "video"
-  if (type === "audio" || type === "system" || type === "text") return null
+  if (type === "audio" || type === "system" || type === "text" || type === "poll") return null
   const probe = `${fileName ?? ""} ${fileUrl ?? ""}`
   if (IMAGE_EXT.test(probe)) return "image"
   if (VIDEO_EXT.test(probe)) return "video"

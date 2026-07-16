@@ -1,6 +1,7 @@
 import type { Conversation, Message } from "@/lib/types"
 import { callSystemLabel, parseCallSystemPayload } from "@/lib/call-system-message"
 import { plainMessageText } from "@/lib/message-formatting"
+import { parsePollPayload, pollPreviewLabel } from "@/lib/poll"
 
 /** Non-group chat with only the current user (notes / message yourself). */
 export function isSelfConversation(conv: Conversation, currentUserId: string): boolean {
@@ -33,6 +34,10 @@ export function otherParticipantId(conv: Conversation, currentUserId: string): s
 export function messagePreview(msg: Message | null | undefined): string {
   if (!msg) return "אין הודעות עדיין"
   if (msg.deleted_at) return "ההודעה נמחקה"
+  const poll = parsePollPayload(msg.content)
+  if (poll || msg.type === "poll") {
+    return poll ? pollPreviewLabel(poll) : "📊 סקר"
+  }
   const call = parseCallSystemPayload(msg.content)
   if (call || msg.type === "system") {
     return call ? callSystemLabel(call) : (msg.content ?? "הודעת מערכת")

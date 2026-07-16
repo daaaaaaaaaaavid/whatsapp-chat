@@ -105,6 +105,7 @@ export function ThreadPanel({
       onOpenMedia={onOpenMedia}
       currentUserAvatarUrl={currentUser.avatar_url}
       currentUserName={currentUser.display_name}
+      currentUserId={currentUser.id}
       reaction={prefs.reactions[message.id] ?? null}
       isStarred={prefs.starredMessages.includes(message.id)}
       isPinned={prefs.pinnedMessages.includes(message.id)}

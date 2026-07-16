@@ -44,7 +44,7 @@ create table if not exists public.messages (
   conversation_id uuid not null references public.conversations (id) on delete cascade,
   sender_id uuid not null references auth.users (id) on delete cascade,
   content text,
-  type text not null default 'text' check (type in ('text', 'image', 'file', 'audio', 'video', 'system')),
+  type text not null default 'text' check (type in ('text', 'image', 'file', 'audio', 'video', 'system', 'poll')),
   file_url text,
   file_name text,
   file_size bigint,
@@ -72,6 +72,18 @@ create table if not exists public.message_reads (
   read_at timestamptz not null default now(),
   unique (message_id, user_id)
 );
+
+-- Poll votes
+create table if not exists public.poll_votes (
+  id uuid primary key default gen_random_uuid(),
+  message_id uuid not null references public.messages (id) on delete cascade,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  option_id text not null,
+  created_at timestamptz not null default now(),
+  unique (message_id, user_id, option_id)
+);
+
+create index if not exists poll_votes_message_idx on public.poll_votes (message_id);
 
 -- Status updates
 create table if not exists public.statuses (
@@ -183,6 +195,7 @@ alter table public.conversations enable row level security;
 alter table public.conversation_participants enable row level security;
 alter table public.messages enable row level security;
 alter table public.message_reads enable row level security;
+alter table public.poll_votes enable row level security;
 alter table public.statuses enable row level security;
 alter table public.status_views enable row level security;
 alter table public.status_replies enable row level security;
@@ -433,6 +446,50 @@ create policy "reads_update_own"
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
 
+-- Poll votes
+drop policy if exists "poll_votes_select_participant" on public.poll_votes;
+create policy "poll_votes_select_participant"
+  on public.poll_votes for select
+  to authenticated
+  using (
+    exists (
+      select 1
+      from public.messages m
+      where m.id = message_id
+        and public.is_conversation_member(m.conversation_id)
+    )
+  );
+
+drop policy if exists "poll_votes_insert_own" on public.poll_votes;
+create policy "poll_votes_insert_own"
+  on public.poll_votes for insert
+  to authenticated
+  with check (
+    auth.uid() = user_id
+    and exists (
+      select 1
+      from public.messages m
+      where m.id = message_id
+        and m.type in ('poll', 'text')
+        and m.deleted_at is null
+        and public.is_conversation_member(m.conversation_id)
+    )
+  );
+
+drop policy if exists "poll_votes_delete_own" on public.poll_votes;
+create policy "poll_votes_delete_own"
+  on public.poll_votes for delete
+  to authenticated
+  using (
+    auth.uid() = user_id
+    and exists (
+      select 1
+      from public.messages m
+      where m.id = message_id
+        and public.is_conversation_member(m.conversation_id)
+    )
+  );
+
 -- Statuses: own + contacts only
 drop policy if exists "statuses_select_authenticated" on public.statuses;
 create policy "statuses_select_authenticated"
@@ -555,6 +612,10 @@ begin
   end;
   begin
     alter publication supabase_realtime add table public.status_replies;
+  exception when duplicate_object then null;
+  end;
+  begin
+    alter publication supabase_realtime add table public.poll_votes;
   exception when duplicate_object then null;
   end;
 end $$;
