@@ -282,12 +282,16 @@ export async function joinWorkSpaceByInvite(token: string): Promise<string> {
 export async function leaveWorkSpace(spaceId: string, userId: string): Promise<void> {
   await ensureSupabaseConfig()
   const supabase = createClient()
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("work_space_members")
     .delete()
     .eq("space_id", spaceId)
     .eq("user_id", userId)
+    .select("id")
   if (error) throw new Error(errMessage(error, "יציאה מה־Space נכשלה"))
+  if (!data?.length) {
+    throw new Error("לא ניתן לצאת מה־Space — ייתכן שכבר יצאת או שאין הרשאה")
+  }
 }
 
 export type UpdateGoogleChatForwardInput = {

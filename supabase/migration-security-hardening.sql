@@ -218,6 +218,16 @@ create policy "participants_insert_creator_or_admin"
     or public.is_conversation_admin(conversation_id)
   );
 
+drop policy if exists "participants_delete_own" on public.conversation_participants;
+drop policy if exists "participants_delete_self_or_admin" on public.conversation_participants;
+create policy "participants_delete_self_or_admin"
+  on public.conversation_participants for delete
+  to authenticated
+  using (
+    user_id = auth.uid()
+    or public.is_conversation_admin(conversation_id)
+  );
+
 -- =============================================================================
 -- 4) Conversations — only admins/creator can mutate metadata; ownership locked
 -- =============================================================================

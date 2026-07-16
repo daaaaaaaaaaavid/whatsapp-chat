@@ -357,12 +357,27 @@ export async function acceptDmInvite(token: string): Promise<string> {
 export async function leaveConversation(conversationId: string, userId: string): Promise<void> {
   await ensureSupabaseConfig()
   const supabase = createClient()
-  const { error } = await supabase
+  // .select() so RLS silent no-ops (0 rows) surface as errors instead of fake success
+  const { data, error } = await supabase
     .from("conversation_participants")
     .delete()
     .eq("conversation_id", conversationId)
     .eq("user_id", userId)
-  if (error) throw new Error(errMessage(error, "נכשל ביציאה מהשיחה"))
+    .select("id")
+  if (error) {
+    const msg = error.message.toLowerCase()
+    if (msg.includes("policy") || msg.includes("row-level")) {
+      throw new Error(
+        "אין הרשאה לצאת מהשיחה. הרץ את supabase/migration-leave-conversation.sql ב־Supabase.",
+      )
+    }
+    throw new Error(errMessage(error, "נכשל ביציאה מהשיחה"))
+  }
+  if (!data?.length) {
+    throw new Error(
+      "לא ניתן לצאת מהשיחה. הרץ את supabase/migration-leave-conversation.sql ב־Supabase.",
+    )
+  }
 }
 
 /** Create (or reuse) an invite link token for a group (admins only). */
