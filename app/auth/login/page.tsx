@@ -126,7 +126,14 @@ function LoginForm() {
 
           <p className="mt-6 text-center text-sm text-[var(--wa-text-secondary)]">
             אין לך חשבון?{" "}
-            <Link href="/auth/sign-up" className="font-medium text-[#008069] hover:underline">
+            <Link
+              href={
+                nextPath && nextPath !== "/chat"
+                  ? `/auth/sign-up?next=${encodeURIComponent(nextPath)}`
+                  : "/auth/sign-up"
+              }
+              className="font-medium text-[#008069] hover:underline"
+            >
               הרשמה
             </Link>
           </p>

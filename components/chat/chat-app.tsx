@@ -52,7 +52,7 @@ import { registerPushSubscription, ensureServiceWorker } from "@/lib/push-client
 import { messagePreview, convDisplayName, isSelfConversation } from "@/lib/conversation-display"
 import { LoadingScreen } from "./loading-screen"
 import { MessageToastStack, type MessageToastItem } from "./message-toast"
-import { startChatByEmail } from "@/lib/chat-actions"
+import { startChatOrInviteByEmail } from "@/lib/chat-actions"
 import { WORK_SPACES_UI_ENABLED, PERSONAL_WORK_UI_ENABLED } from "@/lib/site-config"
 
 type Props = {
@@ -535,7 +535,21 @@ export function ChatApp({ currentUser: initialUser }: Props) {
 
   const handleStartChatByEmail = useCallback(
     async (email: string) => {
-      const conversationId = await startChatByEmail(currentUser.id, email)
+      const result = await startChatOrInviteByEmail(currentUser.id, email)
+      if (result.status === "invited") {
+        try {
+          await navigator.clipboard.writeText(result.inviteUrl)
+        } catch {
+          // ignore clipboard failures
+        }
+        window.alert(
+          result.emailSent
+            ? `נשלחה הזמנה אל ${result.email}. קישור ההזמנה הועתק — אפשר גם להדביק בגוגל צ'אט.`
+            : `נוצרה הזמנה עבור ${result.email}. קישור ההזמנה הועתק — שלח אותו במייל או בגוגל צ'אט.`,
+        )
+        return
+      }
+      const conversationId = result.conversationId
       if (prefsRef.current.activeSpace === "work") {
         updatePrefs(setConversationSpace(prefsRef.current, conversationId, "work"))
       }

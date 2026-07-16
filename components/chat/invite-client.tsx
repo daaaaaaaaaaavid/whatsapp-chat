@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
-import { joinConversationByInvite } from "@/lib/chat-actions"
+import { acceptDmInvite, joinConversationByInvite } from "@/lib/chat-actions"
 import { joinWorkSpaceByInvite } from "@/lib/space-actions"
 import { Logo } from "@/components/brand/logo"
 
@@ -25,6 +25,16 @@ export function InviteClient({ token }: Props) {
         if (!data.user) {
           const next = encodeURIComponent(`/invite/${token}`)
           router.replace(`/auth/login?next=${next}`)
+          return
+        }
+
+        // DM invites use dm_ prefix
+        if (token.startsWith("dm_")) {
+          const conversationId = await acceptDmInvite(token)
+          if (cancelled) return
+          setStatus("ok")
+          setMessage("הצטרפת לשיחה! מעביר...")
+          router.replace(`/chat?c=${conversationId}`)
           return
         }
 

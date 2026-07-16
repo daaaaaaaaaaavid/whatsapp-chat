@@ -255,6 +255,108 @@ export async function startChatByEmail(
   return getOrCreateDirectConversation(currentUserId, profile.id)
 }
 
+export type DmInviteResult =
+  | { status: "chat"; conversationId: string }
+  | {
+      status: "invited"
+      inviteUrl: string
+      email: string
+      emailSent: boolean
+      emailChannel: "resend" | "supabase" | null
+      emailWarning: string | null
+      inviterName: string
+    }
+
+/** Start a DM if the user exists; otherwise create + email a secure invite. */
+export async function startChatOrInviteByEmail(
+  currentUserId: string,
+  email: string,
+): Promise<DmInviteResult> {
+  const profile = await findUserByEmail(email)
+  if (profile) {
+    const conversationId = await getOrCreateDirectConversation(currentUserId, profile.id)
+    return { status: "chat", conversationId }
+  }
+
+  const res = await fetch("/api/invites/dm", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: email.trim() }),
+  })
+
+  if (res.status === 429) {
+    throw new Error("נשלחו יותר מדי הזמנות. נסה שוב מאוחר יותר.")
+  }
+
+  const body = (await res.json().catch(() => null)) as {
+    status?: string
+    userId?: string
+    inviteUrl?: string
+    email?: string
+    emailSent?: boolean
+    emailChannel?: "resend" | "supabase" | null
+    emailWarning?: string | null
+    inviterName?: string
+    error?: string
+    message?: string
+  } | null
+
+  if (res.status === 503 && body?.error === "migration_required") {
+    throw new Error(body.message || "חסרה טבלת הזמנות. הרץ את migration-dm-invites.sql")
+  }
+
+  if (!res.ok) {
+    if (body?.error === "cannot_invite_self") throw new Error("לא ניתן להזמין את עצמך")
+    if (body?.error === "invalid_email") throw new Error("כתובת מייל לא תקינה")
+    throw new Error("נכשל בשליחת הזמנה")
+  }
+
+  if (body?.status === "already_registered" && body.userId) {
+    const conversationId = await getOrCreateDirectConversation(currentUserId, body.userId)
+    return { status: "chat", conversationId }
+  }
+
+  if (body?.status === "invited" && body.inviteUrl && body.email) {
+    return {
+      status: "invited",
+      inviteUrl: body.inviteUrl,
+      email: body.email,
+      emailSent: Boolean(body.emailSent),
+      emailChannel: body.emailChannel ?? null,
+      emailWarning: body.emailWarning ?? null,
+      inviterName: body.inviterName || "משתמש",
+    }
+  }
+
+  throw new Error("נכשל בשליחת הזמנה")
+}
+
+export async function acceptDmInvite(token: string): Promise<string> {
+  await ensureSupabaseConfig()
+  const supabase = createClient()
+  const { data, error } = await supabase.rpc("accept_dm_invite", { p_token: token })
+  if (error) {
+    const msg = error.message.toLowerCase()
+    if (msg.includes("function") && msg.includes("does not exist")) {
+      throw new Error("חסרה פונקציית הזמנה. הרץ את supabase/migration-dm-invites.sql ב־Supabase.")
+    }
+    if (msg.includes("email mismatch")) {
+      throw new Error("יש להתחבר עם אותו מייל שאליו נשלחה ההזמנה")
+    }
+    if (msg.includes("expired")) {
+      throw new Error("ההזמנה פגה. בקש קישור חדש.")
+    }
+    if (msg.includes("already used")) {
+      throw new Error("ההזמנה כבר נוצלה")
+    }
+    if (msg.includes("not found")) {
+      throw new Error("קישור הזמנה לא תקין")
+    }
+    throw new Error(errMessage(error, "נכשל בהצטרפות להזמנה"))
+  }
+  return data as string
+}
+
 /** Leave a group or remove yourself from a chat. */
 export async function leaveConversation(conversationId: string, userId: string): Promise<void> {
   await ensureSupabaseConfig()

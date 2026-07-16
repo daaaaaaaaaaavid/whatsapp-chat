@@ -6,11 +6,12 @@ import { createClient, ensureSupabaseConfig } from "@/lib/supabase/client"
 import { signInWithGoogle } from "@/lib/auth-google"
 import { GoogleSignInButton } from "@/components/auth/google-sign-in-button"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { useState, Suspense } from "react"
 import { Lock } from "lucide-react"
 import { Logo } from "@/components/brand/logo"
 import { AuthLegalFooter } from "@/components/legal/auth-legal-footer"
+import { safeRedirectPath } from "@/lib/safe-redirect"
 
 function errorMessage(err: unknown): string {
   if (err instanceof Error && err.message) return err.message
@@ -22,7 +23,7 @@ function errorMessage(err: unknown): string {
   return "אירעה שגיאה לא צפויה. נסה שוב."
 }
 
-export default function SignUpPage() {
+function SignUpForm() {
   const [displayName, setDisplayName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -31,6 +32,8 @@ export default function SignUpPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const nextPath = safeRedirectPath(searchParams.get("next"))
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -57,11 +60,12 @@ export default function SignUpPage() {
     try {
       await ensureSupabaseConfig()
       const supabase = createClient()
+      const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`
       const { data, error: signUpError } = await supabase.auth.signUp({
         email: email.trim(),
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
+          emailRedirectTo: redirectTo,
           data: { display_name: displayName.trim() },
         },
       })
@@ -73,6 +77,13 @@ export default function SignUpPage() {
 
       if (!data.user) {
         setError("לא נוצר משתמש. בדוק את הגדרות Authentication ב־Supabase.")
+        return
+      }
+
+      // If email confirmation is disabled, session exists — go straight to next
+      if (data.session) {
+        router.push(nextPath)
+        router.refresh()
         return
       }
 
@@ -89,7 +100,7 @@ export default function SignUpPage() {
     setGoogleLoading(true)
     setError(null)
     try {
-      await signInWithGoogle("/chat")
+      await signInWithGoogle(nextPath)
     } catch (err: unknown) {
       setError(
         err instanceof Error
@@ -206,7 +217,14 @@ export default function SignUpPage() {
 
           <p className="mt-6 text-center text-sm text-[var(--wa-text-secondary)]">
             כבר יש לך חשבון?{" "}
-            <Link href="/auth/login" className="font-medium text-[#008069] hover:underline">
+            <Link
+              href={
+                nextPath && nextPath !== "/chat"
+                  ? `/auth/login?next=${encodeURIComponent(nextPath)}`
+                  : "/auth/login"
+              }
+              className="font-medium text-[#008069] hover:underline"
+            >
               התחברות
             </Link>
           </p>
@@ -219,5 +237,13 @@ export default function SignUpPage() {
         <AuthLegalFooter />
       </div>
     </div>
+  )
+}
+
+export default function SignUpPage() {
+  return (
+    <Suspense fallback={<div className="min-h-svh bg-[var(--wa-header)]" />}>
+      <SignUpForm />
+    </Suspense>
   )
 }
