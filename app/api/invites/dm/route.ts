@@ -164,6 +164,15 @@ export async function POST(req: Request) {
           msg.includes("exists")
         ) {
           emailWarning = "user_exists_in_auth"
+        } else if (
+          msg.includes("rate limit") ||
+          msg.includes("rate_limit") ||
+          msg.includes("email rate") ||
+          msg.includes("too many")
+        ) {
+          // Supabase built-in SMTP: ~2 emails/hour. Fix: RESEND_API_KEY or custom SMTP.
+          emailWarning = "email_rate_limited"
+          console.error("Supabase invite rate limited:", inviteError.message)
         } else {
           emailWarning = "supabase_invite_failed"
           console.error("Supabase inviteUserByEmail:", inviteError.message)

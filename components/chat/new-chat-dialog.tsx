@@ -397,8 +397,12 @@ export function NewChatDialog({
           </p>
           <p className="mt-1 text-xs leading-relaxed text-[var(--wa-text-secondary)]">
             {inviteResult.emailSent
-              ? `${inviteResult.inviterName} הזמין אותך לשיחה… — המייל נשלח. אפשר גם להעתיק את הקישור ולשלוח בגוגל צ'אט.`
-              : "לא נשלח מייל אוטומטי (אין ספק מייל מוגדר / מכסת שליחה). העתק את הקישור ושלח במייל או בגוגל צ'אט."}
+              ? inviteResult.emailChannel === "resend"
+                ? "נשלח מייל בעברית עם קישור כניסה. אפשר גם להעתיק ולשלוח בגוגל צ'אט."
+                : "המייל נשלח (תבנית Supabase). לניסוח בעברית הגדר Resend — ראה .env.example."
+              : inviteResult.emailWarning === "email_rate_limited"
+                ? "נגמרה מכסת המיילים של Supabase (כ־2 לשעה). העתק את הקישור בינתיים, או חבר Resend חינמי (RESEND_API_KEY) לשליחה בעברית בלי המגבלה הזו."
+                : "לא נשלח מייל אוטומטי. העתק את הקישור ושלח במייל או בגוגל צ'אט — או הגדר RESEND_API_KEY לשליחה אוטומטית בעברית."}
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
