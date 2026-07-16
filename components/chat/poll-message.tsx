@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
-import type { Participant, PollPayload, PollVote } from "@/lib/types"
+import type { PollPayload, PollVote } from "@/lib/types"
 import {
   castPollVote,
   fetchPollVotes,
@@ -16,7 +16,6 @@ type Props = {
   messageId: string
   payload: PollPayload
   currentUserId: string
-  participants: Participant[]
   pending?: boolean
 }
 
@@ -24,7 +23,6 @@ export function PollMessage({
   messageId,
   payload,
   currentUserId,
-  participants,
   pending,
 }: Props) {
   const [votes, setVotes] = useState<PollVote[]>([])
@@ -73,11 +71,6 @@ export function PollMessage({
   const totalVoters = useMemo(() => new Set(votes.map((v) => v.user_id)).size, [votes])
   const hasVoted = selected.size > 0
   const allowMultiple = Boolean(payload.allowMultiple)
-
-  const nameFor = (userId: string) => {
-    const p = participants.find((x) => x.user_id === userId)?.profile
-    return p?.display_name ?? p?.email ?? "משתמש"
-  }
 
   const onVote = async (optionId: string) => {
     if (pending || messageId.startsWith("temp-") || busyOption) return
@@ -232,21 +225,6 @@ export function PollMessage({
           <span>לחץ שוב לביטול בחירה</span>
         )}
       </div>
-
-      {hasVoted && totalVoters > 0 && totalVoters <= 8 && (
-        <div className="space-y-1 border-t border-black/5 pt-2">
-          {payload.options.map((option) => {
-            const optionVotes = byOption.get(option.id) ?? []
-            if (!optionVotes.length) return null
-            const names = optionVotes.map((v) => nameFor(v.user_id)).join(", ")
-            return (
-              <p key={`who-${option.id}`} className="text-[11px] leading-snug text-[var(--wa-text-secondary)]">
-                <span className="font-medium text-[var(--wa-text)]">{option.text}:</span> {names}
-              </p>
-            )
-          })}
-        </div>
-      )}
 
       {error && <p className="text-[11px] text-red-500">{error}</p>}
     </div>

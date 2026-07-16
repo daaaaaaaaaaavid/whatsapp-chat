@@ -610,7 +610,6 @@ export function MessageBubble({
             messageId={message.id}
             payload={pollBody}
             currentUserId={currentUserId}
-            participants={participants}
             pending={message.pending}
           />
         )}
