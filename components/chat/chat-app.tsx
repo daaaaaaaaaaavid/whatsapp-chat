@@ -53,7 +53,7 @@ import { messagePreview, convDisplayName, isSelfConversation } from "@/lib/conve
 import { LoadingScreen } from "./loading-screen"
 import { MessageToastStack, type MessageToastItem } from "./message-toast"
 import { startChatByEmail } from "@/lib/chat-actions"
-import { WORK_SPACES_UI_ENABLED } from "@/lib/site-config"
+import { WORK_SPACES_UI_ENABLED, PERSONAL_WORK_UI_ENABLED } from "@/lib/site-config"
 
 type Props = {
   currentUser: Profile
@@ -197,13 +197,13 @@ export function ChatApp({ currentUser: initialUser }: Props) {
   )
   const workUnread = useMemo(() => unreadInSpace(conversations, prefs, "work"), [conversations, prefs])
 
-  const spaceConversations = useMemo(
-    () => filterConversationsBySpace(conversations, prefs, prefs.activeSpace),
-    [conversations, prefs],
-  )
+  const spaceConversations = useMemo(() => {
+    if (!PERSONAL_WORK_UI_ENABLED) return conversations
+    return filterConversationsBySpace(conversations, prefs, prefs.activeSpace)
+  }, [conversations, prefs])
 
   const visibleConversations = useMemo(() => {
-    if (!WORK_SPACES_UI_ENABLED) return spaceConversations
+    if (!PERSONAL_WORK_UI_ENABLED || !WORK_SPACES_UI_ENABLED) return spaceConversations
     if (prefs.activeSpace !== "work" || !selectedWorkSpaceId) return spaceConversations
     return spaceConversations.filter((c) => c.work_space_id === selectedWorkSpaceId)
   }, [spaceConversations, prefs.activeSpace, selectedWorkSpaceId])
@@ -624,18 +624,20 @@ export function ChatApp({ currentUser: initialUser }: Props) {
             <>
               <SidebarHeader
                 currentUserId={currentUser.id}
-                space={prefs.activeSpace}
+                space={PERSONAL_WORK_UI_ENABLED ? prefs.activeSpace : "personal"}
                 onNewChat={() => setNewChatOpen(true)}
                 onNewGroup={() => setNewGroupOpen(true)}
                 onOpenProfile={() => setProfileOpen(true)}
                 onLogout={handleLogout}
               />
-              <SpaceSwitcher
-                active={prefs.activeSpace}
-                personalUnread={personalUnread}
-                workUnread={workUnread}
-                onChange={setActiveSpace}
-              />
+              {PERSONAL_WORK_UI_ENABLED && (
+                <SpaceSwitcher
+                  active={prefs.activeSpace}
+                  personalUnread={personalUnread}
+                  workUnread={workUnread}
+                  onChange={setActiveSpace}
+                />
+              )}
               {WORK_SPACES_UI_ENABLED && prefs.activeSpace === "work" && (
                 <SpaceFilterChips
                   spaces={workSpaces}
@@ -655,7 +657,7 @@ export function ChatApp({ currentUser: initialUser }: Props) {
                 onToggleArchive={(id) => updatePrefs(toggleArchived(prefs, id))}
                 onToggleFavorite={(id) => updatePrefs(toggleFavorite(prefs, id))}
                 onTogglePinned={(id) => updatePrefs(togglePinned(prefs, id))}
-                onMoveToSpace={moveConversationToSpace}
+                onMoveToSpace={PERSONAL_WORK_UI_ENABLED ? moveConversationToSpace : undefined}
               />
             </>
           )}
@@ -696,8 +698,9 @@ export function ChatApp({ currentUser: initialUser }: Props) {
               <EmptyState title="שיחות" subtitle="בחר שיחה מהרשימה או התחל שיחה מצ'אט." />
             </div>
           ) : activeConversation &&
-            filterConversationsBySpace([activeConversation], prefs, prefs.activeSpace).length >
-              0 ? (
+            (!PERSONAL_WORK_UI_ENABLED ||
+              filterConversationsBySpace([activeConversation], prefs, prefs.activeSpace).length >
+                0) ? (
             <ChatPaneBoundary onClose={() => setActiveId(null)}>
             <div className="flex h-full min-w-0 flex-1">
               <div className={`min-h-0 min-w-0 flex-1 ${showInfo ? "hidden lg:block" : "block"}`}>
@@ -717,7 +720,11 @@ export function ChatApp({ currentUser: initialUser }: Props) {
                   onToggleArchive={() => updatePrefs(toggleArchived(prefs, activeConversation.id))}
                   onToggleFavorite={() => updatePrefs(toggleFavorite(prefs, activeConversation.id))}
                   onTogglePinned={() => updatePrefs(togglePinned(prefs, activeConversation.id))}
-                  onMoveToSpace={(space) => moveConversationToSpace(activeConversation.id, space)}
+                  onMoveToSpace={
+                    PERSONAL_WORK_UI_ENABLED
+                      ? (space) => moveConversationToSpace(activeConversation.id, space)
+                      : undefined
+                  }
                   onMessageActivity={(msg) => {
                     upsertLastMessage(msg)
                     if (msg.sender_id === currentUser.id || activeIdRef.current === msg.conversation_id) {
@@ -743,7 +750,11 @@ export function ChatApp({ currentUser: initialUser }: Props) {
                     onToggleFavorite={() => updatePrefs(toggleFavorite(prefs, activeConversation.id))}
                     onToggleMute={() => updatePrefs(toggleMuted(prefs, activeConversation.id))}
                     onTogglePinned={() => updatePrefs(togglePinned(prefs, activeConversation.id))}
-                    onMoveToSpace={(space) => moveConversationToSpace(activeConversation.id, space)}
+                    onMoveToSpace={
+                      PERSONAL_WORK_UI_ENABLED
+                        ? (space) => moveConversationToSpace(activeConversation.id, space)
+                        : undefined
+                    }
                     isArchived={prefs.archived.includes(activeConversation.id)}
                     isFavorite={prefs.favorites.includes(activeConversation.id)}
                     isMuted={prefs.muted.includes(activeConversation.id)}
@@ -767,14 +778,7 @@ export function ChatApp({ currentUser: initialUser }: Props) {
             </ChatPaneBoundary>
           ) : (
             <div className="flex h-full min-w-0 flex-1 flex-col">
-              <EmptyState
-                title={prefs.activeSpace === "work" ? "מצב עבודה" : "WhaChat Web"}
-                subtitle={
-                  prefs.activeSpace === "work"
-                    ? "כאן מופיעים רק צ'אטים שסימנת כעבודה.\nצור צ'אט חדש או העבר שיחה קיימת לעבודה."
-                    : undefined
-                }
-              />
+              <EmptyState />
             </div>
           )}
         </main>
@@ -829,8 +833,8 @@ export function ChatApp({ currentUser: initialUser }: Props) {
       <ProfileDialog
         open={profileOpen}
         currentUser={currentUser}
-        prefs={prefs}
-        onPrefsChange={updatePrefs}
+        prefs={PERSONAL_WORK_UI_ENABLED ? prefs : undefined}
+        onPrefsChange={PERSONAL_WORK_UI_ENABLED ? updatePrefs : undefined}
         onClose={() => {
           setProfileOpen(false)
           if (navTab === "settings") setNavTab("chats")

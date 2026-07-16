@@ -30,7 +30,7 @@ type Props = {
   onToggleArchive: (id: string) => void
   onToggleFavorite: (id: string) => void
   onTogglePinned: (id: string) => void
-  onMoveToSpace: (id: string, space: ChatSpace) => void
+  onMoveToSpace?: (id: string, space: ChatSpace) => void
 }
 
 const FILTERS: { id: FilterId; label: string }[] = [
@@ -299,26 +299,28 @@ export function ChatList({
                       >
                         {archivedSet.has(conv.id) ? "הוצא מארכיון" : "העבר לארכיון"}
                       </button>
-                      <button
-                        type="button"
-                        className="flex w-full items-center gap-2 px-4 py-2 text-right text-sm text-[var(--wa-text)] hover:bg-[var(--wa-hover)]"
-                        onClick={() => {
-                          onMoveToSpace(conv.id, activeSpace === "work" ? "personal" : "work")
-                          setMenuId(null)
-                        }}
-                      >
-                        {activeSpace === "work" ? (
-                          <>
-                            <User className="h-4 w-4 text-[var(--wa-text-secondary)]" />
-                            העבר לאישי
-                          </>
-                        ) : (
-                          <>
-                            <Briefcase className="h-4 w-4 text-[var(--wa-text-secondary)]" />
-                            העבר לעבודה
-                          </>
-                        )}
-                      </button>
+                      {onMoveToSpace && (
+                        <button
+                          type="button"
+                          className="flex w-full items-center gap-2 px-4 py-2 text-right text-sm text-[var(--wa-text)] hover:bg-[var(--wa-hover)]"
+                          onClick={() => {
+                            onMoveToSpace(conv.id, activeSpace === "work" ? "personal" : "work")
+                            setMenuId(null)
+                          }}
+                        >
+                          {activeSpace === "work" ? (
+                            <>
+                              <User className="h-4 w-4 text-[var(--wa-text-secondary)]" />
+                              העבר לאישי
+                            </>
+                          ) : (
+                            <>
+                              <Briefcase className="h-4 w-4 text-[var(--wa-text-secondary)]" />
+                              העבר לעבודה
+                            </>
+                          )}
+                        </button>
+                      )}
                     </div>
                   </>
                 )}
