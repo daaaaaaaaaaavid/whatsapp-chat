@@ -260,16 +260,12 @@ export type DmInviteResult =
   | {
       status: "invited"
       inviteUrl: string
+      shareText: string
       email: string
-      emailSent: boolean
-      emailChannel: "resend" | "supabase" | null
-      emailWarning: string | null
-      emailDetail: string | null
       inviterName: string
-      resendConfigured: boolean
     }
 
-/** Start a DM if the user exists; otherwise create + email a secure invite. */
+/** Start a DM if the user exists; otherwise create a shareable invite link. */
 export async function startChatOrInviteByEmail(
   currentUserId: string,
   email: string,
@@ -287,20 +283,16 @@ export async function startChatOrInviteByEmail(
   })
 
   if (res.status === 429) {
-    throw new Error("נשלחו יותר מדי הזמנות. נסה שוב מאוחר יותר.")
+    throw new Error("נוצרו יותר מדי הזמנות. נסה שוב מאוחר יותר.")
   }
 
   const body = (await res.json().catch(() => null)) as {
     status?: string
     userId?: string
     inviteUrl?: string
+    shareText?: string
     email?: string
-    emailSent?: boolean
-    emailChannel?: "resend" | "supabase" | null
-    emailWarning?: string | null
-    emailDetail?: string | null
     inviterName?: string
-    resendConfigured?: boolean
     error?: string
     message?: string
   } | null
@@ -312,7 +304,7 @@ export async function startChatOrInviteByEmail(
   if (!res.ok) {
     if (body?.error === "cannot_invite_self") throw new Error("לא ניתן להזמין את עצמך")
     if (body?.error === "invalid_email") throw new Error("כתובת מייל לא תקינה")
-    throw new Error("נכשל בשליחת הזמנה")
+    throw new Error("נכשל ביצירת הזמנה")
   }
 
   if (body?.status === "already_registered" && body.userId) {
@@ -324,17 +316,15 @@ export async function startChatOrInviteByEmail(
     return {
       status: "invited",
       inviteUrl: body.inviteUrl,
+      shareText:
+        body.shareText ||
+        `${body.inviterName || "מישהו"} הזמין אותך לשיחה.\nלכניסה לחץ כאן:\n${body.inviteUrl}`,
       email: body.email,
-      emailSent: Boolean(body.emailSent),
-      emailChannel: body.emailChannel ?? null,
-      emailWarning: body.emailWarning ?? null,
-      emailDetail: body.emailDetail ?? null,
       inviterName: body.inviterName || "משתמש",
-      resendConfigured: Boolean(body.resendConfigured),
     }
   }
 
-  throw new Error("נכשל בשליחת הזמנה")
+  throw new Error("נכשל ביצירת הזמנה")
 }
 
 export async function acceptDmInvite(token: string): Promise<string> {

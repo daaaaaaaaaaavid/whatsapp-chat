@@ -538,14 +538,12 @@ export function ChatApp({ currentUser: initialUser }: Props) {
       const result = await startChatOrInviteByEmail(currentUser.id, email)
       if (result.status === "invited") {
         try {
-          await navigator.clipboard.writeText(result.inviteUrl)
+          await navigator.clipboard.writeText(result.shareText)
         } catch {
           // ignore clipboard failures
         }
         window.alert(
-          result.emailSent
-            ? `נשלחה הזמנה אל ${result.email}. קישור ההזמנה הועתק — אפשר גם להדביק בגוגל צ'אט.`
-            : `נוצרה הזמנה עבור ${result.email}. קישור ההזמנה הועתק — שלח אותו במייל או בגוגל צ'אט.`,
+          `נוצר קישור הזמנה עבור ${result.email}.\nהודעת ההזמנה הועתקה — הדבק במייל או בגוגל צ'אט.`,
         )
         return
       }

@@ -17,7 +17,7 @@ import {
 } from "@/lib/google-contacts-client"
 import type { GoogleContact, Profile } from "@/lib/types"
 import { isValidEmail } from "@/lib/validation"
-import { Search, Users, AlertCircle, Mail, RefreshCw, MessageCircle, Copy, Check } from "lucide-react"
+import { Search, Users, AlertCircle, Mail, RefreshCw, MessageCircle, Copy, Check, Link2 } from "lucide-react"
 
 type Props = {
   open: boolean
@@ -31,33 +31,6 @@ type Props = {
 
 function looksLikeEmail(value: string) {
   return isValidEmail(value)
-}
-
-function inviteHelpText(result: Extract<DmInviteResult, { status: "invited" }>): string {
-  if (result.emailSent) {
-    return result.emailChannel === "resend"
-      ? "נשלח מייל בעברית עם קישור כניסה. אפשר גם להעתיק ולשלוח בגוגל צ'אט."
-      : "המייל נשלח. אפשר גם להעתיק את הקישור."
-  }
-
-  const detail = (result.emailDetail || "").toLowerCase()
-  if (
-    detail.includes("only send testing") ||
-    detail.includes("verify a domain") ||
-    detail.includes("you can only send")
-  ) {
-    return "Resend מחובר, אבל בלי דומיין מאומת אפשר לשלוח רק למייל של חשבון Resend שלך. אמת דומיין ב־Resend, או העתק את הקישור ושלח ידנית."
-  }
-
-  if (result.emailWarning === "resend_failed" || result.resendConfigured) {
-    return "Resend מוגדר אבל השליחה נכשלה. העתק את הקישור בינתיים. אם אין דומיין מאומת — נסה להזמין את המייל של חשבון Resend שלך."
-  }
-
-  if (result.emailWarning === "email_rate_limited") {
-    return "נגמרה מכסת המיילים של Supabase (כ־2 לשעה). ב־Vercel ודא ש־RESEND_API_KEY קיים ואז Redeploy."
-  }
-
-  return "לא נשלח מייל אוטומטי. ודא ש־RESEND_API_KEY מוגדר ב־Vercel ושעשית Redeploy, או העתק את הקישור ושלח ידנית."
 }
 
 type Suggestion =
@@ -87,7 +60,7 @@ export function NewChatDialog({
   const [inviteResult, setInviteResult] = useState<Extract<DmInviteResult, { status: "invited" }> | null>(
     null,
   )
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied] = useState<"link" | "message" | null>(null)
 
   const loadLists = async () => {
     setLoading(true)
@@ -136,7 +109,7 @@ export function NewChatDialog({
     setQuery("")
     setActionError(null)
     setInviteResult(null)
-    setCopied(false)
+    setCopied(null)
     void loadLists()
   }, [open, currentUserId])
 
@@ -277,7 +250,7 @@ export function NewChatDialog({
     setBusy(true)
     setActionError(null)
     setInviteResult(null)
-    setCopied(false)
+    setCopied(null)
     try {
       const result = await startChatOrInviteByEmail(currentUserId, target)
       if (result.status === "chat") {
@@ -285,6 +258,13 @@ export function NewChatDialog({
         return
       }
       setInviteResult(result)
+      try {
+        await navigator.clipboard.writeText(result.shareText)
+        setCopied("message")
+        window.setTimeout(() => setCopied(null), 2500)
+      } catch {
+        // clipboard optional
+      }
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "נכשל בפתיחת שיחה")
     } finally {
@@ -292,12 +272,13 @@ export function NewChatDialog({
     }
   }
 
-  const handleCopyInvite = async () => {
-    if (!inviteResult?.inviteUrl) return
+  const handleCopyInvite = async (kind: "link" | "message") => {
+    if (!inviteResult) return
+    const value = kind === "link" ? inviteResult.inviteUrl : inviteResult.shareText
     try {
-      await navigator.clipboard.writeText(inviteResult.inviteUrl)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 2000)
+      await navigator.clipboard.writeText(value)
+      setCopied(kind)
+      window.setTimeout(() => setCopied(null), 2500)
     } catch {
       setActionError("לא ניתן להעתיק. העתק ידנית מהשדה למטה.")
     }
@@ -409,35 +390,49 @@ export function NewChatDialog({
             <Mail className="h-6 w-6" />
           </div>
           <div className="min-w-0 flex-1 text-right">
-            <div className="font-medium text-[var(--wa-text)]">התחל שיחה או שלח הזמנה</div>
+            <div className="font-medium text-[var(--wa-text)]">התחל שיחה או צור קישור הזמנה</div>
             <div className="truncate text-sm text-[var(--wa-text-secondary)]">{q}</div>
           </div>
         </button>
       )}
 
       {inviteResult && (
-        <div className="mx-4 mb-3 rounded-lg border border-[#d1f4e8] bg-[#f0faf7] px-4 py-3 text-right">
-          <p className="text-sm font-medium text-[var(--wa-text)]">
-            {inviteResult.emailSent
-              ? `נשלחה הזמנה אל ${inviteResult.email}`
-              : `נוצרה הזמנה עבור ${inviteResult.email}`}
-          </p>
-          <p className="mt-1 text-xs leading-relaxed text-[var(--wa-text-secondary)]">
-            {inviteHelpText(inviteResult)}
-          </p>
-          {inviteResult.emailDetail && !inviteResult.emailSent && (
-            <p className="mt-1 break-words text-[11px] text-[#8696a0]" dir="ltr">
-              {inviteResult.emailDetail}
+        <div className="mx-4 mb-3 overflow-hidden rounded-xl border border-[#d1f4e8] bg-[#f0faf7]">
+          <div className="flex items-start gap-3 px-4 pt-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white">
+              <Link2 className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1 text-right">
+              <p className="text-sm font-semibold text-[var(--wa-text)]">קישור הזמנה מוכן</p>
+              <p className="mt-0.5 text-xs leading-relaxed text-[var(--wa-text-secondary)]">
+                {inviteResult.inviterName} מזמין את {inviteResult.email} לשיחה.
+                העתק ושלח במייל, גוגל צ&apos;אט או בכל מקום.
+              </p>
+            </div>
+          </div>
+
+          <div className="mx-4 mt-3 rounded-lg bg-white/80 px-3 py-2.5" dir="rtl">
+            <p className="whitespace-pre-wrap text-xs leading-relaxed text-[var(--wa-text)]">
+              {inviteResult.shareText}
             </p>
-          )}
-          <div className="mt-3 flex flex-wrap items-center gap-2">
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 px-4 py-3">
             <button
               type="button"
-              onClick={() => void handleCopyInvite()}
-              className="inline-flex items-center gap-1.5 rounded-full bg-[#00a884] px-3 py-1.5 text-xs font-medium text-white"
+              onClick={() => void handleCopyInvite("message")}
+              className="inline-flex items-center gap-1.5 rounded-full bg-[#00a884] px-3.5 py-2 text-xs font-medium text-white"
             >
-              {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-              {copied ? "הועתק" : "העתק קישור הזמנה"}
+              {copied === "message" ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+              {copied === "message" ? "ההודעה הועתקה" : "העתק הודעת הזמנה"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleCopyInvite("link")}
+              className="inline-flex items-center gap-1.5 rounded-full border border-[#00a884]/30 bg-white px-3.5 py-2 text-xs font-medium text-[#008069]"
+            >
+              {copied === "link" ? <Check className="h-3.5 w-3.5" /> : <Link2 className="h-3.5 w-3.5" />}
+              {copied === "link" ? "הקישור הועתק" : "העתק קישור בלבד"}
             </button>
             <button
               type="button"
@@ -445,14 +440,11 @@ export function NewChatDialog({
                 setInviteResult(null)
                 onClose()
               }}
-              className="rounded-full px-3 py-1.5 text-xs font-medium text-[#008069] hover:bg-white/70"
+              className="mr-auto rounded-full px-3 py-2 text-xs font-medium text-[#667781] hover:bg-white/70"
             >
               סגור
             </button>
           </div>
-          <p className="mt-2 break-all text-[11px] text-[var(--wa-text-secondary)]" dir="ltr">
-            {inviteResult.inviteUrl}
-          </p>
         </div>
       )}
 
@@ -609,7 +601,7 @@ export function NewChatDialog({
               <p>
                 {isSearching
                   ? showEmailStart
-                    ? "לחץ למעלה כדי לפתוח שיחה או לשלוח הזמנה למייל הזה"
+                    ? "לחץ למעלה כדי לפתוח שיחה או ליצור קישור הזמנה"
                     : hasSyncedGoogle
                       ? "לא נמצאו הצעות תואמות באנשי הקשר"
                       : "אין עדיין אנשי קשר מסונכרנים מגוגל"

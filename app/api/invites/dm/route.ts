@@ -1,14 +1,8 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { createServiceClient } from "@/lib/supabase/admin"
 import { checkRateLimit } from "@/lib/rate-limit"
 import { emailSchema } from "@/lib/validation"
-import { APP_NAME } from "@/lib/site-config"
-import {
-  dmInvitePageUrl,
-  dmInviteRedirectTo,
-  sendDmInviteViaResend,
-} from "@/lib/dm-invite-email"
+import { buildDmInviteShareText, dmInvitePageUrl } from "@/lib/dm-invite-email"
 
 export const dynamic = "force-dynamic"
 
@@ -29,7 +23,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 })
   }
 
-  const limited = checkRateLimit(`dm-invite:${user.id}`, 8, 60 * 60_000)
+  const limited = checkRateLimit(`dm-invite:${user.id}`, 30, 60 * 60_000)
   if (!limited.ok) {
     return NextResponse.json(
       { error: "rate_limited", retryAfterSec: limited.retryAfterSec },
@@ -92,7 +86,7 @@ export async function POST(req: Request) {
   // Reuse open invite if present
   const { data: existingInvite } = await supabase
     .from("dm_invites")
-    .select("token, email_sent_at, expires_at")
+    .select("token, expires_at")
     .eq("inviter_id", user.id)
     .is("accepted_at", null)
     .gt("expires_at", new Date().toISOString())
@@ -123,85 +117,17 @@ export async function POST(req: Request) {
   }
 
   const inviteUrl = dmInvitePageUrl(token)
-  let emailSent = false
-  let emailChannel: "resend" | "supabase" | null = null
-  let emailWarning: string | null = null
-  let emailDetail: string | null = null
-  const hasResendKey = Boolean(process.env.RESEND_API_KEY?.trim())
-
-  // Prefer Resend for custom Hebrew wording (free tier).
-  const resend = await sendDmInviteViaResend({
+  const shareText = buildDmInviteShareText({
     inviterName: String(inviterName),
-    inviteeEmail: email,
     inviteUrl,
   })
-
-  if (resend.sent) {
-    emailSent = true
-    emailChannel = "resend"
-  } else if (hasResendKey) {
-    // Don't fall back to Supabase — it hides the real Resend error and burns the 2/hour quota.
-    emailWarning = "resend_failed"
-    emailDetail = resend.error?.slice(0, 240) ?? "resend_rejected"
-    console.error("Resend DM invite failed:", emailDetail)
-  } else {
-    emailWarning = "no_mail_provider"
-    const admin = createServiceClient()
-    if (admin) {
-      const { error: inviteError } = await admin.auth.admin.inviteUserByEmail(email, {
-        redirectTo: dmInviteRedirectTo(token),
-        data: {
-          inviter_name: String(inviterName),
-          app_name: APP_NAME,
-        },
-      })
-      if (!inviteError) {
-        emailSent = true
-        emailChannel = "supabase"
-        emailWarning = null
-      } else {
-        const msg = inviteError.message.toLowerCase()
-        if (
-          msg.includes("already") ||
-          msg.includes("registered") ||
-          msg.includes("exists")
-        ) {
-          emailWarning = "user_exists_in_auth"
-        } else if (
-          msg.includes("rate limit") ||
-          msg.includes("rate_limit") ||
-          msg.includes("email rate") ||
-          msg.includes("too many")
-        ) {
-          emailWarning = "email_rate_limited"
-          console.error("Supabase invite rate limited:", inviteError.message)
-        } else {
-          emailWarning = "supabase_invite_failed"
-          emailDetail = inviteError.message.slice(0, 240)
-          console.error("Supabase inviteUserByEmail:", inviteError.message)
-        }
-      }
-    }
-  }
-
-  if (emailSent) {
-    await supabase
-      .from("dm_invites")
-      .update({ email_sent_at: new Date().toISOString() })
-      .eq("token", token)
-      .eq("inviter_id", user.id)
-  }
 
   return NextResponse.json({
     status: "invited",
     token,
     inviteUrl,
+    shareText,
     email,
-    emailSent,
-    emailChannel,
-    emailWarning,
-    emailDetail,
     inviterName: String(inviterName),
-    resendConfigured: hasResendKey,
   })
 }
