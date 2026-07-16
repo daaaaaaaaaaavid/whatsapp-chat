@@ -33,6 +33,33 @@ function looksLikeEmail(value: string) {
   return isValidEmail(value)
 }
 
+function inviteHelpText(result: Extract<DmInviteResult, { status: "invited" }>): string {
+  if (result.emailSent) {
+    return result.emailChannel === "resend"
+      ? "נשלח מייל בעברית עם קישור כניסה. אפשר גם להעתיק ולשלוח בגוגל צ'אט."
+      : "המייל נשלח. אפשר גם להעתיק את הקישור."
+  }
+
+  const detail = (result.emailDetail || "").toLowerCase()
+  if (
+    detail.includes("only send testing") ||
+    detail.includes("verify a domain") ||
+    detail.includes("you can only send")
+  ) {
+    return "Resend מחובר, אבל בלי דומיין מאומת אפשר לשלוח רק למייל של חשבון Resend שלך. אמת דומיין ב־Resend, או העתק את הקישור ושלח ידנית."
+  }
+
+  if (result.emailWarning === "resend_failed" || result.resendConfigured) {
+    return "Resend מוגדר אבל השליחה נכשלה. העתק את הקישור בינתיים. אם אין דומיין מאומת — נסה להזמין את המייל של חשבון Resend שלך."
+  }
+
+  if (result.emailWarning === "email_rate_limited") {
+    return "נגמרה מכסת המיילים של Supabase (כ־2 לשעה). ב־Vercel ודא ש־RESEND_API_KEY קיים ואז Redeploy."
+  }
+
+  return "לא נשלח מייל אוטומטי. ודא ש־RESEND_API_KEY מוגדר ב־Vercel ושעשית Redeploy, או העתק את הקישור ושלח ידנית."
+}
+
 type Suggestion =
   | { kind: "matched"; profile: Profile; score: number }
   | { kind: "unmatched"; contact: GoogleContact; score: number }
@@ -396,14 +423,13 @@ export function NewChatDialog({
               : `נוצרה הזמנה עבור ${inviteResult.email}`}
           </p>
           <p className="mt-1 text-xs leading-relaxed text-[var(--wa-text-secondary)]">
-            {inviteResult.emailSent
-              ? inviteResult.emailChannel === "resend"
-                ? "נשלח מייל בעברית עם קישור כניסה. אפשר גם להעתיק ולשלוח בגוגל צ'אט."
-                : "המייל נשלח (תבנית Supabase). לניסוח בעברית הגדר Resend — ראה .env.example."
-              : inviteResult.emailWarning === "email_rate_limited"
-                ? "נגמרה מכסת המיילים של Supabase (כ־2 לשעה). העתק את הקישור בינתיים, או חבר Resend חינמי (RESEND_API_KEY) לשליחה בעברית בלי המגבלה הזו."
-                : "לא נשלח מייל אוטומטי. העתק את הקישור ושלח במייל או בגוגל צ'אט — או הגדר RESEND_API_KEY לשליחה אוטומטית בעברית."}
+            {inviteHelpText(inviteResult)}
           </p>
+          {inviteResult.emailDetail && !inviteResult.emailSent && (
+            <p className="mt-1 break-words text-[11px] text-[#8696a0]" dir="ltr">
+              {inviteResult.emailDetail}
+            </p>
+          )}
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
               type="button"

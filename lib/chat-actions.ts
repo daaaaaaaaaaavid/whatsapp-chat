@@ -264,7 +264,9 @@ export type DmInviteResult =
       emailSent: boolean
       emailChannel: "resend" | "supabase" | null
       emailWarning: string | null
+      emailDetail: string | null
       inviterName: string
+      resendConfigured: boolean
     }
 
 /** Start a DM if the user exists; otherwise create + email a secure invite. */
@@ -296,7 +298,9 @@ export async function startChatOrInviteByEmail(
     emailSent?: boolean
     emailChannel?: "resend" | "supabase" | null
     emailWarning?: string | null
+    emailDetail?: string | null
     inviterName?: string
+    resendConfigured?: boolean
     error?: string
     message?: string
   } | null
@@ -324,7 +328,9 @@ export async function startChatOrInviteByEmail(
       emailSent: Boolean(body.emailSent),
       emailChannel: body.emailChannel ?? null,
       emailWarning: body.emailWarning ?? null,
+      emailDetail: body.emailDetail ?? null,
       inviterName: body.inviterName || "משתמש",
+      resendConfigured: Boolean(body.resendConfigured),
     }
   }
 

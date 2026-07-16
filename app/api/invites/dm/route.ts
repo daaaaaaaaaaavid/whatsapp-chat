@@ -126,8 +126,10 @@ export async function POST(req: Request) {
   let emailSent = false
   let emailChannel: "resend" | "supabase" | null = null
   let emailWarning: string | null = null
+  let emailDetail: string | null = null
+  const hasResendKey = Boolean(process.env.RESEND_API_KEY?.trim())
 
-  // Prefer Resend for custom Hebrew wording (free tier). Else Supabase Auth invite.
+  // Prefer Resend for custom Hebrew wording (free tier).
   const resend = await sendDmInviteViaResend({
     inviterName: String(inviterName),
     inviteeEmail: email,
@@ -137,12 +139,13 @@ export async function POST(req: Request) {
   if (resend.sent) {
     emailSent = true
     emailChannel = "resend"
+  } else if (hasResendKey) {
+    // Don't fall back to Supabase — it hides the real Resend error and burns the 2/hour quota.
+    emailWarning = "resend_failed"
+    emailDetail = resend.error?.slice(0, 240) ?? "resend_rejected"
+    console.error("Resend DM invite failed:", emailDetail)
   } else {
-    if (resend.error && process.env.RESEND_API_KEY?.trim()) {
-      emailWarning = "resend_failed"
-      console.error("Resend DM invite failed:", resend.error)
-    }
-
+    emailWarning = "no_mail_provider"
     const admin = createServiceClient()
     if (admin) {
       const { error: inviteError } = await admin.auth.admin.inviteUserByEmail(email, {
@@ -155,9 +158,9 @@ export async function POST(req: Request) {
       if (!inviteError) {
         emailSent = true
         emailChannel = "supabase"
+        emailWarning = null
       } else {
         const msg = inviteError.message.toLowerCase()
-        // Already invited / registered in Auth but no profile yet — still share link
         if (
           msg.includes("already") ||
           msg.includes("registered") ||
@@ -170,16 +173,14 @@ export async function POST(req: Request) {
           msg.includes("email rate") ||
           msg.includes("too many")
         ) {
-          // Supabase built-in SMTP: ~2 emails/hour. Fix: RESEND_API_KEY or custom SMTP.
           emailWarning = "email_rate_limited"
           console.error("Supabase invite rate limited:", inviteError.message)
         } else {
           emailWarning = "supabase_invite_failed"
+          emailDetail = inviteError.message.slice(0, 240)
           console.error("Supabase inviteUserByEmail:", inviteError.message)
         }
       }
-    } else if (!process.env.RESEND_API_KEY?.trim()) {
-      emailWarning = "no_mail_provider"
     }
   }
 
@@ -199,6 +200,8 @@ export async function POST(req: Request) {
     emailSent,
     emailChannel,
     emailWarning,
+    emailDetail,
     inviterName: String(inviterName),
+    resendConfigured: hasResendKey,
   })
 }
