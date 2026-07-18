@@ -139,7 +139,11 @@ export function ConversationView({
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [typingUsers, setTypingUsers] = useState<Record<string, number>>({})
   const [threadRootId, setThreadRootId] = useState<string | null>(null)
+  const [showJumpToBottom, setShowJumpToBottom] = useState(false)
+  const [newBelowCount, setNewBelowCount] = useState(0)
   const markedRef = useRef<string | null>(null)
+  const prevMessageLenRef = useRef(0)
+  const knownMessageIdsRef = useRef<Set<string>>(new Set())
 
   const isSelf = isSelfConversation(conversation, currentUser.id)
   const threadsEnabled = conversation.is_group
@@ -273,7 +277,10 @@ export function ConversationView({
     if (!el) return
     const onScroll = () => {
       const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
-      stickToBottomRef.current = distanceFromBottom < 120
+      const nearBottom = distanceFromBottom < 120
+      stickToBottomRef.current = nearBottom
+      setShowJumpToBottom(!nearBottom)
+      if (nearBottom) setNewBelowCount(0)
       if (el.scrollTop < 80 && hasMore && !loadingOlder) {
         const prevHeight = el.scrollHeight
         void loadOlder().then(() => {
@@ -295,13 +302,49 @@ export function ConversationView({
     if (!el) return
     const switched = prevConvIdRef.current !== conversation.id
     prevConvIdRef.current = conversation.id
-    if (switched) stickToBottomRef.current = true
+    if (switched) {
+      stickToBottomRef.current = true
+      setShowJumpToBottom(false)
+      setNewBelowCount(0)
+      knownMessageIdsRef.current = new Set(messages.map((m) => m.id))
+      prevMessageLenRef.current = messages.length
+    }
     if (!switched && !stickToBottomRef.current) return
     requestAnimationFrame(() => {
       el.scrollTop = el.scrollHeight
       bottomRef.current?.scrollIntoView({ behavior: "auto", block: "end" })
     })
   }, [conversation.id, loading, messages.length, searchOpen])
+
+  // Count new incoming messages while scrolled up — show jump button badge
+  useEffect(() => {
+    if (loading) return
+    const known = knownMessageIdsRef.current
+    if (prevConvIdRef.current !== conversation.id) return
+
+    let added = 0
+    for (const m of messages) {
+      if (known.has(m.id)) continue
+      known.add(m.id)
+      if (m.sender_id !== currentUser.id && !stickToBottomRef.current) added += 1
+    }
+    prevMessageLenRef.current = messages.length
+    if (added > 0) {
+      setNewBelowCount((c) => c + added)
+      setShowJumpToBottom(true)
+    }
+  }, [messages, loading, conversation.id, currentUser.id])
+
+  const jumpToBottom = useCallback(() => {
+    const el = scrollRef.current
+    stickToBottomRef.current = true
+    setShowJumpToBottom(false)
+    setNewBelowCount(0)
+    requestAnimationFrame(() => {
+      el?.scrollTo({ top: el.scrollHeight, behavior: "smooth" })
+      bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
+    })
+  }, [])
 
   useEffect(() => {
     if (!selectionMode) return
@@ -322,6 +365,10 @@ export function ConversationView({
     markedRef.current = null
     setUnreadAnchorId(null)
     setUnreadCountAtOpen(0)
+    setShowJumpToBottom(false)
+    setNewBelowCount(0)
+    knownMessageIdsRef.current = new Set()
+    prevMessageLenRef.current = 0
     setGalleryIndex(null)
     setReplyTo(null)
     setEditingMessage(null)
@@ -882,7 +929,8 @@ export function ConversationView({
         </button>
       )}
 
-      <div ref={scrollRef} className="wa-chat-bg wa-scroll flex-1 overflow-y-auto px-[5%] py-4">
+      <div className="relative min-h-0 flex-1">
+      <div ref={scrollRef} className="wa-chat-bg wa-scroll h-full overflow-y-auto px-[5%] py-4">
         <div className="mx-auto flex max-w-3xl flex-col">
           <ChatThreadHeader
             hasMore={hasMore}
@@ -984,6 +1032,24 @@ export function ConversationView({
           )}
           <div ref={bottomRef} />
         </div>
+      </div>
+
+      {showJumpToBottom && !searchOpen && (
+        <button
+          type="button"
+          onClick={jumpToBottom}
+          className="absolute bottom-3 left-1/2 z-20 flex h-10 min-w-10 -translate-x-1/2 items-center justify-center gap-1 rounded-full bg-[var(--wa-panel)] px-3 text-[var(--wa-text-secondary)] shadow-lg ring-1 ring-black/10 transition hover:bg-[var(--wa-hover)]"
+          aria-label="גלול לתחתית"
+          title="גלול לתחתית"
+        >
+          {newBelowCount > 0 && (
+            <span className="absolute -top-1.5 left-1/2 flex h-5 min-w-5 -translate-x-1/2 items-center justify-center rounded-full bg-[#25d366] px-1.5 text-[11px] font-semibold text-white">
+              {newBelowCount > 99 ? "99+" : newBelowCount}
+            </span>
+          )}
+          <ChevronDown className="h-5 w-5" />
+        </button>
+      )}
       </div>
 
       {!searchOpen && !selectionMode && (
