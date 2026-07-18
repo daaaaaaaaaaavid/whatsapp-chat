@@ -1,7 +1,18 @@
 "use client"
 
 import { useCallback, useEffect, useId, useRef, useState } from "react"
-import { Clapperboard, Pause, Play, SkipBack, SkipForward, X } from "lucide-react"
+import {
+  Clapperboard,
+  Mic,
+  MicOff,
+  Pause,
+  Phone,
+  PhoneOff,
+  Play,
+  SkipBack,
+  SkipForward,
+  X,
+} from "lucide-react"
 import { loadYoutubeApi, type YtPlayer } from "@/lib/youtube-api"
 import {
   expectedWatchTime,
@@ -13,14 +24,22 @@ const REACTION_EMOJIS = ["❤️", "😂", "🔥", "👏", "😮", "😍", "🎉
 
 type FloatingReaction = WatchReactionPayload & { createdAt: number }
 
+type SharedCallUi = {
+  phase: "outgoing" | "connecting" | "connected"
+  peerName: string
+  seconds: number
+  muted: boolean
+  onToggleMute: () => void
+  onHangup: () => void
+}
+
 type Props = {
   videoId: string
   hostName: string
   conversationLabel: string
   floatingReactions: FloatingReaction[]
   onClose: () => void
-  onEndForEveryone: () => void
-  isHost: boolean
+  onEndWatch: () => void
   onReaction: (emoji: string) => void
   onPublishSync: (state: Omit<WatchPlaybackState, "by">) => void
   registerPlayerBridge: (
@@ -29,6 +48,9 @@ type Props = {
       applySync: (state: WatchPlaybackState) => void
     } | null,
   ) => void
+  /** Private chats only — start a voice call while watching */
+  onStartSharedCall?: () => void
+  sharedCall?: SharedCallUi | null
 }
 
 export function WatchOverlay({
@@ -37,11 +59,12 @@ export function WatchOverlay({
   conversationLabel,
   floatingReactions,
   onClose,
-  onEndForEveryone,
-  isHost,
+  onEndWatch,
   onReaction,
   onPublishSync,
   registerPlayerBridge,
+  onStartSharedCall,
+  sharedCall,
 }: Props) {
   const reactId = useId().replace(/:/g, "")
   const containerId = `yt-watch-${reactId}`
@@ -179,7 +202,6 @@ export function WatchOverlay({
             },
             onStateChange: (e) => {
               if (destroyed || applyingRemoteRef.current) return
-              // 1 playing, 2 paused, 0 ended
               if (e.data === 1) {
                 setPlaying(true)
                 publishNow({ playing: true })
@@ -210,11 +232,9 @@ export function WatchOverlay({
       }
       playerRef.current = null
     }
-    // Recreate only when video changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [containerId, videoId])
 
-  // Periodic sync while playing so late joiners / drift stay aligned
   useEffect(() => {
     if (!ready || !playing) return
     const id = window.setInterval(() => publishNow(), 4000)
@@ -251,9 +271,12 @@ export function WatchOverlay({
     }
   }
 
+  const callMm = sharedCall ? String(Math.floor(sharedCall.seconds / 60)).padStart(2, "0") : "00"
+  const callSs = sharedCall ? String(sharedCall.seconds % 60).padStart(2, "0") : "00"
+
   return (
-    <div className="fixed inset-0 z-[70] flex flex-col bg-[#0b141a] text-white">
-      <header className="flex items-center gap-3 px-4 py-3">
+    <div className="fixed inset-0 z-[70] flex flex-col bg-[#0b141a] text-white pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+      <header className="flex shrink-0 items-center gap-3 px-4 py-3">
         <Clapperboard className="h-5 w-5 shrink-0 text-[#25d366]" />
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-sm font-medium">צפייה משותפת · {conversationLabel}</h2>
@@ -261,6 +284,17 @@ export function WatchOverlay({
             {title ?? "יוטיוב"} · התחיל/ה {hostName}
           </p>
         </div>
+        {onStartSharedCall && !sharedCall && (
+          <button
+            type="button"
+            onClick={onStartSharedCall}
+            className="flex h-10 items-center gap-1.5 rounded-full bg-[#25d366]/20 px-3 text-sm text-[#25d366] transition hover:bg-[#25d366]/30"
+            title="שיחה קולית בזמן הצפייה"
+          >
+            <Phone className="h-4 w-4" />
+            <span className="hidden sm:inline">שיחה</span>
+          </button>
+        )}
         <button
           type="button"
           onClick={onClose}
@@ -272,9 +306,43 @@ export function WatchOverlay({
         </button>
       </header>
 
-      <div className="relative mx-auto flex w-full max-w-5xl flex-1 flex-col px-3 pb-3">
-        <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-black shadow-2xl">
-          <div id={containerId} className="h-full w-full" />
+      {sharedCall && (
+        <div className="mx-3 mb-2 flex shrink-0 items-center gap-3 rounded-xl bg-white/10 px-3 py-2">
+          <Phone className="h-4 w-4 shrink-0 text-[#25d366]" />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium">{sharedCall.peerName}</p>
+            <p className="text-xs text-white/60" dir="ltr">
+              {sharedCall.phase === "connected"
+                ? `${callMm}:${callSs}`
+                : sharedCall.phase === "connecting"
+                  ? "מתחבר..."
+                  : "מתקשר..."}
+            </p>
+          </div>
+          {sharedCall.phase === "connected" && (
+            <button
+              type="button"
+              onClick={sharedCall.onToggleMute}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 transition hover:bg-white/20"
+              aria-label={sharedCall.muted ? "בטל השתקה" : "השתק"}
+            >
+              {sharedCall.muted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={sharedCall.onHangup}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-[#ea0038] transition hover:bg-[#ff2a55]"
+            aria-label="נתק"
+          >
+            <PhoneOff className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col px-3">
+        <div className="relative min-h-0 w-full flex-1 overflow-hidden rounded-xl bg-black shadow-2xl">
+          <div id={containerId} className="absolute inset-0 h-full w-full [&>iframe]:h-full [&>iframe]:w-full" />
           {!ready && !error && (
             <div className="absolute inset-0 flex items-center justify-center text-sm text-white/70">
               טוען סרטון...
@@ -286,7 +354,6 @@ export function WatchOverlay({
             </div>
           )}
 
-          {/* Floating reactions */}
           <div className="pointer-events-none absolute inset-0 overflow-hidden">
             {floatingReactions.map((r) => (
               <span
@@ -304,67 +371,76 @@ export function WatchOverlay({
           </div>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-          <button
-            type="button"
-            onClick={() => skip(-10)}
-            className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 transition hover:bg-white/20"
-            aria-label="אחורה 10 שניות"
-          >
-            <SkipBack className="h-5 w-5" />
-          </button>
-          <button
-            type="button"
-            onClick={togglePlay}
-            className="flex h-14 w-14 items-center justify-center rounded-full bg-[#25d366] text-[#0b141a] transition hover:bg-[#2fe076]"
-            aria-label={playing ? "השהה" : "נגן"}
-          >
-            {playing ? <Pause className="h-6 w-6" /> : <Play className="mr-0.5 h-6 w-6" />}
-          </button>
-          <button
-            type="button"
-            onClick={() => skip(10)}
-            className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 transition hover:bg-white/20"
-            aria-label="קדימה 10 שניות"
-          >
-            <SkipForward className="h-5 w-5" />
-          </button>
-        </div>
-
-        <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-          {REACTION_EMOJIS.map((emoji) => (
-            <button
-              key={emoji}
-              type="button"
-              onClick={() => onReaction(emoji)}
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-xl transition hover:scale-110 hover:bg-white/20"
-              aria-label={`תגובה ${emoji}`}
-            >
-              {emoji}
-            </button>
-          ))}
-        </div>
-
-        <div className="mt-4 flex justify-center gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-full bg-white/10 px-4 py-2 text-sm transition hover:bg-white/20"
-          >
-            יציאה
-          </button>
-          {isHost && (
+        <div className="shrink-0 space-y-3 pb-2 pt-3">
+          <div className="flex flex-wrap items-center justify-center gap-2">
             <button
               type="button"
-              onClick={onEndForEveryone}
-              className="rounded-full bg-[#ea0038]/20 px-4 py-2 text-sm text-[#ff8a9a] transition hover:bg-[#ea0038]/35"
+              onClick={() => skip(-10)}
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 transition hover:bg-white/20"
+              aria-label="אחורה 10 שניות"
             >
-              סיים לכולם
+              <SkipBack className="h-5 w-5" />
             </button>
-          )}
+            <button
+              type="button"
+              onClick={togglePlay}
+              className="flex h-14 w-14 items-center justify-center rounded-full bg-[#25d366] text-[#0b141a] transition hover:bg-[#2fe076]"
+              aria-label={playing ? "השהה" : "נגן"}
+            >
+              {playing ? <Pause className="h-6 w-6" /> : <Play className="mr-0.5 h-6 w-6" />}
+            </button>
+            <button
+              type="button"
+              onClick={() => skip(10)}
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 transition hover:bg-white/20"
+              aria-label="קדימה 10 שניות"
+            >
+              <SkipForward className="h-5 w-5" />
+            </button>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            {REACTION_EMOJIS.map((emoji) => (
+              <button
+                key={emoji}
+                type="button"
+                onClick={() => onReaction(emoji)}
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-xl transition hover:scale-110 hover:bg-white/20"
+                aria-label={`תגובה ${emoji}`}
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex flex-wrap items-center justify-center gap-2 pb-1">
+            {onStartSharedCall && !sharedCall && (
+              <button
+                type="button"
+                onClick={onStartSharedCall}
+                className="inline-flex items-center gap-2 rounded-full bg-[#25d366]/20 px-4 py-2.5 text-sm font-medium text-[#25d366] transition hover:bg-[#25d366]/30"
+              >
+                <Phone className="h-4 w-4" />
+                שיחה משותפת
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-full bg-white/10 px-4 py-2.5 text-sm transition hover:bg-white/20"
+            >
+              יציאה
+            </button>
+            <button
+              type="button"
+              onClick={onEndWatch}
+              className="rounded-full bg-[#ea0038]/25 px-4 py-2.5 text-sm font-medium text-[#ff8a9a] transition hover:bg-[#ea0038]/40"
+            >
+              סיים צפייה
+            </button>
+          </div>
         </div>
       </div>
-
     </div>
   )
 }

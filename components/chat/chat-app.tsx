@@ -947,6 +947,12 @@ export function ChatApp({ currentUser: initialUser }: Props) {
           onToggleMute={toggleMute}
           onToggleCamera={toggleCamera}
           onDismissError={() => setCallError(null)}
+          mediaOnly={Boolean(
+            watchActive &&
+              call.conversationId === watchActive.conversationId &&
+              !call.video &&
+              (phase === "outgoing" || phase === "connecting" || phase === "connected"),
+          )}
         />
       )}
 
@@ -971,12 +977,33 @@ export function ChatApp({ currentUser: initialUser }: Props) {
             })()
           }
           floatingReactions={floatingReactions}
-          isHost={watchActive.isHost}
           onClose={leaveWatch}
-          onEndForEveryone={() => void endWatch(true)}
+          onEndWatch={() => void endWatch()}
           onReaction={sendReaction}
           onPublishSync={publishSync}
           registerPlayerBridge={registerPlayerBridge}
+          onStartSharedCall={
+            (() => {
+              const conv = conversations.find((c) => c.id === watchActive.conversationId)
+              if (!conv || conv.is_group) return undefined
+              return () => handleStartCall(conv, false)
+            })()
+          }
+          sharedCall={
+            call &&
+            !call.video &&
+            call.conversationId === watchActive.conversationId &&
+            (phase === "outgoing" || phase === "connecting" || phase === "connected")
+              ? {
+                  phase,
+                  peerName: call.peerName,
+                  seconds,
+                  muted,
+                  onToggleMute: toggleMute,
+                  onHangup: () => void hangup(),
+                }
+              : null
+          }
         />
       )}
     </div>

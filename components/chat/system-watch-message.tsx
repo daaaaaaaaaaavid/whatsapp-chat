@@ -8,12 +8,14 @@ import { Clapperboard } from "lucide-react"
 type Props = {
   message: Message
   onJoin?: (videoId: string) => void
+  /** When true, Join is hidden — session already ended */
+  joinBlocked?: boolean
 }
 
-export function SystemWatchMessage({ message, onJoin }: Props) {
+export function SystemWatchMessage({ message, onJoin, joinBlocked }: Props) {
   const payload = parseWatchSystemPayload(message.content)
   const label = payload ? watchSystemLabel(payload) : "צפייה משותפת"
-  const canJoin = payload?.event === "started" && Boolean(onJoin)
+  const canJoin = payload?.event === "started" && Boolean(onJoin) && !joinBlocked
 
   return (
     <div className="my-2 flex justify-center px-2">
@@ -31,6 +33,11 @@ export function SystemWatchMessage({ message, onJoin }: Props) {
           >
             הצטרף
           </button>
+        )}
+        {payload?.event === "started" && joinBlocked && (
+          <span className="rounded-full bg-black/5 px-2 py-0.5 text-[11px] text-[var(--wa-text-secondary)]">
+            הסתיימה
+          </span>
         )}
       </div>
     </div>

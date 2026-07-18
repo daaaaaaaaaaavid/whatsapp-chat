@@ -88,6 +88,8 @@ type Props = {
   onStartChatByEmail?: (email: string) => Promise<void>
   onJoinWatch?: (videoId: string) => void
   onStartWatchWithUrl?: (url: string) => void
+  /** Video IDs whose watch session already ended in this chat */
+  closedWatchVideoIds?: Set<string>
   /** Narrower panel (thread side pane). */
   compact?: boolean
 }
@@ -163,6 +165,7 @@ export function MessageBubble({
   onStartChatByEmail,
   onJoinWatch,
   onStartWatchWithUrl,
+  closedWatchVideoIds,
   compact,
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -253,7 +256,12 @@ export function MessageBubble({
   }, [])
 
   if (watchPayload) {
-    return <SystemWatchMessage message={message} onJoin={onJoinWatch} />
+    const joinBlocked =
+      watchPayload.event === "started" &&
+      Boolean(closedWatchVideoIds?.has(watchPayload.videoId))
+    return (
+      <SystemWatchMessage message={message} onJoin={onJoinWatch} joinBlocked={joinBlocked} />
+    )
   }
 
   if (message.type === "system" || callPayload) {

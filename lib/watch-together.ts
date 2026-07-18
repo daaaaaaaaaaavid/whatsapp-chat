@@ -31,7 +31,7 @@ type WatchHandlers = {
   onSync?: (payload: WatchPlaybackState) => void
   onReaction?: (payload: WatchReactionPayload) => void
   onRequestSync?: (by: string) => void
-  onEnded?: (by: string) => void
+  onEnded?: (payload: { by: string; videoId: string }) => void
 }
 
 export function subscribeWatchTogether(
@@ -69,9 +69,9 @@ export function subscribeWatchTogether(
       handlers.onRequestSync?.(data.by)
     })
     .on("broadcast", { event: "ended" }, ({ payload }) => {
-      const data = payload as { by?: string }
-      if (!data?.by) return
-      handlers.onEnded?.(data.by)
+      const data = payload as { by?: string; videoId?: string }
+      if (!data?.by || !data.videoId) return
+      handlers.onEnded?.({ by: data.by, videoId: data.videoId })
     })
     .subscribe()
 
@@ -129,8 +129,11 @@ export async function broadcastWatchRequestSync(channel: RealtimeChannel | null,
   await send(channel, "request-sync", { by })
 }
 
-export async function broadcastWatchEnded(channel: RealtimeChannel | null, by: string) {
-  await send(channel, "ended", { by })
+export async function broadcastWatchEnded(
+  channel: RealtimeChannel | null,
+  payload: { by: string; videoId: string },
+) {
+  await send(channel, "ended", payload)
 }
 
 /** Expected media time given a sync snapshot. */

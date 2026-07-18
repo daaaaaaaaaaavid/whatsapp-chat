@@ -29,6 +29,8 @@ type Props = {
   onToggleMute: () => void
   onToggleCamera: () => void
   onDismissError?: () => void
+  /** When true, only keep media elements mounted (UI lives in Watch Together). */
+  mediaOnly?: boolean
 }
 
 export function CallOverlay({
@@ -48,6 +50,7 @@ export function CallOverlay({
   onToggleMute,
   onToggleCamera,
   onDismissError,
+  mediaOnly = false,
 }: Props) {
   const mm = String(Math.floor(seconds / 60)).padStart(2, "0")
   const ss = String(seconds % 60).padStart(2, "0")
@@ -95,8 +98,22 @@ export function CallOverlay({
   const showConnectingAvatar =
     call.video && (phase === "connecting" || phase === "connected") && !hasRemoteVideo
 
+  if (mediaOnly) {
+    return (
+      <>
+        {!call.video && <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />}
+        {call.video && (
+          <>
+            <video ref={remoteVideoRef} autoPlay playsInline className="hidden" />
+            <video ref={localVideoRef} autoPlay muted playsInline className="hidden" />
+          </>
+        )}
+      </>
+    )
+  }
+
   return (
-    <div className="fixed inset-0 z-[70] flex flex-col bg-[#0b141a] text-white">
+    <div className="fixed inset-0 z-[80] flex flex-col bg-[#0b141a] text-white">
       {/* Audio element only for voice calls — video element already outputs remote audio */}
       {!call.video && <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />}
 

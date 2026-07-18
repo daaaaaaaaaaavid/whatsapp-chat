@@ -15,6 +15,7 @@ import {
   type WatchSessionPayload,
 } from "@/lib/watch-together"
 import { insertWatchSystemMessage } from "@/lib/watch-system-message"
+import { isWatchSessionClosed, markWatchSessionClosed } from "@/lib/watch-closed"
 
 export type ActiveWatch = {
   conversationId: string
@@ -74,7 +75,8 @@ export function useWatchTogether({ currentUserId, currentUserName }: Options) {
           const state = getPlaybackRef.current?.()
           if (state) void broadcastWatchSync(channelRef.current, state)
         },
-        onEnded: () => {
+        onEnded: ({ videoId }) => {
+          markWatchSessionClosed(conversationId, videoId)
           if (activeRef.current?.conversationId !== conversationId) return
           setActive(null)
           detachChannel()
@@ -137,6 +139,10 @@ export function useWatchTogether({ currentUserId, currentUserName }: Options) {
 
   const joinWatch = useCallback(
     async (opts: { conversationId: string; videoId: string; hostName?: string }) => {
+      if (isWatchSessionClosed(opts.conversationId, opts.videoId)) {
+        window.alert("הצפייה בסרטון הזה כבר הסתיימה")
+        return false
+      }
       setActive({
         conversationId: opts.conversationId,
         videoId: opts.videoId,
@@ -146,28 +152,28 @@ export function useWatchTogether({ currentUserId, currentUserName }: Options) {
       attachChannel(opts.conversationId)
       await whenWatchChannelReady(channelRef.current)
       void broadcastWatchRequestSync(channelRef.current, currentUserId)
+      return true
     },
     [attachChannel, currentUserId],
   )
 
-  const endWatch = useCallback(
-    async (announce = true) => {
-      const cur = activeRef.current
-      if (!cur) return
-      void broadcastWatchEnded(channelRef.current, currentUserId)
-      if (announce && cur.isHost) {
-        await insertWatchSystemMessage({
-          conversationId: cur.conversationId,
-          senderId: currentUserId,
-          event: "ended",
-          videoId: cur.videoId,
-        })
-      }
-      setActive(null)
-      detachChannel()
-    },
-    [currentUserId, detachChannel],
-  )
+  const endWatch = useCallback(async () => {
+    const cur = activeRef.current
+    if (!cur) return
+    markWatchSessionClosed(cur.conversationId, cur.videoId)
+    void broadcastWatchEnded(channelRef.current, {
+      by: currentUserId,
+      videoId: cur.videoId,
+    })
+    await insertWatchSystemMessage({
+      conversationId: cur.conversationId,
+      senderId: currentUserId,
+      event: "ended",
+      videoId: cur.videoId,
+    })
+    setActive(null)
+    detachChannel()
+  }, [currentUserId, detachChannel])
 
   const leaveWatch = useCallback(() => {
     setActive(null)

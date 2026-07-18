@@ -33,6 +33,8 @@ import { convAvatarUrl, convDisplayName, isSelfConversation } from "@/lib/conver
 import { formatDateDivider, formatChatListTime } from "@/lib/format"
 import { parseCallSystemPayload } from "@/lib/call-system-message"
 import { parsePollPayload } from "@/lib/poll"
+import { parseWatchSystemPayload } from "@/lib/watch-system-message"
+import { isWatchSessionClosed } from "@/lib/watch-closed"
 import {
   ChevronDown,
   ChevronUp,
@@ -176,6 +178,18 @@ export function ConversationView({
     const unhidden = messages.filter((m) => !prefs.hiddenMessages.includes(m.id))
     return filterMainStreamMessages(unhidden, threadsEnabled)
   }, [messages, prefs.hiddenMessages, threadsEnabled])
+
+  const closedWatchVideoIds = useMemo(() => {
+    const closed = new Set<string>()
+    for (const m of messages) {
+      const watch = parseWatchSystemPayload(m.content)
+      if (watch?.event === "ended") closed.add(watch.videoId)
+      if (watch?.event === "started" && isWatchSessionClosed(conversation.id, watch.videoId)) {
+        closed.add(watch.videoId)
+      }
+    }
+    return closed
+  }, [messages, conversation.id])
 
   const threadRoot = useMemo(() => {
     if (!threadRootId) return null
@@ -963,6 +977,7 @@ export function ConversationView({
                   onStartChatByEmail={onStartChatByEmail}
                   onJoinWatch={onJoinWatch}
                   onStartWatchWithUrl={onStartWatchWithUrl}
+                  closedWatchVideoIds={closedWatchVideoIds}
                 />
               </div>
             ))
