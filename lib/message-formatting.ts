@@ -54,3 +54,24 @@ export function decodeFormattedMessage(content: string | null | undefined): {
 export function plainMessageText(content: string | null | undefined): string {
   return decodeFormattedMessage(content).text
 }
+
+const KEYCAP_EMOJI_RE = /^[#*0-9]\uFE0F?\u20E3$/u
+const FLAG_EMOJI_RE = /^\p{Regional_Indicator}{2}$/u
+const PICTOGRAPHIC_RE = /\p{Extended_Pictographic}/u
+
+function isEmojiGrapheme(grapheme: string): boolean {
+  if (KEYCAP_EMOJI_RE.test(grapheme) || FLAG_EMOJI_RE.test(grapheme)) return true
+  return PICTOGRAPHIC_RE.test(grapheme)
+}
+
+/** True when the message is a single emoji (WhatsApp-style large emoji). */
+export function isStandaloneEmojiText(text: string | null | undefined): boolean {
+  const trimmed = (text ?? "").trim()
+  if (!trimmed) return false
+
+  const graphemes = [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(trimmed)].map(
+    (part) => part.segment,
+  )
+  if (graphemes.length !== 1) return false
+  return isEmojiGrapheme(graphemes[0]!)
+}

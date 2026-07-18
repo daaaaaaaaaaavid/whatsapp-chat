@@ -4,7 +4,8 @@ import { Fragment, useEffect, useState, type CSSProperties, type MouseEvent } fr
 import { createPortal } from "react-dom"
 import { Mail, MessageCircle } from "lucide-react"
 import { highlightQuery, splitTextWithLinks } from "@/lib/message-content"
-import { decodeFormattedMessage } from "@/lib/message-formatting"
+import { decodeFormattedMessage, isStandaloneEmojiText } from "@/lib/message-formatting"
+import { cn } from "@/lib/utils"
 
 const EMAIL_LINK_STYLE: CSSProperties = {
   color: "#027eb5",
@@ -32,6 +33,7 @@ export function MessageText({
   } | null>(null)
   const [openingChat, setOpeningChat] = useState(false)
   const { text: displayText, formatting } = decodeFormattedMessage(text)
+  const largeEmoji = isStandaloneEmojiText(displayText)
   const parts = splitTextWithLinks(displayText)
 
   useEffect(() => {
@@ -86,7 +88,12 @@ export function MessageText({
 
   return (
     <>
-      <span className="whitespace-pre-wrap break-words text-[15px] leading-[19px] text-[var(--wa-text)]">
+      <span
+        className={cn(
+          "whitespace-pre-wrap break-words text-[var(--wa-text)]",
+          largeEmoji ? "text-[42px] leading-none" : "text-[15px] leading-[19px]",
+        )}
+      >
         {parts.map((p, i) => {
           if (p.type === "link") {
             return (
