@@ -9,6 +9,7 @@ import { extractUrls, parseReplyContent } from "@/lib/message-content"
 import { plainMessageText } from "@/lib/message-formatting"
 import { parsePollPayload, pollPreviewLabel } from "@/lib/poll"
 import { messageTickStatus } from "@/lib/message-status"
+import { parseWatchSystemPayload, watchSystemLabel } from "@/lib/watch-system-message"
 import { MessageTicks } from "./message-ticks"
 import { VoiceMessage } from "./voice-message"
 import { PollMessage } from "./poll-message"
@@ -16,6 +17,7 @@ import { resolveMediaKind } from "./media-gallery"
 import { isExpiredChatMedia, MEDIA_EXPIRED_LABEL } from "@/lib/media-retention"
 import { useSignedMediaUrlControls } from "@/lib/use-signed-media-url"
 import { SystemCallMessage } from "./system-call-message"
+import { SystemWatchMessage } from "./system-watch-message"
 import { LinkPreview, MessageText } from "./message-text"
 import {
   Ban,
@@ -84,6 +86,8 @@ type Props = {
   isPinned?: boolean
   searchQuery?: string
   onStartChatByEmail?: (email: string) => Promise<void>
+  onJoinWatch?: (videoId: string) => void
+  onStartWatchWithUrl?: (url: string) => void
   /** Narrower panel (thread side pane). */
   compact?: boolean
 }
@@ -99,6 +103,8 @@ function replyPreviewText(message: Message) {
   if (poll || message.type === "poll") return poll ? pollPreviewLabel(poll) : "📊 סקר"
   const call = parseCallSystemPayload(message.content)
   if (call) return callSystemLabel(call)
+  const watch = parseWatchSystemPayload(message.content)
+  if (watch) return watchSystemLabel(watch)
   const legacy = parseReplyContent(message.content)
   if (legacy?.body) return plainMessageText(legacy.body)
   if (message.content) return plainMessageText(message.content)
@@ -155,6 +161,8 @@ export function MessageBubble({
   isPinned,
   searchQuery,
   onStartChatByEmail,
+  onJoinWatch,
+  onStartWatchWithUrl,
   compact,
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -174,6 +182,7 @@ export function MessageBubble({
 
   const reaction = reactionProp ?? null
   const callPayload = parseCallSystemPayload(message.content)
+  const watchPayload = parseWatchSystemPayload(message.content)
   const pollPayload = parsePollPayload(message.content)
   const isPoll = message.type === "poll" || Boolean(pollPayload)
 
@@ -242,6 +251,10 @@ export function MessageBubble({
       if (longPressRef.current) clearTimeout(longPressRef.current)
     }
   }, [])
+
+  if (watchPayload) {
+    return <SystemWatchMessage message={message} onJoin={onJoinWatch} />
+  }
 
   if (message.type === "system" || callPayload) {
     return <SystemCallMessage message={message} />
@@ -641,7 +654,9 @@ export function MessageBubble({
           />
         )}
 
-        {urls[0] && message.type === "text" && !isPoll && <LinkPreview url={urls[0]} />}
+        {urls[0] && message.type === "text" && !isPoll && (
+          <LinkPreview url={urls[0]} onWatchTogether={onStartWatchWithUrl} />
+        )}
 
         {message.type !== "audio" && (
           <span className="float-right ml-2 mt-1 flex items-center gap-1 text-[11px] text-[var(--wa-text-secondary)]" dir="ltr">

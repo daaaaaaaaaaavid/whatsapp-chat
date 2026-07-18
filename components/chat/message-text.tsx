@@ -5,6 +5,7 @@ import { createPortal } from "react-dom"
 import { Mail, MessageCircle } from "lucide-react"
 import { highlightQuery, splitTextWithLinks } from "@/lib/message-content"
 import { decodeFormattedMessage, isStandaloneEmojiText } from "@/lib/message-formatting"
+import { parseYoutubeVideoId } from "@/lib/youtube"
 import { cn } from "@/lib/utils"
 
 const EMAIL_LINK_STYLE: CSSProperties = {
@@ -208,29 +209,52 @@ export function MessageText({
   )
 }
 
-export function LinkPreview({ url }: { url: string }) {
+export function LinkPreview({
+  url,
+  onWatchTogether,
+}: {
+  url: string
+  onWatchTogether?: (url: string) => void
+}) {
   let host = url
   try {
     host = new URL(url).hostname.replace(/^www\./, "")
   } catch {
     // keep raw
   }
+
+  const isYoutube = Boolean(onWatchTogether) && Boolean(parseYoutubeVideoId(url))
+
   return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="mb-1 mt-1 block overflow-hidden rounded-md border border-black/10 bg-black/[0.03] text-right transition hover:bg-black/[0.06]"
-      onClick={(e) => e.stopPropagation()}
-    >
-      <div className="border-r-4 border-[#00a884] px-3 py-2">
-        <div className="truncate text-xs font-medium text-[#027eb5]" dir="ltr">
-          {host}
+    <div className="mb-1 mt-1 overflow-hidden rounded-md border border-black/10 bg-black/[0.03] text-right">
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block transition hover:bg-black/[0.06]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="border-r-4 border-[#00a884] px-3 py-2">
+          <div className="truncate text-xs font-medium text-[#027eb5]" dir="ltr">
+            {host}
+          </div>
+          <div className="truncate text-[13px] text-[var(--wa-text-secondary)]" dir="ltr">
+            {url}
+          </div>
         </div>
-        <div className="truncate text-[13px] text-[var(--wa-text-secondary)]" dir="ltr">
-          {url}
-        </div>
-      </div>
-    </a>
+      </a>
+      {isYoutube && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            onWatchTogether?.(url)
+          }}
+          className="flex w-full items-center justify-center gap-1.5 border-t border-black/5 bg-[#00a884]/10 px-3 py-2 text-xs font-medium text-[#008f6f] transition hover:bg-[#00a884]/18"
+        >
+          צפייה משותפת
+        </button>
+      )}
+    </div>
   )
 }

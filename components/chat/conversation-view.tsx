@@ -46,6 +46,7 @@ import {
   Trash2,
   Forward,
   Reply,
+  Clapperboard,
 } from "lucide-react"
 
 type Props = {
@@ -57,6 +58,9 @@ type Props = {
   onBack: () => void
   onOpenInfo: () => void
   onStartCall: (video: boolean) => void
+  onStartWatch?: () => void
+  onJoinWatch?: (videoId: string) => void
+  onStartWatchWithUrl?: (url: string) => void
   onToggleArchive: () => void
   onToggleFavorite: () => void
   onTogglePinned: () => void
@@ -85,6 +89,9 @@ export function ConversationView({
   onBack,
   onOpenInfo,
   onStartCall,
+  onStartWatch,
+  onJoinWatch,
+  onStartWatchWithUrl,
   onToggleArchive,
   onToggleFavorite,
   onTogglePinned,
@@ -676,6 +683,16 @@ export function ConversationView({
           </div>
         </button>
         <div className="relative flex items-center gap-0.5 text-[var(--wa-text-secondary)]">
+          {!isSelf && onStartWatch && (
+            <button
+              onClick={onStartWatch}
+              className="flex h-10 w-10 items-center justify-center rounded-full transition hover:bg-black/5"
+              aria-label="צפייה משותפת"
+              title="צפייה משותפת"
+            >
+              <Clapperboard className="h-5 w-5" />
+            </button>
+          )}
           {!isSelf && !conversation.is_group && (
             <>
               <button
@@ -944,6 +961,8 @@ export function ConversationView({
                   isPinned={prefs.pinnedMessages.includes(message.id)}
                   searchQuery={searchOpen ? searchQuery : ""}
                   onStartChatByEmail={onStartChatByEmail}
+                  onJoinWatch={onJoinWatch}
+                  onStartWatchWithUrl={onStartWatchWithUrl}
                 />
               </div>
             ))

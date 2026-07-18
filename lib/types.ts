@@ -29,6 +29,14 @@ export type CallSystemPayload = {
   durationSec?: number
 }
 
+/** Structured payload for Watch Together system messages (JSON in content). */
+export type WatchSystemPayload = {
+  kind: "watch"
+  event: "started" | "ended"
+  videoId: string
+  title?: string
+}
+
 /** Structured payload for poll messages (stored as JSON in content). */
 export type PollOption = {
   id: string

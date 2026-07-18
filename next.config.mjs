@@ -1,12 +1,13 @@
 /** @type {import('next').NextConfig} */
 const csp = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' https://va.vercel-scripts.com",
+  "script-src 'self' 'unsafe-inline' https://va.vercel-scripts.com https://www.youtube.com https://s.ytimg.com",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
   "media-src 'self' blob: https:",
   "font-src 'self' data:",
   "connect-src 'self' https: wss:",
+  "frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com",
   "worker-src 'self'",
   "frame-ancestors 'none'",
   "base-uri 'self'",

@@ -1,4 +1,5 @@
 import { parseCallSystemPayload, callSystemLabel } from "@/lib/call-system-message"
+import { parseWatchSystemPayload, watchSystemLabel } from "@/lib/watch-system-message"
 
 const URL_RE = /(https?:\/\/[^\s<>"']+)/gi
 const EMAIL_RE = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi
@@ -41,6 +42,8 @@ export function isCallSystemContent(content: string | null | undefined): boolean
 }
 
 export function displayMessageContent(content: string | null | undefined, type?: string): string {
+  const watch = parseWatchSystemPayload(content)
+  if (watch) return watchSystemLabel(watch)
   const payload = parseCallSystemPayload(content)
   if (payload) return callSystemLabel(payload)
   if (type === "poll") return "📊 סקר"

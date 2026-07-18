@@ -41,8 +41,11 @@ import { CommunitiesPanel } from "./communities-panel"
 import { SpacesPanel } from "./spaces-panel"
 import { SpaceFilterChips } from "./space-filter-chips"
 import { CallOverlay } from "./call-overlay"
+import { WatchOverlay } from "./watch-overlay"
+import { WatchStartDialog } from "./watch-start-dialog"
 import { useWorkSpaces } from "@/lib/use-work-spaces"
 import { useWebRtcCall } from "@/lib/use-webrtc-call"
+import { useWatchTogether } from "@/lib/use-watch-together"
 import { playIncomingMessageSound, unlockNotificationSound } from "@/lib/notification-sound"
 import {
   ensureNotificationPermission,
@@ -180,6 +183,23 @@ export function ChatApp({ currentUser: initialUser }: Props) {
     toggleMute,
     toggleCamera,
   } = useWebRtcCall({ currentUser, conversations })
+
+  const [watchDialogOpen, setWatchDialogOpen] = useState(false)
+  const [watchDialogUrl, setWatchDialogUrl] = useState("")
+  const {
+    active: watchActive,
+    floatingReactions,
+    startWatch,
+    joinWatch,
+    endWatch,
+    leaveWatch,
+    sendReaction,
+    publishSync,
+    registerPlayerBridge,
+  } = useWatchTogether({
+    currentUserId: currentUser.id,
+    currentUserName: currentUser.display_name ?? currentUser.email ?? "משתמש",
+  })
 
   const activeConversation = useMemo(
     () => conversations.find((c) => c.id === activeId) ?? null,
@@ -729,6 +749,21 @@ export function ChatApp({ currentUser: initialUser }: Props) {
                   }}
                   onOpenInfo={() => setShowInfo(true)}
                   onStartCall={(video) => handleStartCall(activeConversation, video)}
+                  onStartWatch={() => {
+                    setWatchDialogUrl("")
+                    setWatchDialogOpen(true)
+                  }}
+                  onJoinWatch={(videoId) => {
+                    joinWatch({
+                      conversationId: activeConversation.id,
+                      videoId,
+                      hostName: "משתמש",
+                    })
+                  }}
+                  onStartWatchWithUrl={(url) => {
+                    setWatchDialogUrl(url)
+                    setWatchDialogOpen(true)
+                  }}
                   onToggleArchive={() => updatePrefs(toggleArchived(prefs, activeConversation.id))}
                   onToggleFavorite={() => updatePrefs(toggleFavorite(prefs, activeConversation.id))}
                   onTogglePinned={() => updatePrefs(togglePinned(prefs, activeConversation.id))}
@@ -912,6 +947,36 @@ export function ChatApp({ currentUser: initialUser }: Props) {
           onToggleMute={toggleMute}
           onToggleCamera={toggleCamera}
           onDismissError={() => setCallError(null)}
+        />
+      )}
+
+      <WatchStartDialog
+        open={watchDialogOpen}
+        initialUrl={watchDialogUrl}
+        onClose={() => setWatchDialogOpen(false)}
+        onStart={(videoId) => {
+          if (!activeConversation) return
+          void startWatch({ conversationId: activeConversation.id, videoId })
+        }}
+      />
+
+      {watchActive && (
+        <WatchOverlay
+          videoId={watchActive.videoId}
+          hostName={watchActive.hostName}
+          conversationLabel={
+            (() => {
+              const conv = conversations.find((c) => c.id === watchActive.conversationId)
+              return conv ? convDisplayName(conv, currentUser.id) : "צ'אט"
+            })()
+          }
+          floatingReactions={floatingReactions}
+          isHost={watchActive.isHost}
+          onClose={leaveWatch}
+          onEndForEveryone={() => void endWatch(true)}
+          onReaction={sendReaction}
+          onPublishSync={publishSync}
+          registerPlayerBridge={registerPlayerBridge}
         />
       )}
     </div>

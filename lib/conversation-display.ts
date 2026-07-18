@@ -2,6 +2,7 @@ import type { Conversation, Message } from "@/lib/types"
 import { callSystemLabel, parseCallSystemPayload } from "@/lib/call-system-message"
 import { plainMessageText } from "@/lib/message-formatting"
 import { parsePollPayload, pollPreviewLabel } from "@/lib/poll"
+import { parseWatchSystemPayload, watchSystemLabel } from "@/lib/watch-system-message"
 
 /** Non-group chat with only the current user (notes / message yourself). */
 export function isSelfConversation(conv: Conversation, currentUserId: string): boolean {
@@ -39,6 +40,8 @@ export function messagePreview(msg: Message | null | undefined): string {
     return poll ? pollPreviewLabel(poll) : "📊 סקר"
   }
   const call = parseCallSystemPayload(msg.content)
+  const watch = parseWatchSystemPayload(msg.content)
+  if (watch) return `🎬 ${watchSystemLabel(watch)}`
   if (call || msg.type === "system") {
     return call ? callSystemLabel(call) : (msg.content ?? "הודעת מערכת")
   }
