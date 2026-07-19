@@ -12,10 +12,11 @@ import {
 import { formatChatListTime } from "@/lib/format"
 import { MessageTicks } from "./message-ticks"
 import { messageTickStatus } from "@/lib/message-status"
-import { Archive, Laptop, Pin, Search, Star, X, Briefcase, User } from "lucide-react"
+import { Archive, Download, Pin, Search, Star, X, Briefcase, User } from "lucide-react"
 import { useMemo, useState } from "react"
 import { cn } from "@/lib/utils"
 import type { ChatSpace } from "@/lib/chat-space"
+import { usePwaInstall } from "@/lib/use-pwa-install"
 
 type FilterId = "all" | "unread" | "favorites" | "groups"
 
@@ -53,6 +54,7 @@ export function ChatList({
   onTogglePinned,
   onMoveToSpace,
 }: Props) {
+  const { showBanner, install, canInstall, iosHint } = usePwaInstall()
   const [query, setQuery] = useState("")
   const [filter, setFilter] = useState<FilterId>("all")
   const [showArchive, setShowArchive] = useState(false)
@@ -330,18 +332,30 @@ export function ChatList({
         )}
       </div>
 
-      <div className="flex items-center gap-3 border-t border-[var(--wa-border)] bg-[var(--wa-header)] px-4 py-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white">
-          <Laptop className="h-5 w-5" />
+      {showBanner && (
+        <div className="flex items-center gap-3 border-t border-[var(--wa-border)] bg-[var(--wa-header)] px-4 py-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white">
+            <Download className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-medium text-[var(--wa-text)]">התקן את WhaChat כאפליקציה</div>
+            <div className="text-xs text-[var(--wa-text-secondary)]">
+              {iosHint
+                ? "הוסף למסך הבית לגישה מהירה"
+                : canInstall
+                  ? "פתח בחלון נפרד עם גישה מהירה"
+                  : "זמין ב־Chrome / Edge · או מתפריט הדפדפן"}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => void install()}
+            className="shrink-0 rounded-full bg-[#00a884] px-3 py-1.5 text-xs font-medium text-white transition hover:bg-[#06cf9c]"
+          >
+            התקן
+          </button>
         </div>
-        <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium text-[var(--wa-text)]">הורד את WhaChat ל-Windows</div>
-          <div className="text-xs text-[var(--wa-text-secondary)]">קבל התראות וגיבוי אוטומטי</div>
-        </div>
-        <span className="shrink-0 rounded-full bg-[#00a884] px-3 py-1.5 text-xs font-medium text-white">
-          התחל
-        </span>
-      </div>
+      )}
     </div>
   )
 }

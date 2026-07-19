@@ -6,12 +6,22 @@ export const metadata: Metadata = {
   title: "WhaChat",
   description: "פשוט. אמין. הודעות פרטיות.",
   generator: "v0.app",
+  applicationName: "WhaChat",
+  appleWebApp: {
+    capable: true,
+    title: "WhaChat",
+    statusBarStyle: "default",
+  },
   verification: {
     google: "t9baAK2VUiT5qE7LL3lotOcAOIKHVWBfU7CtkZ_M-rQ",
   },
   icons: {
-    icon: [{ url: "/logo.svg", type: "image/svg+xml" }],
-    apple: [{ url: "/logo.svg" }],
+    icon: [
+      { url: "/logo.svg", type: "image/svg+xml" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/icon-192.png", sizes: "192x192", type: "image/png" }],
   },
 }
 
