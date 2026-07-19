@@ -58,7 +58,11 @@ import { messagePreview, convDisplayName, isSelfConversation } from "@/lib/conve
 import { LoadingScreen } from "./loading-screen"
 import { MessageToastStack, type MessageToastItem } from "./message-toast"
 import { startChatOrInviteByEmail } from "@/lib/chat-actions"
-import { WORK_SPACES_UI_ENABLED, PERSONAL_WORK_UI_ENABLED } from "@/lib/site-config"
+import {
+  WORK_SPACES_UI_ENABLED,
+  PERSONAL_WORK_UI_ENABLED,
+  WATCH_TOGETHER_UI_ENABLED,
+} from "@/lib/site-config"
 
 type Props = {
   currentUser: Profile
@@ -781,21 +785,33 @@ export function ChatApp({ currentUser: initialUser }: Props) {
                   onJoinMeeting={(meetingId) => {
                     void joinMeeting(meetingId).catch(() => {})
                   }}
-                  onStartWatch={() => {
-                    setWatchDialogUrl("")
-                    setWatchDialogOpen(true)
-                  }}
-                  onJoinWatch={(videoId) => {
-                    joinWatch({
-                      conversationId: activeConversation.id,
-                      videoId,
-                      hostName: "משתמש",
-                    })
-                  }}
-                  onStartWatchWithUrl={(url) => {
-                    setWatchDialogUrl(url)
-                    setWatchDialogOpen(true)
-                  }}
+                  onStartWatch={
+                    WATCH_TOGETHER_UI_ENABLED
+                      ? () => {
+                          setWatchDialogUrl("")
+                          setWatchDialogOpen(true)
+                        }
+                      : undefined
+                  }
+                  onJoinWatch={
+                    WATCH_TOGETHER_UI_ENABLED
+                      ? (videoId) => {
+                          joinWatch({
+                            conversationId: activeConversation.id,
+                            videoId,
+                            hostName: "משתמש",
+                          })
+                        }
+                      : undefined
+                  }
+                  onStartWatchWithUrl={
+                    WATCH_TOGETHER_UI_ENABLED
+                      ? (url) => {
+                          setWatchDialogUrl(url)
+                          setWatchDialogOpen(true)
+                        }
+                      : undefined
+                  }
                   onToggleArchive={() => updatePrefs(toggleArchived(prefs, activeConversation.id))}
                   onToggleFavorite={() => updatePrefs(toggleFavorite(prefs, activeConversation.id))}
                   onTogglePinned={() => updatePrefs(togglePinned(prefs, activeConversation.id))}
@@ -988,17 +1004,19 @@ export function ChatApp({ currentUser: initialUser }: Props) {
         />
       )}
 
-      <WatchStartDialog
-        open={watchDialogOpen}
-        initialUrl={watchDialogUrl}
-        onClose={() => setWatchDialogOpen(false)}
-        onStart={(videoId) => {
-          if (!activeConversation) return
-          void startWatch({ conversationId: activeConversation.id, videoId })
-        }}
-      />
+      {WATCH_TOGETHER_UI_ENABLED && (
+        <WatchStartDialog
+          open={watchDialogOpen}
+          initialUrl={watchDialogUrl}
+          onClose={() => setWatchDialogOpen(false)}
+          onStart={(videoId) => {
+            if (!activeConversation) return
+            void startWatch({ conversationId: activeConversation.id, videoId })
+          }}
+        />
+      )}
 
-      {watchActive && (
+      {WATCH_TOGETHER_UI_ENABLED && watchActive && (
         <WatchOverlay
           videoId={watchActive.videoId}
           hostName={watchActive.hostName}
