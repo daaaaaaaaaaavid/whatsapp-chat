@@ -132,20 +132,44 @@ export async function joinMeetingByInvite(token: string): Promise<{
   conversationId: string
   livekitRoom: string
 }> {
+  const trimmed = token.trim()
+
+  // Prefer HTTP join (avoids ambiguous conversation_id in older RPC).
+  const res = await fetch("/api/meetings/join", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: trimmed }),
+  })
+  const data = (await res.json().catch(() => ({}))) as {
+    meetingId?: string
+    conversationId?: string
+    livekitRoom?: string
+    message?: string
+    error?: string
+  }
+  if (res.ok && data.meetingId && data.conversationId) {
+    return {
+      meetingId: data.meetingId,
+      conversationId: data.conversationId,
+      livekitRoom: data.livekitRoom ?? "",
+    }
+  }
+
+  // Fallback to RPC if API unavailable
   const supabase = createClient()
-  const { data, error } = await supabase.rpc("join_meeting_by_invite", {
-    p_token: token.trim(),
+  const { data: rpcData, error } = await supabase.rpc("join_meeting_by_invite", {
+    p_token: trimmed,
   })
   if (error) {
     const msg = error.message.toLowerCase()
     if (msg.includes("join_meeting_by_invite") || msg.includes("does not exist")) {
       throw new Error("יש להריץ את supabase/migration-meeting-sessions.sql ב-Supabase")
     }
-    throw new Error(error.message || "ההצטרפות לפגישה נכשלה")
+    throw new Error(data.message || error.message || "ההצטרפות לפגישה נכשלה")
   }
-  const row = Array.isArray(data) ? data[0] : data
+  const row = Array.isArray(rpcData) ? rpcData[0] : rpcData
   if (!row?.meeting_id || !row?.conversation_id) {
-    throw new Error("ההצטרפות לפגישה נכשלה")
+    throw new Error(data.message || "ההצטרפות לפגישה נכשלה")
   }
   return {
     meetingId: row.meeting_id as string,

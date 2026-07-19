@@ -58,6 +58,7 @@ language plpgsql
 security definer
 set search_path = public
 as $$
+#variable_conflict use_column
 declare
   ms public.meeting_sessions%rowtype;
   uid uuid := auth.uid();
@@ -79,14 +80,12 @@ begin
     raise exception 'Meeting has ended';
   end if;
 
-  insert into public.conversation_participants (conversation_id, user_id, is_admin)
+  insert into public.conversation_participants as cp (conversation_id, user_id, is_admin)
   values (ms.conversation_id, uid, false)
   on conflict (conversation_id, user_id) do nothing;
 
-  meeting_id := ms.id;
-  conversation_id := ms.conversation_id;
-  livekit_room := ms.livekit_room;
-  return next;
+  return query
+  select ms.id, ms.conversation_id, ms.livekit_room;
 end;
 $$;
 
