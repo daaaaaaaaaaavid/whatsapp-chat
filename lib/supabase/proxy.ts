@@ -24,7 +24,10 @@ export async function updateSession(request: NextRequest) {
       pathname === "/" ||
       pathname === "/about" ||
       pathname === "/privacy" ||
-      pathname === "/terms"
+      pathname === "/terms" ||
+      pathname === "/manifest.webmanifest" ||
+      pathname === "/sw.js" ||
+      pathname === "/theme-init.js"
     ) {
       return NextResponse.next({ request })
     }
@@ -62,6 +65,10 @@ export async function updateSession(request: NextRequest) {
     pathname === "/about" ||
     pathname === "/privacy" ||
     pathname === "/terms" ||
+    pathname === "/manifest.webmanifest" ||
+    pathname === "/manifest.json" ||
+    pathname === "/sw.js" ||
+    pathname === "/theme-init.js" ||
     pathname.startsWith("/api/") ||
     isAuthRoute
   const isPublic = isPublicRoute
