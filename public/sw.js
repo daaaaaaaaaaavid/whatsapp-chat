@@ -1,4 +1,19 @@
-/* WhaChat service worker — Web Push for offline recipients */
+/* WhaChat service worker — Web Push + minimal fetch for PWA installability */
+
+self.addEventListener("install", (event) => {
+  event.waitUntil(self.skipWaiting())
+})
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(self.clients.claim())
+})
+
+/** Required by Chromium for installable PWA (controls the page). */
+self.addEventListener("fetch", (event) => {
+  // Network-only passthrough — keep push SW lightweight, no offline cache yet.
+  event.respondWith(fetch(event.request))
+})
+
 self.addEventListener("push", (event) => {
   let data = {
     title: "הודעה חדשה",

@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
+import { ensureServiceWorker } from "@/lib/push-client"
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>
@@ -28,9 +29,10 @@ export function usePwaInstall() {
       return
     }
 
+    void ensureServiceWorker()
+
     const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent)
-    const isSafari = isIos && !(window as unknown as { MSStream?: unknown }).MSStream
-    if (isSafari) setIosHint(true)
+    if (isIos) setIosHint(true)
 
     const onBip = (e: Event) => {
       e.preventDefault()
