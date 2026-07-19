@@ -37,6 +37,26 @@ export type WatchSystemPayload = {
   title?: string
 }
 
+/** Structured payload for LiveKit group meeting system messages (JSON in content). */
+export type MeetingSystemPayload = {
+  kind: "meeting"
+  event: "started" | "ended"
+  meetingId: string
+  inviteToken: string
+}
+
+export type MeetingSession = {
+  id: string
+  conversation_id: string
+  host_id: string
+  livekit_room: string
+  invite_token: string
+  active: boolean
+  created_at: string
+  ended_at: string | null
+  expires_at: string
+}
+
 /** Structured payload for poll messages (stored as JSON in content). */
 export type PollOption = {
   id: string

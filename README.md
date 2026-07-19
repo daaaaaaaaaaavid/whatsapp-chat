@@ -62,3 +62,21 @@ NEXT_PUBLIC_TURN_CREDENTIAL=your-credential
 ```
 
 `NEXT_PUBLIC_TURN_URLS` accepts a comma-separated list of URLs.
+
+## Group meetings (LiveKit)
+
+Zoom-style group video/audio with invite links. 1:1 calls stay on WebRTC; group meetings use LiveKit.
+
+1. Create a **free** project at [LiveKit Cloud](https://cloud.livekit.io) (no credit card required for the free tier).
+2. Copy **WebSocket URL**, **API Key**, and **API Secret**.
+3. Set in `.env.local` and **Vercel → Environment Variables**:
+
+```
+NEXT_PUBLIC_LIVEKIT_URL=wss://your-project.livekit.cloud
+LIVEKIT_API_KEY=...
+LIVEKIT_API_SECRET=...
+```
+
+4. In Supabase SQL Editor, run [`supabase/migration-meeting-sessions.sql`](supabase/migration-meeting-sessions.sql).
+
+In a chat, tap the **people** icon to start a meeting, copy the invite link (`/invite/meet_…`), or join from the system message. Works in groups and during Watch Together.

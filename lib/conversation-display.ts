@@ -3,6 +3,7 @@ import { callSystemLabel, parseCallSystemPayload } from "@/lib/call-system-messa
 import { plainMessageText } from "@/lib/message-formatting"
 import { parsePollPayload, pollPreviewLabel } from "@/lib/poll"
 import { parseWatchSystemPayload, watchSystemLabel } from "@/lib/watch-system-message"
+import { parseMeetingSystemPayload, meetingSystemLabel } from "@/lib/meeting-system-message"
 import { viewOncePreviewLabel } from "@/lib/view-once"
 
 /** Non-group chat with only the current user (notes / message yourself). */
@@ -44,6 +45,8 @@ export function messagePreview(msg: Message | null | undefined): string {
   }
   const call = parseCallSystemPayload(msg.content)
   const watch = parseWatchSystemPayload(msg.content)
+  const meeting = parseMeetingSystemPayload(msg.content)
+  if (meeting) return `👥 ${meetingSystemLabel(meeting)}`
   if (watch) return `🎬 ${watchSystemLabel(watch)}`
   if (call || msg.type === "system") {
     return call ? callSystemLabel(call) : (msg.content ?? "הודעת מערכת")

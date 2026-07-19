@@ -289,10 +289,10 @@ export function WatchOverlay({
             type="button"
             onClick={onStartSharedCall}
             className="flex h-10 items-center gap-1.5 rounded-full bg-[#25d366]/20 px-3 text-sm text-[#25d366] transition hover:bg-[#25d366]/30"
-            title="שיחה קולית בזמן הצפייה"
+            title="פגישה קולית/וידאו בזמן הצפייה"
           >
             <Phone className="h-4 w-4" />
-            <span className="hidden sm:inline">שיחה</span>
+            <span className="hidden sm:inline">פגישה</span>
           </button>
         )}
         <button
@@ -421,7 +421,7 @@ export function WatchOverlay({
                 className="inline-flex items-center gap-2 rounded-full bg-[#25d366]/20 px-4 py-2.5 text-sm font-medium text-[#25d366] transition hover:bg-[#25d366]/30"
               >
                 <Phone className="h-4 w-4" />
-                שיחה משותפת
+                פגישה משותפת
               </button>
             )}
             <button

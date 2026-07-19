@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { acceptDmInvite, joinConversationByInvite } from "@/lib/chat-actions"
 import { joinWorkSpaceByInvite } from "@/lib/space-actions"
+import { joinMeetingByInvite } from "@/lib/meeting-actions"
 import { Logo } from "@/components/brand/logo"
 
 type Props = {
@@ -25,6 +26,16 @@ export function InviteClient({ token }: Props) {
         if (!data.user) {
           const next = encodeURIComponent(`/invite/${token}`)
           router.replace(`/auth/login?next=${next}`)
+          return
+        }
+
+        // Meeting invites use meet_ prefix
+        if (token.startsWith("meet_")) {
+          const joined = await joinMeetingByInvite(token)
+          if (cancelled) return
+          setStatus("ok")
+          setMessage("הצטרפת לפגישה! מעביר...")
+          router.replace(`/chat?c=${joined.conversationId}&meeting=${joined.meetingId}`)
           return
         }
 
@@ -78,16 +89,13 @@ export function InviteClient({ token }: Props) {
         <div className="flex justify-center">
           <Logo size={10} withWordmark wordmarkClassName="text-2xl" />
         </div>
-        <p className={`mt-4 text-sm ${status === "error" ? "text-[#ea0038]" : "text-[var(--wa-text-secondary)]"}`}>{message}</p>
-        {status === "error" && (
-          <button
-            type="button"
-            onClick={() => router.push("/chat")}
-            className="mt-6 rounded-lg bg-[#00a884] px-4 py-2 text-sm font-medium text-white"
-          >
-            חזרה לצ&apos;אטים
-          </button>
-        )}
+        <p
+          className={`mt-6 text-sm ${
+            status === "error" ? "text-red-600" : "text-[var(--wa-text-secondary)]"
+          }`}
+        >
+          {message}
+        </p>
       </div>
     </main>
   )

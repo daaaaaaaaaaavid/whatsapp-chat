@@ -43,9 +43,11 @@ import { SpaceFilterChips } from "./space-filter-chips"
 import { CallOverlay } from "./call-overlay"
 import { WatchOverlay } from "./watch-overlay"
 import { WatchStartDialog } from "./watch-start-dialog"
+import { MeetingOverlay } from "./meeting-overlay"
 import { useWorkSpaces } from "@/lib/use-work-spaces"
 import { useWebRtcCall } from "@/lib/use-webrtc-call"
 import { useWatchTogether } from "@/lib/use-watch-together"
+import { useLivekitMeeting } from "@/lib/use-livekit-meeting"
 import { playIncomingMessageSound, unlockNotificationSound } from "@/lib/notification-sound"
 import {
   ensureNotificationPermission,
@@ -106,6 +108,7 @@ export function ChatApp({ currentUser: initialUser }: Props) {
   }, [])
 
   // Deep link: /chat?c=, ?tab=status|communities, ?space=, ?google_contacts=1
+  // (?meeting= handled after useLivekitMeeting)
   useEffect(() => {
     if (typeof window === "undefined") return
     const params = new URLSearchParams(window.location.search)
@@ -200,6 +203,29 @@ export function ChatApp({ currentUser: initialUser }: Props) {
     currentUserId: currentUser.id,
     currentUserName: currentUser.display_name ?? currentUser.email ?? "משתמש",
   })
+
+  const {
+    active: meetingActive,
+    error: meetingError,
+    setError: setMeetingError,
+    startMeeting,
+    joinMeeting,
+    leaveMeeting,
+    endMeetingForAll,
+  } = useLivekitMeeting(currentUser)
+
+  // Deep link: /chat?meeting=
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const params = new URLSearchParams(window.location.search)
+    const meeting = params.get("meeting")
+    if (!meeting) return
+    const url = new URL(window.location.href)
+    url.searchParams.delete("meeting")
+    const qs = url.searchParams.toString()
+    window.history.replaceState({}, "", qs ? `${url.pathname}?${qs}` : url.pathname)
+    void joinMeeting(meeting).catch(() => {})
+  }, [joinMeeting])
 
   const activeConversation = useMemo(
     () => conversations.find((c) => c.id === activeId) ?? null,
@@ -749,6 +775,12 @@ export function ChatApp({ currentUser: initialUser }: Props) {
                   }}
                   onOpenInfo={() => setShowInfo(true)}
                   onStartCall={(video) => handleStartCall(activeConversation, video)}
+                  onStartMeeting={() => {
+                    void startMeeting(activeConversation.id).catch(() => {})
+                  }}
+                  onJoinMeeting={(meetingId) => {
+                    void joinMeeting(meetingId).catch(() => {})
+                  }}
                   onStartWatch={() => {
                     setWatchDialogUrl("")
                     setWatchDialogOpen(true)
@@ -985,26 +1017,45 @@ export function ChatApp({ currentUser: initialUser }: Props) {
           onStartSharedCall={
             (() => {
               const conv = conversations.find((c) => c.id === watchActive.conversationId)
-              if (!conv || conv.is_group) return undefined
-              return () => handleStartCall(conv, false)
+              if (!conv) return undefined
+              // Groups (and anyone) can start a LiveKit meeting while watching
+              return () => {
+                void startMeeting(conv.id).catch(() => {})
+              }
             })()
           }
-          sharedCall={
-            call &&
-            !call.video &&
-            call.conversationId === watchActive.conversationId &&
-            (phase === "outgoing" || phase === "connecting" || phase === "connected")
-              ? {
-                  phase,
-                  peerName: call.peerName,
-                  seconds,
-                  muted,
-                  onToggleMute: toggleMute,
-                  onHangup: () => void hangup(),
-                }
-              : null
-          }
+          sharedCall={null}
         />
+      )}
+
+      {meetingActive && (
+        <MeetingOverlay
+          meeting={meetingActive}
+          conversationLabel={
+            (() => {
+              const conv = conversations.find((c) => c.id === meetingActive.conversationId)
+              return conv ? convDisplayName(conv, currentUser.id) : "פגישה"
+            })()
+          }
+          onLeave={leaveMeeting}
+          onEndForAll={() => void endMeetingForAll()}
+          mediaOnly={Boolean(
+            watchActive && watchActive.conversationId === meetingActive.conversationId,
+          )}
+        />
+      )}
+
+      {meetingError && (
+        <div className="fixed bottom-4 start-1/2 z-[90] max-w-sm -translate-x-1/2 rounded-xl bg-red-600 px-4 py-3 text-center text-sm text-white shadow-lg">
+          <p>{meetingError}</p>
+          <button
+            type="button"
+            className="mt-2 text-xs underline"
+            onClick={() => setMeetingError(null)}
+          >
+            סגור
+          </button>
+        </div>
       )}
     </div>
   )

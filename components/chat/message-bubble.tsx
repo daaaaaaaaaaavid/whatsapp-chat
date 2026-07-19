@@ -10,6 +10,7 @@ import { plainMessageText } from "@/lib/message-formatting"
 import { parsePollPayload, pollPreviewLabel } from "@/lib/poll"
 import { messageTickStatus } from "@/lib/message-status"
 import { parseWatchSystemPayload, watchSystemLabel } from "@/lib/watch-system-message"
+import { parseMeetingSystemPayload, meetingSystemLabel } from "@/lib/meeting-system-message"
 import { MessageTicks } from "./message-ticks"
 import { VoiceMessage } from "./voice-message"
 import { PollMessage } from "./poll-message"
@@ -18,6 +19,7 @@ import { isExpiredChatMedia, MEDIA_EXPIRED_LABEL } from "@/lib/media-retention"
 import { useSignedMediaUrlControls } from "@/lib/use-signed-media-url"
 import { SystemCallMessage } from "./system-call-message"
 import { SystemWatchMessage } from "./system-watch-message"
+import { SystemMeetingMessage } from "./system-meeting-message"
 import { LinkPreview, MessageText } from "./message-text"
 import {
   Ban,
@@ -99,6 +101,9 @@ type Props = {
   onStartWatchWithUrl?: (url: string) => void
   /** Video IDs whose watch session already ended in this chat */
   closedWatchVideoIds?: Set<string>
+  onJoinMeeting?: (meetingId: string) => void
+  /** Meeting IDs that already ended in this chat */
+  closedMeetingIds?: Set<string>
   /** Narrower panel (thread side pane). */
   compact?: boolean
 }
@@ -120,6 +125,8 @@ function replyPreviewText(message: Message) {
   if (call) return callSystemLabel(call)
   const watch = parseWatchSystemPayload(message.content)
   if (watch) return watchSystemLabel(watch)
+  const meeting = parseMeetingSystemPayload(message.content)
+  if (meeting) return meetingSystemLabel(meeting)
   const legacy = parseReplyContent(message.content)
   if (legacy?.body) return plainMessageText(legacy.body)
   if (message.content) return plainMessageText(message.content)
@@ -180,6 +187,8 @@ export function MessageBubble({
   onJoinWatch,
   onStartWatchWithUrl,
   closedWatchVideoIds,
+  onJoinMeeting,
+  closedMeetingIds,
   compact,
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -200,6 +209,7 @@ export function MessageBubble({
   const reaction = reactionProp ?? null
   const callPayload = parseCallSystemPayload(message.content)
   const watchPayload = parseWatchSystemPayload(message.content)
+  const meetingPayload = parseMeetingSystemPayload(message.content)
   const pollPayload = parsePollPayload(message.content)
   const isPoll = message.type === "poll" || Boolean(pollPayload)
 
@@ -275,6 +285,15 @@ export function MessageBubble({
       Boolean(closedWatchVideoIds?.has(watchPayload.videoId))
     return (
       <SystemWatchMessage message={message} onJoin={onJoinWatch} joinBlocked={joinBlocked} />
+    )
+  }
+
+  if (meetingPayload) {
+    const joinBlocked =
+      meetingPayload.event === "started" &&
+      Boolean(closedMeetingIds?.has(meetingPayload.meetingId))
+    return (
+      <SystemMeetingMessage message={message} onJoin={onJoinMeeting} joinBlocked={joinBlocked} />
     )
   }
 

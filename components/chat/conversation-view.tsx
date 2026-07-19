@@ -35,6 +35,7 @@ import { formatDateDivider, formatChatListTime } from "@/lib/format"
 import { parseCallSystemPayload } from "@/lib/call-system-message"
 import { parsePollPayload } from "@/lib/poll"
 import { parseWatchSystemPayload } from "@/lib/watch-system-message"
+import { parseMeetingSystemPayload } from "@/lib/meeting-system-message"
 import { isWatchSessionClosed } from "@/lib/watch-closed"
 import {
   ChevronDown,
@@ -50,6 +51,7 @@ import {
   Forward,
   Reply,
   Clapperboard,
+  Users,
 } from "lucide-react"
 
 type Props = {
@@ -61,6 +63,8 @@ type Props = {
   onBack: () => void
   onOpenInfo: () => void
   onStartCall: (video: boolean) => void
+  onStartMeeting?: () => void
+  onJoinMeeting?: (meetingId: string) => void
   onStartWatch?: () => void
   onJoinWatch?: (videoId: string) => void
   onStartWatchWithUrl?: (url: string) => void
@@ -92,6 +96,8 @@ export function ConversationView({
   onBack,
   onOpenInfo,
   onStartCall,
+  onStartMeeting,
+  onJoinMeeting,
   onStartWatch,
   onJoinWatch,
   onStartWatchWithUrl,
@@ -196,6 +202,15 @@ export function ConversationView({
     }
     return closed
   }, [messages, conversation.id])
+
+  const closedMeetingIds = useMemo(() => {
+    const closed = new Set<string>()
+    for (const m of messages) {
+      const meeting = parseMeetingSystemPayload(m.content)
+      if (meeting?.event === "ended") closed.add(meeting.meetingId)
+    }
+    return closed
+  }, [messages])
 
   const threadRoot = useMemo(() => {
     if (!threadRootId) return null
@@ -782,6 +797,16 @@ export function ConversationView({
               <Clapperboard className="h-5 w-5" />
             </button>
           )}
+          {!isSelf && onStartMeeting && (
+            <button
+              onClick={onStartMeeting}
+              className="flex h-10 w-10 items-center justify-center rounded-full transition hover:bg-black/5"
+              aria-label="פגישה קבוצתית"
+              title="פגישה קבוצתית (קישור הזמנה)"
+            >
+              <Users className="h-5 w-5" />
+            </button>
+          )}
           {!isSelf && !conversation.is_group && (
             <>
               <button
@@ -1057,6 +1082,8 @@ export function ConversationView({
                   onJoinWatch={onJoinWatch}
                   onStartWatchWithUrl={onStartWatchWithUrl}
                   closedWatchVideoIds={closedWatchVideoIds}
+                  onJoinMeeting={onJoinMeeting}
+                  closedMeetingIds={closedMeetingIds}
                 />
               </div>
             ))
