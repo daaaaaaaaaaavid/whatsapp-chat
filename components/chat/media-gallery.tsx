@@ -82,7 +82,7 @@ function GalleryThumb({
 export function mediaItemsFromMessages(messages: Message[]): GalleryItem[] {
   const items: GalleryItem[] = []
   for (const m of messages) {
-    if (m.deleted_at || !m.file_url) continue
+    if (m.deleted_at || !m.file_url || m.view_once) continue
     const kind = resolveMediaKind(m.type, m.file_name, m.file_url)
     if (!kind) continue
     items.push({

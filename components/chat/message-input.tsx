@@ -44,6 +44,7 @@ import {
   Palette,
   LoaderCircle,
   BarChart3,
+  Eye,
 } from "lucide-react"
 import { parseReplyContent } from "@/lib/message-content"
 import { encodePollPayload, parsePollPayload, pollPreviewLabel } from "@/lib/poll"
@@ -195,6 +196,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
   const [pending, setPending] = useState<PendingItem[]>([])
   const [activeIndex, setActiveIndex] = useState(0)
   const [sendingMedia, setSendingMedia] = useState(false)
+  const [viewOnce, setViewOnce] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const audioInputRef = useRef<HTMLInputElement>(null)
@@ -297,6 +299,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
     setUploadError(null)
     setSendError(null)
     setSendingMedia(false)
+    setViewOnce(false)
     setSendingRecording(false)
     setRecordingPreview((current) => {
       if (current) URL.revokeObjectURL(current.url)
@@ -328,6 +331,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
       file_size?: number
       reply_to_id?: string | null
       reply_to?: Message | null
+      view_once?: boolean
     }) => {
       const tempId = `temp-${crypto.randomUUID()}`
       const createdAt = new Date().toISOString()
@@ -342,6 +346,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
         file_size: payload.file_size ?? null,
         reply_to_id: payload.reply_to_id ?? null,
         reply_to: payload.reply_to ?? null,
+        view_once: Boolean(payload.view_once),
         created_at: createdAt,
         pending: true,
         reads: [],
@@ -349,7 +354,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
       onOptimistic?.(optimistic)
 
       const supabase = createClient()
-      const row = {
+      const row: Record<string, unknown> = {
         conversation_id: conversationId,
         sender_id: currentUserId,
         content: payload.content ?? null,
@@ -359,11 +364,18 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
         file_size: payload.file_size ?? null,
         reply_to_id: payload.reply_to_id ?? null,
       }
+      if (payload.view_once) row.view_once = true
+
       let { data, error } = await supabase.from("messages").insert(row).select("*").single()
       // Retry without reply_to_id if the column is not migrated yet
       if (error && payload.reply_to_id && /reply_to_id/i.test(error.message)) {
         const { reply_to_id: _omit, ...withoutReply } = row
         ;({ data, error } = await supabase.from("messages").insert(withoutReply).select("*").single())
+      }
+      // Retry without view_once if column not migrated
+      if (error && payload.view_once && /view_once/i.test(error.message)) {
+        const { view_once: _omitVo, ...withoutVo } = row
+        ;({ data, error } = await supabase.from("messages").insert(withoutVo).select("*").single())
       }
       // Fallback: store poll as text JSON if poll type not migrated yet
       if (error && row.type === "poll" && /type|check|poll/i.test(error.message)) {
@@ -387,6 +399,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
         pending: false,
         reads: [],
         reply_to: payload.reply_to ?? null,
+        view_once: Boolean((data as Message).view_once ?? payload.view_once),
       }
       onSent(real, tempId)
       notifyOfflineRecipients({
@@ -728,6 +741,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
         const publicUrl = mediaReferenceUrl(supabase, path)
 
         const captionText = item.caption.trim()
+        const canViewOnce = viewOnce && (item.kind === "image" || item.kind === "video")
         await sendMessage({
           type: item.kind,
           file_url: publicUrl,
@@ -736,10 +750,12 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
           content: captionText || null,
           reply_to_id: i === 0 ? (replySnapshot?.id ?? null) : null,
           reply_to: i === 0 ? (replySnapshot ?? null) : null,
+          view_once: canViewOnce,
         })
         sent.push(item)
       }
       setPending([])
+      setViewOnce(false)
       revokePending(sent)
     } catch (err) {
       const remaining = items.filter((item) => !sent.includes(item))
@@ -975,6 +991,27 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
           )}
 
           <div className="shrink-0 border-t border-white/10 bg-[#1f2c34] px-3 py-3">
+            {pending.some((p) => p.kind === "image" || p.kind === "video") && (
+              <div className="mx-auto mb-2 flex max-w-3xl items-center justify-between gap-3 px-1">
+                <button
+                  type="button"
+                  onClick={() => setViewOnce((v) => !v)}
+                  disabled={sendingMedia}
+                  className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm transition ${
+                    viewOnce
+                      ? "bg-[#25d366]/25 text-[#25d366]"
+                      : "bg-white/10 text-white/80 hover:bg-white/15"
+                  } disabled:opacity-40`}
+                  aria-pressed={viewOnce}
+                >
+                  <Eye className="h-4 w-4" />
+                  צפייה חד־פעמית
+                </button>
+                {viewOnce && (
+                  <span className="text-xs text-white/50">הנמען יוכל לצפות פעם אחת בלבד</span>
+                )}
+              </div>
+            )}
             <form
               onSubmit={(e) => {
                 e.preventDefault()

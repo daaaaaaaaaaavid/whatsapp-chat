@@ -72,6 +72,10 @@ export type Message = {
   edited_at?: string | null
   reply_to_id?: string | null
   is_forwarded?: boolean
+  /** WhatsApp-style view-once image/video */
+  view_once?: boolean
+  view_once_opened_at?: string | null
+  view_once_opened_by?: string | null
   /** Client-only: optimistic bubble not yet confirmed by the server */
   pending?: boolean
   sender?: Profile

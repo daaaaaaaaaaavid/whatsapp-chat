@@ -24,6 +24,7 @@ type Props = {
   onClose: () => void
   onDeleteForEveryone: (messageId: string) => void
   onOpenMedia?: (messageId: string) => void
+  onOpenViewOnce?: (messageId: string) => void
   onOptimistic: (message: Message) => void
   onSent: (message: Message, tempId: string) => void
   onSendFailed?: (tempId: string) => void
@@ -43,6 +44,7 @@ export function ThreadPanel({
   onClose,
   onDeleteForEveryone,
   onOpenMedia,
+  onOpenViewOnce,
   onOptimistic,
   onSent,
   onSendFailed,
@@ -98,11 +100,14 @@ export function ThreadPanel({
           : undefined
       }
       onDeleteForMe={() => onPrefsChange(hideMessageForMe(prefs, message.id))}
-      onForward={onForward ? () => onForward(message) : undefined}
+      onForward={
+        onForward && !message.view_once ? () => onForward(message) : undefined
+      }
       onToggleStar={() => onPrefsChange(toggleStarredMessage(prefs, message.id))}
       onTogglePin={() => onPrefsChange(togglePinnedMessage(prefs, message.id))}
       onReaction={(emoji) => onPrefsChange(setMessageReaction(prefs, message.id, emoji))}
       onOpenMedia={onOpenMedia}
+      onOpenViewOnce={onOpenViewOnce}
       currentUserAvatarUrl={currentUser.avatar_url}
       currentUserName={currentUser.display_name}
       currentUserId={currentUser.id}

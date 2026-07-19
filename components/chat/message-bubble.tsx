@@ -40,8 +40,16 @@ import {
   Pencil,
   CheckSquare,
   Check,
+  Eye,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import {
+  isViewOnceMessage,
+  isViewOnceOpened,
+  VIEW_ONCE_OPENED_LABEL,
+  VIEW_ONCE_PHOTO_LABEL,
+  VIEW_ONCE_VIDEO_LABEL,
+} from "@/lib/view-once"
 
 type MenuPlacement = {
   top?: number
@@ -74,6 +82,7 @@ type Props = {
   onTogglePin?: () => void
   onReaction?: (emoji: string | null) => void
   onOpenMedia?: (messageId: string) => void
+  onOpenViewOnce?: (messageId: string) => void
   onStartSelect?: () => void
   onToggleSelect?: () => void
   selectionMode?: boolean
@@ -96,6 +105,10 @@ type Props = {
 
 function replyPreviewText(message: Message) {
   if (message.deleted_at) return "הודעה שנמחקה"
+  if (isViewOnceOpened(message)) return VIEW_ONCE_OPENED_LABEL
+  if (isViewOnceMessage(message) && message.file_url) {
+    return message.type === "video" ? VIEW_ONCE_VIDEO_LABEL : VIEW_ONCE_PHOTO_LABEL
+  }
   if (isExpiredChatMedia(message)) return MEDIA_EXPIRED_LABEL
   if (message.type === "image") return "תמונה"
   if (message.type === "video") return "סרטון"
@@ -151,6 +164,7 @@ export function MessageBubble({
   onTogglePin,
   onReaction,
   onOpenMedia,
+  onOpenViewOnce,
   onStartSelect,
   onToggleSelect,
   selectionMode,
@@ -179,7 +193,7 @@ export function MessageBubble({
     url: displayFileUrl,
     loading: mediaUrlLoading,
     refresh: refreshMediaUrl,
-  } = useSignedMediaUrlControls(message.file_url)
+  } = useSignedMediaUrlControls(message.view_once ? null : message.file_url)
   const senderProfile = participants.find((p) => p.user_id === message.sender_id)?.profile
   const senderName = senderProfile?.display_name ?? senderProfile?.email ?? "משתמש"
 
@@ -298,13 +312,19 @@ export function MessageBubble({
       onToggleSelect?.()
       return
     }
+    if (isViewOnceMessage(message) && message.file_url) {
+      onOpenViewOnce?.(message.id)
+      return
+    }
     if (onOpenMedia && message.file_url) onOpenMedia(message.id)
   }
 
   const mediaKind = message.file_url
     ? resolveMediaKind(message.type, message.file_name, message.file_url)
     : null
-  const mediaExpired = isExpiredChatMedia(message)
+  const viewOnce = isViewOnceMessage(message)
+  const viewOnceOpened = isViewOnceOpened(message)
+  const mediaExpired = isExpiredChatMedia(message) && !viewOnce
 
   const legacyReply = parseReplyContent(message.content)
   const structuredTarget = message.reply_to
@@ -408,7 +428,7 @@ export function MessageBubble({
       icon: SmilePlus,
       onClick: () => setShowMoreEmoji(true),
     },
-    ...(onForward
+    ...(onForward && !viewOnce
       ? [
           {
             id: "forward" as const,
@@ -537,6 +557,13 @@ export function MessageBubble({
           </div>
         )}
 
+        {viewOnceOpened && (
+          <div className="mb-1 flex max-w-xs items-center gap-2 rounded-md bg-black/5 px-3 py-3 text-[13px] text-[var(--wa-text-secondary)]">
+            <EyeOff className="h-5 w-5 shrink-0 opacity-50" />
+            <span>{VIEW_ONCE_OPENED_LABEL}</span>
+          </div>
+        )}
+
         {mediaExpired && (
           <div className="mb-1 flex max-w-xs items-center gap-2 rounded-md bg-black/5 px-3 py-3 text-[13px] text-[var(--wa-text-secondary)]">
             {message.type === "video" ? (
@@ -548,7 +575,25 @@ export function MessageBubble({
           </div>
         )}
 
-        {mediaKind === "image" && message.file_url && displayFileUrl && (
+        {viewOnce && message.file_url && (
+          <button
+            type="button"
+            onClick={openMedia}
+            className="mb-1 flex w-full max-w-xs flex-col items-center gap-2 rounded-md bg-gradient-to-b from-[#1f2c34] to-[#0b141a] px-4 py-6 text-center text-white transition hover:brightness-110"
+          >
+            <span className="flex h-14 w-14 items-center justify-center rounded-full bg-white/10 ring-2 ring-[#25d366]/50">
+              <Eye className="h-7 w-7 text-[#25d366]" />
+            </span>
+            <span className="text-sm font-medium">
+              {message.type === "video" ? VIEW_ONCE_VIDEO_LABEL : VIEW_ONCE_PHOTO_LABEL}
+            </span>
+            <span className="text-[11px] text-white/55">
+              {isMine ? "הנמען יצפה פעם אחת" : "הקש לצפייה חד־פעמית"}
+            </span>
+          </button>
+        )}
+
+        {!viewOnce && mediaKind === "image" && message.file_url && displayFileUrl && (
           <button
             type="button"
             onClick={openMedia}
@@ -563,7 +608,7 @@ export function MessageBubble({
           </button>
         )}
 
-        {mediaKind === "image" && message.file_url && !displayFileUrl && (
+        {!viewOnce && mediaKind === "image" && message.file_url && !displayFileUrl && (
           <button
             type="button"
             onClick={(e) => {
@@ -577,7 +622,7 @@ export function MessageBubble({
           </button>
         )}
 
-        {mediaKind === "video" && message.file_url && displayFileUrl && (
+        {!viewOnce && mediaKind === "video" && message.file_url && displayFileUrl && (
           <button
             type="button"
             onClick={openMedia}
@@ -598,7 +643,7 @@ export function MessageBubble({
           </button>
         )}
 
-        {mediaKind === "video" && message.file_url && !displayFileUrl && (
+        {!viewOnce && mediaKind === "video" && message.file_url && !displayFileUrl && (
           <button
             type="button"
             onClick={(e) => {

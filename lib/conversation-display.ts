@@ -3,6 +3,7 @@ import { callSystemLabel, parseCallSystemPayload } from "@/lib/call-system-messa
 import { plainMessageText } from "@/lib/message-formatting"
 import { parsePollPayload, pollPreviewLabel } from "@/lib/poll"
 import { parseWatchSystemPayload, watchSystemLabel } from "@/lib/watch-system-message"
+import { viewOncePreviewLabel } from "@/lib/view-once"
 
 /** Non-group chat with only the current user (notes / message yourself). */
 export function isSelfConversation(conv: Conversation, currentUserId: string): boolean {
@@ -35,6 +36,8 @@ export function otherParticipantId(conv: Conversation, currentUserId: string): s
 export function messagePreview(msg: Message | null | undefined): string {
   if (!msg) return "אין הודעות עדיין"
   if (msg.deleted_at) return "ההודעה נמחקה"
+  const viewOnce = viewOncePreviewLabel(msg)
+  if (viewOnce) return viewOnce
   const poll = parsePollPayload(msg.content)
   if (poll || msg.type === "poll") {
     return poll ? pollPreviewLabel(poll) : "📊 סקר"

@@ -29,6 +29,7 @@ import { ChatThreadHeader } from "./chat-thread-header"
 import { ThreadPanel } from "./thread-panel"
 import { MediaGallery, mediaItemsFromMessages } from "./media-gallery"
 import { ForwardDialog } from "./forward-dialog"
+import { ViewOnceViewer } from "./view-once-viewer"
 import { convAvatarUrl, convDisplayName, isSelfConversation } from "@/lib/conversation-display"
 import { formatDateDivider, formatChatListTime } from "@/lib/format"
 import { parseCallSystemPayload } from "@/lib/call-system-message"
@@ -132,6 +133,7 @@ export function ConversationView({
   const [unreadAnchorId, setUnreadAnchorId] = useState<string | null>(null)
   const [unreadCountAtOpen, setUnreadCountAtOpen] = useState(0)
   const [galleryIndex, setGalleryIndex] = useState<number | null>(null)
+  const [viewOnceId, setViewOnceId] = useState<string | null>(null)
   const [replyTo, setReplyTo] = useState<Message | null>(null)
   const [editingMessage, setEditingMessage] = useState<Message | null>(null)
   const [forwardMessages, setForwardMessages] = useState<Message[]>([])
@@ -370,6 +372,7 @@ export function ConversationView({
     knownMessageIdsRef.current = new Set()
     prevMessageLenRef.current = 0
     setGalleryIndex(null)
+    setViewOnceId(null)
     setReplyTo(null)
     setEditingMessage(null)
     setForwardMessages([])
@@ -483,6 +486,30 @@ export function ConversationView({
     if (idx >= 0) setGalleryIndex(idx)
   }
 
+  const openViewOnce = useCallback((messageId: string) => {
+    setViewOnceId(messageId)
+  }, [])
+
+  const handleViewOnceBurned = useCallback(
+    (messageId: string) => {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId
+            ? {
+                ...m,
+                file_url: null,
+                file_name: null,
+                file_size: null,
+                view_once_opened_at: new Date().toISOString(),
+                view_once_opened_by: currentUser.id,
+              }
+            : m,
+        ),
+      )
+    },
+    [currentUser.id, setMessages],
+  )
+
   const handleDeleteForEveryone = async (messageId: string) => {
     const supabase = createClient()
     const deletedAt = new Date().toISOString()
@@ -518,6 +545,7 @@ export function ConversationView({
     if (!forwardMessages.length) return
     const supabase = createClient()
     for (const src of forwardMessages) {
+      if (src.view_once) continue
       for (const cid of conversationIds) {
         const { data, error } = await supabase
           .from("messages")
@@ -994,7 +1022,9 @@ export function ConversationView({
                   }
                   threadReplyCount={threadReplyStats.get(message.id)?.count ?? 0}
                   threadPreview={threadReplyStats.get(message.id)?.preview ?? null}
-                  onForward={() => setForwardMessages([message])}
+                  onForward={
+                    message.view_once ? undefined : () => setForwardMessages([message])
+                  }
                   onEdit={
                     message.sender_id === currentUser.id &&
                     message.type !== "system" &&
@@ -1011,6 +1041,7 @@ export function ConversationView({
                   onTogglePin={() => onPrefsChange(togglePinnedMessage(prefs, message.id))}
                   onReaction={(emoji) => onPrefsChange(setMessageReaction(prefs, message.id, emoji))}
                   onOpenMedia={openMedia}
+                  onOpenViewOnce={openViewOnce}
                   onStartSelect={() => startSelect(message.id)}
                   onToggleSelect={() => toggleSelect(message.id)}
                   selectionMode={selectionMode}
@@ -1106,6 +1137,20 @@ export function ConversationView({
         />
       )}
 
+      {viewOnceId &&
+        (() => {
+          const msg = messages.find((m) => m.id === viewOnceId)
+          if (!msg?.file_url || !msg.view_once) return null
+          return (
+            <ViewOnceViewer
+              message={msg}
+              burnsOnClose={msg.sender_id !== currentUser.id}
+              onBurned={handleViewOnceBurned}
+              onClose={() => setViewOnceId(null)}
+            />
+          )
+        })()}
+
       <ForwardDialog
         open={forwardMessages.length > 0}
         messages={forwardMessages}
@@ -1132,6 +1177,7 @@ export function ConversationView({
           onClose={closeThread}
           onDeleteForEveryone={handleDeleteForEveryone}
           onOpenMedia={openMedia}
+          onOpenViewOnce={openViewOnce}
           onOptimistic={(msg) => {
             addOptimistic(msg)
             onMessageActivity?.(msg)
