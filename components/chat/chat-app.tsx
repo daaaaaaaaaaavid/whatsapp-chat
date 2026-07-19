@@ -62,6 +62,7 @@ import {
   WORK_SPACES_UI_ENABLED,
   PERSONAL_WORK_UI_ENABLED,
   WATCH_TOGETHER_UI_ENABLED,
+  WEBRTC_CALLS_UI_ENABLED,
 } from "@/lib/site-config"
 
 type Props = {
@@ -658,7 +659,7 @@ export function ChatApp({ currentUser: initialUser }: Props) {
             showChatPane ? "hidden md:flex md:w-[min(30%,420px)] md:min-w-[340px] md:max-w-[420px]" : "flex w-full md:w-[min(30%,420px)] md:min-w-[340px] md:max-w-[420px]"
           }`}
         >
-          {navTab === "calls" ? (
+          {WEBRTC_CALLS_UI_ENABLED && navTab === "calls" ? (
             <CallsPanel conversations={conversations} currentUser={currentUser} onCall={handleStartCall} />
           ) : navTab === "communities" ? (
             WORK_SPACES_UI_ENABLED && prefs.activeSpace === "work" ? (
@@ -755,7 +756,7 @@ export function ChatApp({ currentUser: initialUser }: Props) {
                 />
               )}
             </div>
-          ) : navTab === "calls" ? (
+          ) : WEBRTC_CALLS_UI_ENABLED && navTab === "calls" ? (
             <div className="flex h-full min-w-0 flex-1 flex-col">
               <EmptyState title="שיחות" subtitle="בחר שיחה מהרשימה או התחל שיחה מצ'אט." />
             </div>
@@ -778,7 +779,11 @@ export function ChatApp({ currentUser: initialUser }: Props) {
                     setShowInfo(false)
                   }}
                   onOpenInfo={() => setShowInfo(true)}
-                  onStartCall={(video) => handleStartCall(activeConversation, video)}
+                  onStartCall={
+                    WEBRTC_CALLS_UI_ENABLED
+                      ? (video) => handleStartCall(activeConversation, video)
+                      : undefined
+                  }
                   onStartMeeting={() => {
                     void startMeeting(activeConversation.id).catch(() => {})
                   }}
@@ -977,7 +982,7 @@ export function ChatApp({ currentUser: initialUser }: Props) {
         </div>
       )}
 
-      {call && phase !== "idle" && (
+      {WEBRTC_CALLS_UI_ENABLED && call && phase !== "idle" && (
         <CallOverlay
           phase={phase}
           call={call}

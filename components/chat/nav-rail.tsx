@@ -4,6 +4,7 @@ import type { Profile } from "@/lib/types"
 import { Avatar } from "./avatar"
 import { MessageSquare, Phone, CircleDashed, UsersRound, Briefcase, Settings } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { WEBRTC_CALLS_UI_ENABLED } from "@/lib/site-config"
 
 export type NavTab = "chats" | "calls" | "status" | "communities" | "settings"
 
@@ -27,7 +28,9 @@ export function NavRail({
 }: Props) {
   const items: { id: NavTab; label: string; icon: typeof MessageSquare }[] = [
     { id: "chats", label: "צ'אטים", icon: MessageSquare },
-    { id: "calls", label: "שיחות", icon: Phone },
+    ...(WEBRTC_CALLS_UI_ENABLED
+      ? [{ id: "calls" as const, label: "שיחות", icon: Phone }]
+      : []),
     { id: "status", label: "סטטוס", icon: CircleDashed },
     {
       id: "communities",

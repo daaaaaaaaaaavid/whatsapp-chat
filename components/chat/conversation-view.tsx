@@ -62,7 +62,7 @@ type Props = {
   onPrefsChange: (next: ChatPrefs) => void
   onBack: () => void
   onOpenInfo: () => void
-  onStartCall: (video: boolean) => void
+  onStartCall?: (video: boolean) => void
   onStartMeeting?: () => void
   onJoinMeeting?: (meetingId: string) => void
   onStartWatch?: () => void
@@ -807,7 +807,7 @@ export function ConversationView({
               <Users className="h-5 w-5" />
             </button>
           )}
-          {!isSelf && !conversation.is_group && (
+          {!isSelf && onStartCall && !conversation.is_group && (
             <>
               <button
                 onClick={() => onStartCall(true)}
