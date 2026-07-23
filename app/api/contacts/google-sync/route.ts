@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { fetchGooglePeopleConnections } from "@/lib/google-contacts"
-import { checkRateLimit } from "@/lib/rate-limit"
+import { checkRateLimitAsync } from "@/lib/rate-limit"
 import type { Profile } from "@/lib/types"
 
 export const dynamic = "force-dynamic"
@@ -19,7 +19,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 })
   }
 
-  const rate = checkRateLimit(`google-sync:${user.id}`, 6, 10 * 60_000)
+  const rate = await checkRateLimitAsync(`google-sync:${user.id}`, 6, 10 * 60_000)
   if (!rate.ok) {
     return NextResponse.json(
       { error: "rate_limited", message: "יותר מדי סנכרונים. נסה שוב בעוד כמה דקות." },

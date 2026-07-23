@@ -149,7 +149,7 @@ export async function fetchMyWorkSpaces(currentUserId: string): Promise<{
 
     const { data: spaces, error: spaceErr } = await supabase
       .from("work_spaces")
-      .select("*")
+      .select("id, name, description, avatar_url, created_by, created_at, google_chat_forward_enabled")
       .in("id", ids)
       .order("created_at", { ascending: true })
 
@@ -168,6 +168,21 @@ export async function fetchMyWorkSpaces(currentUserId: string): Promise<{
       .in("work_space_id", ids)
       .eq("is_group", true)
 
+    // Admin-only webhook secrets (RLS hides rows from non-admins)
+    const adminIds = ids.filter((id) => roleMap.get(id) === "admin")
+    const webhookBySpace = new Map<string, string>()
+    if (adminIds.length) {
+      const { data: hooks, error: hookErr } = await supabase
+        .from("work_space_webhooks")
+        .select("space_id, webhook_url")
+        .in("space_id", adminIds)
+      if (!hookErr) {
+        for (const row of hooks ?? []) {
+          if (row.webhook_url) webhookBySpace.set(row.space_id, row.webhook_url)
+        }
+      }
+    }
+
     const memberCount = new Map<string, number>()
     for (const row of allMembers ?? []) {
       memberCount.set(row.space_id, (memberCount.get(row.space_id) ?? 0) + 1)
@@ -180,13 +195,8 @@ export async function fetchMyWorkSpaces(currentUserId: string): Promise<{
 
     const enriched: WorkSpace[] = (spaces ?? []).map((s) => {
       const role = roleMap.get(s.id)
-      const rawUrl =
-        typeof (s as { google_chat_webhook_url?: string | null }).google_chat_webhook_url === "string"
-          ? (s as { google_chat_webhook_url: string }).google_chat_webhook_url
-          : null
-      const forwardEnabled = Boolean(
-        (s as { google_chat_forward_enabled?: boolean }).google_chat_forward_enabled,
-      )
+      const rawUrl = role === "admin" ? (webhookBySpace.get(s.id) ?? null) : null
+      const forwardEnabled = Boolean(s.google_chat_forward_enabled)
       const base: WorkSpace = {
         id: s.id,
         name: s.name,
@@ -198,10 +208,9 @@ export async function fetchMyWorkSpaces(currentUserId: string): Promise<{
         member_count: memberCount.get(s.id) ?? 0,
         channel_count: channelCount.get(s.id) ?? 0,
         google_chat_forward_enabled: forwardEnabled,
-        google_chat_webhook_configured: Boolean(rawUrl),
+        google_chat_webhook_configured: forwardEnabled || Boolean(rawUrl),
       }
-      // Only admins receive the raw webhook URL
-      if (role === "admin") {
+      if (role === "admin" && rawUrl) {
         base.google_chat_webhook_url = rawUrl
       }
       return base
@@ -323,7 +332,6 @@ export async function updateWorkSpaceGoogleChatForward(
     .from("work_spaces")
     .update({
       google_chat_forward_enabled: input.enabled,
-      google_chat_webhook_url: url,
     })
     .eq("id", input.spaceId)
 
@@ -336,5 +344,26 @@ export async function updateWorkSpaceGoogleChatForward(
       )
     }
     throw new Error(errMessage(error, "שמירת הגדרות Google Chat נכשלה"))
+  }
+
+  if (url) {
+    const { error: hookErr } = await supabase.from("work_space_webhooks").upsert(
+      {
+        space_id: input.spaceId,
+        webhook_url: url,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "space_id" },
+    )
+    if (hookErr) {
+      if (/work_space_webhooks|does not exist|42p01/i.test(hookErr.message)) {
+        throw new Error(
+          "חסרה טבלת webhooks. הרץ את supabase/migration-security-fixes-2026-07.sql ב־Supabase.",
+        )
+      }
+      throw new Error(errMessage(hookErr, "שמירת Webhook נכשלה"))
+    }
+  } else {
+    await supabase.from("work_space_webhooks").delete().eq("space_id", input.spaceId)
   }
 }

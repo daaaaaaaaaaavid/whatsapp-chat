@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createServiceClient } from "@/lib/supabase/admin"
 import { messagePreview } from "@/lib/conversation-display"
-import { checkRateLimit } from "@/lib/rate-limit"
+import { checkRateLimitAsync } from "@/lib/rate-limit"
 import { pushNotifyBodySchema } from "@/lib/validation"
 import { getSiteUrl } from "@/lib/site-config"
 import {
@@ -26,7 +26,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 })
   }
 
-  const rate = checkRateLimit(`gchat-notify:${user.id}`, 40, 60_000)
+  const rate = await checkRateLimitAsync(`gchat-notify:${user.id}`, 40, 60_000)
   if (!rate.ok) {
     return NextResponse.json(
       { error: "rate_limited" },
@@ -47,7 +47,7 @@ export async function POST(req: Request) {
   }
   const { conversationId, messageId } = parsed.data
 
-  const idempotency = checkRateLimit(`gchat-msg:${messageId}`, 1, 10 * 60_000)
+  const idempotency = await checkRateLimitAsync(`gchat-msg:${messageId}`, 1, 10 * 60_000)
   if (!idempotency.ok) {
     return NextResponse.json({ ok: true, sent: false, reason: "already_notified" })
   }
@@ -92,15 +92,36 @@ export async function POST(req: Request) {
 
   const { data: space } = await admin
     .from("work_spaces")
-    .select("id, name, google_chat_webhook_url, google_chat_forward_enabled")
+    .select("id, name, google_chat_forward_enabled")
     .eq("id", conv.work_space_id)
     .maybeSingle()
 
-  if (!space?.google_chat_forward_enabled || !space.google_chat_webhook_url) {
+  if (!space?.google_chat_forward_enabled) {
     return NextResponse.json({ ok: true, sent: false, reason: "forward_disabled" })
   }
 
-  if (!isValidGoogleChatWebhookUrl(space.google_chat_webhook_url)) {
+  const { data: hook } = await admin
+    .from("work_space_webhooks")
+    .select("webhook_url")
+    .eq("space_id", conv.work_space_id)
+    .maybeSingle()
+
+  // Fallback to legacy column if security migration not applied yet
+  let webhookUrl = hook?.webhook_url as string | undefined
+  if (!webhookUrl) {
+    const { data: legacy } = await admin
+      .from("work_spaces")
+      .select("google_chat_webhook_url")
+      .eq("id", conv.work_space_id)
+      .maybeSingle()
+    webhookUrl = legacy?.google_chat_webhook_url ?? undefined
+  }
+
+  if (!webhookUrl) {
+    return NextResponse.json({ ok: true, sent: false, reason: "forward_disabled" })
+  }
+
+  if (!isValidGoogleChatWebhookUrl(webhookUrl)) {
     return NextResponse.json({ ok: true, sent: false, reason: "invalid_webhook" })
   }
 
@@ -120,7 +141,7 @@ export async function POST(req: Request) {
     openUrl,
   })
 
-  const result = await postGoogleChatWebhook(space.google_chat_webhook_url, body)
+  const result = await postGoogleChatWebhook(webhookUrl, body)
   if (!result.ok) {
     // Best-effort: do not fail the user's send path; log server-side only
     console.error("google-chat webhook failed", result.status, result.error)

@@ -387,6 +387,10 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
       }
       if (error) {
         onSendFailed?.(tempId)
+        const msg = (error.message || "").toLowerCase()
+        if (msg.includes("policy") || msg.includes("row-level") || msg.includes("dm_messaging")) {
+          throw new Error("לא ניתן לשלוח — ייתכן שהמשתמש חסום")
+        }
         throw error
       }
       await supabase

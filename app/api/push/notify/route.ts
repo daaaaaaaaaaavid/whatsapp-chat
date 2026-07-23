@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createServiceClient } from "@/lib/supabase/admin"
 import { messagePreview } from "@/lib/conversation-display"
-import { checkRateLimit } from "@/lib/rate-limit"
+import { checkRateLimitAsync } from "@/lib/rate-limit"
 import { configureVapid, sendWebPushToSubscriptions } from "@/lib/push-send"
 import { pushNotifyBodySchema } from "@/lib/validation"
 import type { Message } from "@/lib/types"
@@ -28,7 +28,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 })
   }
 
-  const rate = checkRateLimit(`push-notify:${user.id}`, 30, 60_000)
+  const rate = await checkRateLimitAsync(`push-notify:${user.id}`, 30, 60_000)
   if (!rate.ok) {
     return NextResponse.json(
       { error: "rate_limited" },
@@ -50,7 +50,7 @@ export async function POST(req: Request) {
   const { conversationId, messageId } = parsed.data
 
   // Per-message idempotency (best-effort within a single instance)
-  const idempotency = checkRateLimit(`push-msg:${messageId}`, 1, 10 * 60_000)
+  const idempotency = await checkRateLimitAsync(`push-msg:${messageId}`, 1, 10 * 60_000)
   if (!idempotency.ok) {
     return NextResponse.json({ ok: true, sent: 0, reason: "already_notified" })
   }

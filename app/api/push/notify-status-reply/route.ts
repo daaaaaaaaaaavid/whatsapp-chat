@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createServiceClient } from "@/lib/supabase/admin"
-import { checkRateLimit } from "@/lib/rate-limit"
+import { checkRateLimitAsync } from "@/lib/rate-limit"
 import { configureVapid, sendWebPushToSubscriptions } from "@/lib/push-send"
 import { pushStatusReplyBodySchema } from "@/lib/validation"
 
@@ -26,7 +26,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 })
   }
 
-  const rate = checkRateLimit(`push-status-reply:${user.id}`, 20, 60_000)
+  const rate = await checkRateLimitAsync(`push-status-reply:${user.id}`, 20, 60_000)
   if (!rate.ok) {
     return NextResponse.json(
       { error: "rate_limited" },
@@ -47,7 +47,7 @@ export async function POST(req: Request) {
   }
   const { statusId, replyId } = parsed.data
 
-  const idempotency = checkRateLimit(`push-status-reply-id:${replyId}`, 1, 10 * 60_000)
+  const idempotency = await checkRateLimitAsync(`push-status-reply-id:${replyId}`, 1, 10 * 60_000)
   if (!idempotency.ok) {
     return NextResponse.json({ ok: true, sent: 0, reason: "already_notified" })
   }

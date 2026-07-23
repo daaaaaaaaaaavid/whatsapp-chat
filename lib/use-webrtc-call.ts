@@ -4,9 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import type { Conversation, Profile } from "@/lib/types"
 import { convAvatarUrl, convDisplayName, otherParticipantId } from "@/lib/conversation-display"
 import {
-  ICE_SERVERS,
   createCallSession,
   endCallSession,
+  getIceConfiguration,
   roomCallChannel,
   sendSignal,
   sendToUser,
@@ -299,10 +299,11 @@ export function useWebRtcCall({ currentUser, conversations }: Options) {
   }, [])
 
   const ensurePeer = useCallback(
-    (info: ActiveCallInfo) => {
+    async (info: ActiveCallInfo) => {
       if (pcRef.current) return pcRef.current
 
-      const pc = new RTCPeerConnection(ICE_SERVERS)
+      const ice = await getIceConfiguration()
+      const pc = new RTCPeerConnection(ice)
       pcRef.current = pc
       remoteStreamRef.current = new MediaStream()
 
@@ -416,7 +417,7 @@ export function useWebRtcCall({ currentUser, conversations }: Options) {
         return
       }
 
-      const pc = ensurePeer(active)
+      const pc = await ensurePeer(active)
 
       if (signal.type === "offer") {
         setPhase("connecting")
@@ -536,7 +537,7 @@ export function useWebRtcCall({ currentUser, conversations }: Options) {
           video,
         })
         await joinRoom(info)
-        const pc = ensurePeer(info)
+        const pc = await ensurePeer(info)
         const stream = localStreamRef.current!
         stream.getTracks().forEach((track) => {
           if (!pc.getSenders().some((s) => s.track === track)) {
@@ -585,7 +586,7 @@ export function useWebRtcCall({ currentUser, conversations }: Options) {
     try {
       await attachLocalStream(active.video)
       await joinRoom(active)
-      ensurePeer(active)
+      await ensurePeer(active)
       await sendToUser(active.peerUserId, {
         type: "accept",
         callId: active.callId,
@@ -634,7 +635,7 @@ export function useWebRtcCall({ currentUser, conversations }: Options) {
     setPhase("connecting")
     clearRingTimeout()
     stopAllCallSounds()
-    const pc = ensurePeer(active)
+    const pc = await ensurePeer(active)
     const offer = await pc.createOffer()
     await pc.setLocalDescription(offer)
     if (roomChannelRef.current) {

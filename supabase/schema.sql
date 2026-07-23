@@ -1038,6 +1038,9 @@ as $$
 declare
   ms public.meeting_sessions%rowtype;
   uid uuid := auth.uid();
+  v_meeting_id uuid;
+  v_conversation_id uuid;
+  v_livekit_room text;
 begin
   if uid is null then
     raise exception 'Not authenticated';
@@ -1056,12 +1059,18 @@ begin
     raise exception 'Meeting has ended';
   end if;
 
+  v_meeting_id := ms.id;
+  v_conversation_id := ms.conversation_id;
+  v_livekit_room := ms.livekit_room;
+
   insert into public.conversation_participants as cp (conversation_id, user_id, is_admin)
-  values (ms.conversation_id, uid, false)
+  values (v_conversation_id, uid, false)
   on conflict (conversation_id, user_id) do nothing;
 
-  return query
-  select ms.id, ms.conversation_id, ms.livekit_room;
+  meeting_id := v_meeting_id;
+  conversation_id := v_conversation_id;
+  livekit_room := v_livekit_room;
+  return next;
 end;
 $$;
 

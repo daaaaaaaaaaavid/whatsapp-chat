@@ -45,23 +45,12 @@ async function fetchLastMessageMapLegacy(
   const lastMsgMap = new Map<string, Message>()
   if (!conversationIds.length) return lastMsgMap
 
-  const { data: msgs } = await supabase
-    .from("messages")
-    .select("*")
-    .in("conversation_id", conversationIds)
-    .order("created_at", { ascending: false })
-    .limit(Math.max(200, conversationIds.length * 30))
-
-  for (const m of msgs ?? []) {
-    if (!lastMsgMap.has(m.conversation_id)) {
-      lastMsgMap.set(m.conversation_id, m as Message)
-    }
-  }
-
-  const missing = conversationIds.filter((id) => !lastMsgMap.has(id))
-  if (missing.length) {
+  // One query per conversation (capped concurrency) — avoids bulk O(n*30) scans
+  const concurrency = 8
+  for (let i = 0; i < conversationIds.length; i += concurrency) {
+    const slice = conversationIds.slice(i, i + concurrency)
     await Promise.all(
-      missing.map(async (id) => {
+      slice.map(async (id) => {
         const { data } = await supabase
           .from("messages")
           .select("*")
@@ -166,32 +155,20 @@ export function useConversations(currentUserId: string) {
         }
       }
     } else {
-      // Fallback before migration is applied
+      // Fallback before my_conversation_summaries migration is applied
       const legacy = await fetchLastMessageMapLegacy(ids)
       for (const [cid, msg] of legacy) lastMsgMap.set(cid, msg)
 
-      const { data: recentForUnread } = await supabase
-        .from("messages")
-        .select("id, conversation_id, sender_id")
-        .in("conversation_id", ids)
-        .neq("sender_id", currentUserId)
-        .order("created_at", { ascending: false })
-        .limit(Math.max(300, ids.length * 40))
-
-      const recentIds = (recentForUnread ?? []).map((m) => m.id)
-      const readSet = new Set<string>()
-      if (recentIds.length) {
-        const { data: myReads } = await supabase
-          .from("message_reads")
-          .select("message_id")
-          .eq("user_id", currentUserId)
-          .in("message_id", recentIds)
-        for (const r of myReads ?? []) readSet.add(r.message_id)
-      }
-      for (const m of recentForUnread ?? []) {
-        if (!readSet.has(m.id)) {
-          unreadMap.set(m.conversation_id, (unreadMap.get(m.conversation_id) ?? 0) + 1)
+      // Approximate unread: messages after last read of the last message only
+      // (full unread requires the summaries RPC — keep this light)
+      for (const [cid, msg] of lastMsgMap) {
+        if (msg.sender_id === currentUserId) {
+          unreadMap.set(cid, 0)
+          continue
         }
+        const reads = msg.reads ?? []
+        const seen = reads.some((r) => r.user_id === currentUserId)
+        unreadMap.set(cid, seen ? 0 : 1)
       }
     }
 

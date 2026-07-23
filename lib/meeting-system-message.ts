@@ -1,6 +1,5 @@
 import { createClient } from "@/lib/supabase/client"
 import type { MeetingSystemPayload } from "@/lib/types"
-import { meetingInvitePageUrl } from "@/lib/meeting-invite"
 
 export function parseMeetingSystemPayload(
   content: string | null | undefined,
@@ -11,8 +10,7 @@ export function parseMeetingSystemPayload(
     if (
       parsed?.kind === "meeting" &&
       (parsed.event === "started" || parsed.event === "ended") &&
-      parsed.meetingId &&
-      parsed.inviteToken
+      parsed.meetingId
     ) {
       return parsed
     }
@@ -38,13 +36,12 @@ export async function insertMeetingSystemMessage(opts: {
   senderId: string
   event: MeetingSystemPayload["event"]
   meetingId: string
-  inviteToken: string
 }) {
+  // Do not embed inviteToken — any chat member could extract a live invite.
   const payload: MeetingSystemPayload = {
     kind: "meeting",
     event: opts.event,
     meetingId: opts.meetingId,
-    inviteToken: opts.inviteToken,
   }
 
   const label = meetingSystemLabel(payload)
@@ -64,13 +61,11 @@ export async function insertMeetingSystemMessage(opts: {
       content: JSON.stringify(payload),
     })
     if (err2) {
-      const link =
-        opts.event === "started" ? `\n${meetingInvitePageUrl(opts.inviteToken)}` : ""
       await supabase.from("messages").insert({
         conversation_id: opts.conversationId,
         sender_id: opts.senderId,
         type: "text",
-        content: `${label}${link}`,
+        content: label,
       })
     }
   }

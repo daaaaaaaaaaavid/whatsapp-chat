@@ -42,7 +42,8 @@ export type MeetingSystemPayload = {
   kind: "meeting"
   event: "started" | "ended"
   meetingId: string
-  inviteToken: string
+  /** @deprecated Legacy messages may still include this; never write new ones. */
+  inviteToken?: string
 }
 
 export type MeetingSession = {

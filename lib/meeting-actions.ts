@@ -17,6 +17,13 @@ export async function createMeeting(opts: {
 }): Promise<MeetingSession> {
   const supabase = createClient()
 
+  const { data: blocked, error: blockErr } = await supabase.rpc("dm_messaging_blocked", {
+    p_conversation_id: opts.conversationId,
+  })
+  if (!blockErr && blocked === true) {
+    throw new Error("לא ניתן להתחיל פגישה — אחד הצדדים חסום")
+  }
+
   // Reuse active meeting in this conversation if still valid
   const { data: existing } = await supabase
     .from("meeting_sessions")
@@ -50,6 +57,20 @@ export async function createMeeting(opts: {
     .single()
 
   if (error || !data) {
+    // Concurrent create: unique active index → re-read
+    const msg = (error?.message ?? "").toLowerCase()
+    if (msg.includes("meeting_sessions_one_active") || msg.includes("duplicate") || msg.includes("unique")) {
+      const { data: raced } = await supabase
+        .from("meeting_sessions")
+        .select("*")
+        .eq("conversation_id", opts.conversationId)
+        .eq("active", true)
+        .gt("expires_at", new Date().toISOString())
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (raced) return raced as MeetingSession
+    }
     throw migrationHint(error)
   }
 
@@ -59,7 +80,6 @@ export async function createMeeting(opts: {
     senderId: opts.hostId,
     event: "started",
     meetingId: meeting.id,
-    inviteToken: meeting.invite_token,
   })
 
   return meeting
@@ -95,7 +115,6 @@ export async function endMeeting(opts: {
     senderId: opts.userId,
     event: "ended",
     meetingId: meeting.id,
-    inviteToken: meeting.invite_token,
   })
 }
 
@@ -153,6 +172,11 @@ export async function joinMeetingByInvite(token: string): Promise<{
       conversationId: data.conversationId,
       livekitRoom: data.livekitRoom ?? "",
     }
+  }
+
+  // Surface explicit API errors (e.g. members_only) before RPC fallback
+  if (res.status === 403 || res.status === 410 || res.status === 429) {
+    throw new Error(data.message || "ההצטרפות לפגישה נכשלה")
   }
 
   // Fallback to RPC if API unavailable

@@ -1,6 +1,3 @@
-import { createClient } from "@/lib/supabase/client"
-import { parseMediaStoragePath } from "@/lib/media-url"
-
 export const VIEW_ONCE_LABEL = "צפייה חד־פעמית"
 export const VIEW_ONCE_OPENED_LABEL = "נצפה"
 export const VIEW_ONCE_PHOTO_LABEL = "תמונה לצפייה חד־פעמית"
@@ -33,34 +30,35 @@ export function viewOncePreviewLabel(message: {
   return `👁 ${VIEW_ONCE_PHOTO_LABEL}`
 }
 
+/**
+ * Burn view-once via server route so Storage is deleted with the service role
+ * (client Storage RLS only allows deleting own uploads).
+ */
 export async function openViewOnceMessage(messageId: string): Promise<{
   ok: boolean
   alreadyOpened: boolean
   fileUrl: string | null
 }> {
-  const supabase = createClient()
-  const { data, error } = await supabase.rpc("open_view_once_message", {
-    p_message_id: messageId,
+  const res = await fetch("/api/media/view-once-open", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ messageId }),
   })
-  if (error) throw error
-
-  const result = data as {
+  const data = (await res.json().catch(() => ({}))) as {
     ok?: boolean
-    already_opened?: boolean
-    file_url?: string | null
-  } | null
+    alreadyOpened?: boolean
+    fileUrl?: string | null
+    message?: string
+    error?: string
+  }
 
-  const fileUrl = result?.file_url ?? null
-  if (fileUrl) {
-    const path = parseMediaStoragePath(fileUrl)
-    if (path) {
-      void supabase.storage.from("media").remove([path]).catch(() => {})
-    }
+  if (!res.ok) {
+    throw new Error(data.message || data.error || "פתיחת המדיה נכשלה")
   }
 
   return {
-    ok: Boolean(result?.ok),
-    alreadyOpened: Boolean(result?.already_opened),
-    fileUrl,
+    ok: Boolean(data.ok),
+    alreadyOpened: Boolean(data.alreadyOpened),
+    fileUrl: data.fileUrl ?? null,
   }
 }

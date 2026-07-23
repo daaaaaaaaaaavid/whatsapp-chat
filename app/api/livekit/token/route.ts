@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { AccessToken } from "livekit-server-sdk"
 import { createClient } from "@/lib/supabase/server"
-import { checkRateLimit } from "@/lib/rate-limit"
+import { checkRateLimitAsync } from "@/lib/rate-limit"
 
 export const dynamic = "force-dynamic"
 
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 })
   }
 
-  const limited = checkRateLimit(`livekit-token:${user.id}`, 60, 60_000)
+  const limited = await checkRateLimitAsync(`livekit-token:${user.id}`, 60, 60_000)
   if (!limited.ok) {
     return NextResponse.json(
       { error: "rate_limited", retryAfterSec: limited.retryAfterSec },
@@ -75,6 +75,16 @@ export async function POST(req: Request) {
 
   if (!meeting || !meeting.active || new Date(meeting.expires_at) <= new Date()) {
     return NextResponse.json({ error: "meeting_inactive" }, { status: 410 })
+  }
+
+  const { data: blocked, error: blockErr } = await supabase.rpc("dm_messaging_blocked", {
+    p_conversation_id: meeting.conversation_id,
+  })
+  if (!blockErr && blocked === true) {
+    return NextResponse.json(
+      { error: "blocked", message: "לא ניתן להצטרף — אחד הצדדים חסום" },
+      { status: 403 },
+    )
   }
 
   const { data: membership } = await supabase

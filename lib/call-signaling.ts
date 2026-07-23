@@ -18,9 +18,7 @@ export type CallSignal =
   | { type: "answer"; callId: string; fromUserId: string; sdp: RTCSessionDescriptionInit }
   | { type: "ice"; callId: string; fromUserId: string; candidate: RTCIceCandidateInit }
 
-function buildIceServers(): RTCIceServer[] {
-  // Public STUN only — static TURN credentials must never ship in the browser.
-  // Configure short-lived TURN via a future authenticated server endpoint if needed.
+function buildStunServers(): RTCIceServer[] {
   return [
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
@@ -28,10 +26,48 @@ function buildIceServers(): RTCIceServer[] {
   ]
 }
 
-/** STUN servers (TURN credentials are not embedded client-side). */
+/** STUN-only fallback. Prefer getIceConfiguration() for TURN. */
 export const ICE_SERVERS: RTCConfiguration = {
-  iceServers: buildIceServers(),
+  iceServers: buildStunServers(),
   iceCandidatePoolSize: 8,
+}
+
+let iceCache: { config: RTCConfiguration; expiresAtMs: number } | null = null
+
+/**
+ * Fetch ICE servers (STUN + short-lived TURN) from the authenticated API.
+ * Falls back to public STUN if the endpoint is unavailable.
+ */
+export async function getIceConfiguration(): Promise<RTCConfiguration> {
+  const now = Date.now()
+  if (iceCache && iceCache.expiresAtMs > now + 30_000) {
+    return iceCache.config
+  }
+
+  try {
+    const res = await fetch("/api/webrtc/ice", { method: "GET", cache: "no-store" })
+    if (!res.ok) return ICE_SERVERS
+    const data = (await res.json()) as {
+      iceServers?: RTCIceServer[]
+      iceCandidatePoolSize?: number
+      expiresAt?: number | null
+    }
+    if (!Array.isArray(data.iceServers) || !data.iceServers.length) {
+      return ICE_SERVERS
+    }
+    const config: RTCConfiguration = {
+      iceServers: data.iceServers,
+      iceCandidatePoolSize: data.iceCandidatePoolSize ?? 8,
+    }
+    const expiresAtMs =
+      typeof data.expiresAt === "number" && data.expiresAt > 0
+        ? data.expiresAt * 1000
+        : now + 45 * 60_000
+    iceCache = { config, expiresAtMs }
+    return config
+  } catch {
+    return ICE_SERVERS
+  }
 }
 
 export function userCallChannel(userId: string) {
@@ -43,13 +79,12 @@ export function roomCallChannel(callId: string) {
 }
 
 /**
- * Use public Realtime channels for signaling.
- * Private channels require working realtime.messages RLS for *every* client;
- * a mixed private/public pair drops signals. Topics include UUIDs (hard to guess).
- * call_sessions still gates who may start a call in the app layer.
+ * Private Realtime channels for call signaling.
+ * Requires migration-fix-realtime-calls.sql (can_use_realtime_topic + call_sessions).
+ * createCallSession must succeed before ringing so peer topics authorize.
  */
 const channelConfig = {
-  private: false,
+  private: true,
   broadcast: { self: false, ack: true },
 } as const
 
@@ -70,6 +105,23 @@ export async function createCallSession(params: {
   video: boolean
 }): Promise<void> {
   const supabase = createClient()
+
+  const { data: me } = await supabase
+    .from("profiles")
+    .select("blocked_user_ids")
+    .eq("id", params.callerId)
+    .maybeSingle()
+  const { data: peer } = await supabase
+    .from("profiles")
+    .select("blocked_user_ids")
+    .eq("id", params.calleeId)
+    .maybeSingle()
+  const myBlocked = (me?.blocked_user_ids as string[] | null) ?? []
+  const peerBlocked = (peer?.blocked_user_ids as string[] | null) ?? []
+  if (myBlocked.includes(params.calleeId) || peerBlocked.includes(params.callerId)) {
+    throw new Error("לא ניתן להתקשר — אחד הצדדים חסום")
+  }
+
   const { error } = await supabase.from("call_sessions").insert({
     id: params.callId,
     conversation_id: params.conversationId,
@@ -79,10 +131,10 @@ export async function createCallSession(params: {
   })
   if (error) {
     const msg = error.message.toLowerCase()
-    // Soft-fail: older DBs without the table can still signal over Realtime.
     if (msg.includes("call_sessions") || msg.includes("does not exist")) {
-      console.warn("[calls] call_sessions missing — signaling continues without session row")
-      return
+      throw new Error(
+        "חסרה טבלת שיחות. הרץ את supabase/migration-fix-realtime-calls.sql ב־Supabase.",
+      )
     }
     throw new Error(error.message || "יצירת שיחה נכשלה")
   }
