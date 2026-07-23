@@ -35,4 +35,18 @@ describe("splitTextWithLinks", () => {
       { type: "email", value: "dc6427874@gmail.com" },
     ])
   })
+
+  it("keeps mention tokens separate from emails", () => {
+    expect(
+      splitTextWithLinks("@[Dana](user:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa) hi"),
+    ).toEqual([
+      {
+        type: "mention",
+        value: "Dana",
+        mentionKind: "user",
+        mentionId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      },
+      { type: "text", value: " hi" },
+    ])
+  })
 })

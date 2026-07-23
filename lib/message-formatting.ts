@@ -1,3 +1,5 @@
+import { mentionTokensToAtNames } from "@/lib/mentions"
+
 export type MessageFormatting = {
   bold: boolean
   italic: boolean
@@ -52,7 +54,7 @@ export function decodeFormattedMessage(content: string | null | undefined): {
 }
 
 export function plainMessageText(content: string | null | undefined): string {
-  return decodeFormattedMessage(content).text
+  return mentionTokensToAtNames(decodeFormattedMessage(content).text)
 }
 
 const KEYCAP_EMOJI_RE = /^[#*0-9]\uFE0F?\u20E3$/u

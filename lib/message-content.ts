@@ -1,14 +1,17 @@
 import { parseCallSystemPayload, callSystemLabel } from "@/lib/call-system-message"
 import { parseWatchSystemPayload, watchSystemLabel } from "@/lib/watch-system-message"
 import { parseMeetingSystemPayload, meetingSystemLabel } from "@/lib/meeting-system-message"
+import { MENTION_TOKEN_RE, type MentionKind } from "@/lib/mentions"
 
 const URL_RE = /(https?:\/\/[^\s<>"']+)/gi
 const EMAIL_RE = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi
 const LINK_OR_EMAIL_RE = new RegExp(`(${URL_RE.source}|${EMAIL_RE.source})`, "gi")
 
 export type MessageTextPart = {
-  type: "text" | "link" | "email"
+  type: "text" | "link" | "email" | "mention"
   value: string
+  mentionKind?: MentionKind
+  mentionId?: string
 }
 
 export function extractUrls(text: string): string[] {
@@ -17,7 +20,8 @@ export function extractUrls(text: string): string[] {
   return Array.from(new Set(matches.map((u) => u.replace(/[.,);]+$/, ""))))
 }
 
-export function splitTextWithLinks(text: string): MessageTextPart[] {
+function splitLinksAndEmails(text: string): MessageTextPart[] {
+  if (!text) return []
   const parts: MessageTextPart[] = []
   let last = 0
   const re = new RegExp(LINK_OR_EMAIL_RE.source, "gi")
@@ -34,6 +38,26 @@ export function splitTextWithLinks(text: string): MessageTextPart[] {
     last = m.index + raw.length
   }
   if (last < text.length) parts.push({ type: "text", value: text.slice(last) })
+  return parts.length ? parts : [{ type: "text", value: text }]
+}
+
+export function splitTextWithLinks(text: string): MessageTextPart[] {
+  const parts: MessageTextPart[] = []
+  let last = 0
+  const re = new RegExp(MENTION_TOKEN_RE.source, "g")
+  let m: RegExpExecArray | null
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) parts.push(...splitLinksAndEmails(text.slice(last, m.index)))
+    parts.push({
+      type: "mention",
+      value: m[1],
+      mentionKind: m[2] as MentionKind,
+      mentionId: m[3],
+    })
+    last = m.index + m[0].length
+  }
+  if (last < text.length) parts.push(...splitLinksAndEmails(text.slice(last)))
+  else if (last === 0) return splitLinksAndEmails(text)
   return parts.length ? parts : [{ type: "text", value: text }]
 }
 

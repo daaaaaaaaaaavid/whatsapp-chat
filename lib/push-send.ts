@@ -20,13 +20,22 @@ export function configureVapid():
   return { ok: true, publicKey, privateKey, subject }
 }
 
+export type SendWebPushOptions = {
+  /** Seconds — call rings should expire quickly */
+  ttl?: number
+  urgency?: "very-low" | "low" | "normal" | "high"
+}
+
 export async function sendWebPushToSubscriptions(
   admin: SupabaseClient,
   subs: PushSubscriptionRow[],
   payload: string,
+  options?: SendWebPushOptions,
 ): Promise<number> {
   let sent = 0
   const staleEndpoints: string[] = []
+  const ttl = options?.ttl ?? 60 * 60
+  const urgency = options?.urgency
 
   await Promise.all(
     subs.map(async (sub) => {
@@ -37,7 +46,7 @@ export async function sendWebPushToSubscriptions(
             keys: { p256dh: sub.p256dh, auth: sub.auth },
           },
           payload,
-          { TTL: 60 * 60 },
+          { TTL: ttl, ...(urgency ? { urgency } : {}) },
         )
         sent += 1
       } catch (err) {

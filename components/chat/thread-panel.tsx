@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef } from "react"
 import type { Conversation, Message, Profile } from "@/lib/types"
+import type { MentionCandidate } from "@/lib/mentions"
 import {
   hideMessageForMe,
   setMessageReaction,
@@ -32,6 +33,12 @@ type Props = {
   onTyping?: (typing: boolean) => void
   onForward?: (message: Message) => void
   onStartChatByEmail?: (email: string) => Promise<void>
+  onOpenMention?: (mention: {
+    kind: "user" | "group"
+    id: string
+    label: string
+  }) => void | Promise<void>
+  mentionCandidates?: MentionCandidate[]
 }
 
 export function ThreadPanel({
@@ -52,6 +59,8 @@ export function ThreadPanel({
   onTyping,
   onForward,
   onStartChatByEmail,
+  onOpenMention,
+  mentionCandidates,
 }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -115,6 +124,7 @@ export function ThreadPanel({
       isStarred={prefs.starredMessages.includes(message.id)}
       isPinned={prefs.pinnedMessages.includes(message.id)}
       onStartChatByEmail={onStartChatByEmail}
+      onOpenMention={onOpenMention}
       compact
     />
   )
@@ -204,6 +214,7 @@ export function ThreadPanel({
           threadMode
           onEdited={onEdited}
           onTyping={onTyping}
+          mentionCandidates={mentionCandidates}
         />
       </div>
     </aside>

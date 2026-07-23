@@ -16,6 +16,7 @@ import {
   subscribeMeetingInbox,
   type MeetingRingPayload,
 } from "@/lib/meeting-ring"
+import { notifyMeetingRing } from "@/lib/push-client"
 
 export type MeetingRingPhase = "idle" | "outgoing" | "incoming"
 
@@ -168,6 +169,10 @@ export function useMeetingRing({
       if (isGroup) {
         const targets = memberIds(opts.conversation, currentUser.id)
         await Promise.all(targets.map((uid) => sendMeetingRing(payload, uid)))
+        notifyMeetingRing({
+          conversationId: opts.conversation.id,
+          meetingId: opts.meetingId,
+        })
         return
       }
 
@@ -190,6 +195,10 @@ export function useMeetingRing({
       scheduleTimeout(DM_RING_TIMEOUT_MS)
 
       await sendMeetingRing(payload, peer.userId)
+      notifyMeetingRing({
+        conversationId: opts.conversation.id,
+        meetingId: opts.meetingId,
+      })
     },
     [buildRingPayload, currentUser.id, scheduleTimeout],
   )
@@ -250,59 +259,108 @@ export function useMeetingRing({
     if (phaseRef.current === "outgoing") clearRing()
   }, [clearRing])
 
+  const applyIncomingRing = useCallback(
+    async (payload: MeetingRingPayload) => {
+      let conv = conversationsRef.current.find((c) => c.id === payload.conversationId)
+      if (!conv) {
+        const supabase = createClient()
+        const { data: membership } = await supabase
+          .from("conversation_participants")
+          .select("conversation_id")
+          .eq("conversation_id", payload.conversationId)
+          .eq("user_id", currentUser.id)
+          .maybeSingle()
+        if (!membership) return
+
+        const { data: row } = await supabase
+          .from("conversations")
+          .select("id, name, is_group, avatar_url")
+          .eq("id", payload.conversationId)
+          .maybeSingle()
+        if (!row) return
+        conv = {
+          id: row.id as string,
+          is_group: Boolean(row.is_group),
+          name: (row.name as string | null) ?? null,
+          avatar_url: (row.avatar_url as string | null) ?? null,
+          created_by: null,
+          created_at: "",
+          updated_at: "",
+          participants: [{ user_id: currentUser.id } as NonNullable<Conversation["participants"]>[number]],
+        }
+      } else if (!conv.participants?.some((p) => p.user_id === currentUser.id)) {
+        return
+      }
+
+      const isGroup = Boolean(payload.isGroup || conv.is_group)
+
+      // Same meeting already ringing (Realtime + Push) — ignore duplicate.
+      if (
+        ringRef.current?.meetingId === payload.meetingId &&
+        (phaseRef.current === "incoming" || phaseRef.current === "outgoing")
+      ) {
+        return
+      }
+
+      if (phaseRef.current !== "idle" || inMeetingRef.current) {
+        if (!isGroup) {
+          void sendMeetingRingReject(
+            { meetingId: payload.meetingId, fromUserId: currentUser.id },
+            payload.fromUserId,
+          )
+        }
+        return
+      }
+
+      const groupName = isGroup
+        ? payload.groupName?.trim() ||
+          conv.name?.trim() ||
+          convDisplayName(conv, currentUser.id)
+        : null
+
+      const info: MeetingRingInfo = {
+        meetingId: payload.meetingId,
+        conversationId: payload.conversationId,
+        peerUserId: payload.fromUserId,
+        peerName:
+          payload.fromName ||
+          (isGroup ? groupName || "פגישה קבוצתית" : convDisplayName(conv, currentUser.id)),
+        peerAvatar: isGroup
+          ? conv.avatar_url
+          : (payload.fromAvatar ?? convAvatarUrl(conv, currentUser.id)),
+        isCaller: false,
+        isGroup,
+        groupName,
+      }
+      setError(null)
+      setRing(info)
+      setPhase("incoming")
+      scheduleTimeout(isGroup ? GROUP_INVITE_TIMEOUT_MS : DM_RING_TIMEOUT_MS)
+      void ensureNotificationPermission().then(() => {
+        void showIncomingCallNotification({
+          title: isGroup ? "פגישה קבוצתית התחילה" : "פגישת וידאו נכנסת",
+          body: isGroup
+            ? `${payload.fromName} מתחיל פגישה ב${groupName ?? "קבוצה"}`
+            : info.peerName,
+          tag: `meeting-${payload.meetingId}`,
+        })
+      })
+    },
+    [currentUser.id, scheduleTimeout],
+  )
+
+  /** Wake from Web Push when Realtime was not connected (tab closed / backgrounded). */
+  const presentIncomingFromPush = useCallback(
+    (payload: MeetingRingPayload) => {
+      void applyIncomingRing(payload)
+    },
+    [applyIncomingRing],
+  )
+
   useEffect(() => {
     const channel = subscribeMeetingInbox(currentUser.id, {
       onRing: (payload: MeetingRingPayload) => {
-        const conv = conversationsRef.current.find((c) => c.id === payload.conversationId)
-        if (!conv) return
-        if (!conv.participants?.some((p) => p.user_id === currentUser.id)) return
-
-        const isGroup = Boolean(payload.isGroup || conv.is_group)
-
-        if (phaseRef.current !== "idle" || inMeetingRef.current) {
-          // DM: tell caller we're busy. Group: ignore (host keeps meeting).
-          if (!isGroup) {
-            void sendMeetingRingReject(
-              { meetingId: payload.meetingId, fromUserId: currentUser.id },
-              payload.fromUserId,
-            )
-          }
-          return
-        }
-
-        const groupName = isGroup
-          ? payload.groupName?.trim() ||
-            conv.name?.trim() ||
-            convDisplayName(conv, currentUser.id)
-          : null
-
-        const info: MeetingRingInfo = {
-          meetingId: payload.meetingId,
-          conversationId: payload.conversationId,
-          peerUserId: payload.fromUserId,
-          peerName:
-            payload.fromName ||
-            (isGroup ? groupName || "פגישה קבוצתית" : convDisplayName(conv, currentUser.id)),
-          peerAvatar: isGroup
-            ? conv.avatar_url
-            : (payload.fromAvatar ?? convAvatarUrl(conv, currentUser.id)),
-          isCaller: false,
-          isGroup,
-          groupName,
-        }
-        setError(null)
-        setRing(info)
-        setPhase("incoming")
-        scheduleTimeout(isGroup ? GROUP_INVITE_TIMEOUT_MS : DM_RING_TIMEOUT_MS)
-        void ensureNotificationPermission().then(() => {
-          void showIncomingCallNotification({
-            title: isGroup ? "פגישה קבוצתית התחילה" : "פגישת וידאו נכנסת",
-            body: isGroup
-              ? `${payload.fromName} מתחיל פגישה ב${groupName ?? "קבוצה"}`
-              : info.peerName,
-            tag: `meeting-${payload.meetingId}`,
-          })
-        })
+        void applyIncomingRing(payload)
       },
       onAccept: (payload) => {
         const cur = ringRef.current
@@ -327,7 +385,7 @@ export function useMeetingRing({
       clearTimeoutSafe()
       void createClient().removeChannel(channel)
     }
-  }, [clearRing, clearTimeoutSafe, currentUser.id, scheduleTimeout])
+  }, [applyIncomingRing, clearRing, clearTimeoutSafe, currentUser.id])
 
   return {
     phase,
@@ -340,6 +398,7 @@ export function useMeetingRing({
     rejectIncoming,
     cancelOutgoing,
     markPeerJoined,
+    presentIncomingFromPush,
     clearRing,
   }
 }

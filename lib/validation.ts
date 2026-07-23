@@ -16,6 +16,11 @@ export const pushStatusReplyBodySchema = z.object({
   replyId: z.string().uuid(),
 })
 
+export const pushMeetingRingBodySchema = z.object({
+  conversationId: z.string().uuid(),
+  meetingId: z.string().uuid(),
+})
+
 export const messageTextSchema = z
   .string()
   .trim()

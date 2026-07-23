@@ -59,7 +59,7 @@ import { registerPushSubscription, ensureServiceWorker } from "@/lib/push-client
 import { messagePreview, convDisplayName, isSelfConversation } from "@/lib/conversation-display"
 import { LoadingScreen } from "./loading-screen"
 import { MessageToastStack, type MessageToastItem } from "./message-toast"
-import { startChatOrInviteByEmail } from "@/lib/chat-actions"
+import { startChatOrInviteByEmail, getOrCreateDirectConversation } from "@/lib/chat-actions"
 import {
   WORK_SPACES_UI_ENABLED,
   PERSONAL_WORK_UI_ENABLED,
@@ -232,6 +232,7 @@ export function ChatApp({ currentUser: initialUser }: Props) {
     rejectIncoming,
     cancelOutgoing,
     markPeerJoined,
+    presentIncomingFromPush,
   } = useMeetingRing({
     currentUser,
     conversations,
@@ -243,6 +244,40 @@ export function ChatApp({ currentUser: initialUser }: Props) {
       void endMeetingForAll()
     },
   })
+
+  const presentIncomingFromPushRef = useRef(presentIncomingFromPush)
+  useEffect(() => {
+    presentIncomingFromPushRef.current = presentIncomingFromPush
+  }, [presentIncomingFromPush])
+
+  const joinMeetingFromPush = useCallback(
+    async (meetingId: string, conversationId?: string | null) => {
+      if (conversationId) {
+        setActiveId(conversationId)
+        setNavTab("chats")
+      }
+      try {
+        const { getMeetingById } = await import("@/lib/meeting-actions")
+        const { sendMeetingRingAccept } = await import("@/lib/meeting-ring")
+        const meeting = await getMeetingById(meetingId)
+        if (meeting?.host_id && meeting.host_id !== currentUser.id) {
+          void sendMeetingRingAccept(
+            { meetingId, fromUserId: currentUser.id },
+            meeting.host_id,
+          )
+        }
+        await joinMeeting(meetingId)
+      } catch {
+        // joinMeeting sets error state
+      }
+    },
+    [currentUser.id, joinMeeting],
+  )
+
+  const joinMeetingFromPushRef = useRef(joinMeetingFromPush)
+  useEffect(() => {
+    joinMeetingFromPushRef.current = joinMeetingFromPush
+  }, [joinMeetingFromPush])
 
   const handleEndMeetingForAll = useCallback(async () => {
     const meeting = meetingActive
@@ -271,18 +306,19 @@ export function ChatApp({ currentUser: initialUser }: Props) {
     [startMeeting, startOutgoingRing],
   )
 
-  // Deep link: /chat?meeting=
+  // Deep link: /chat?meeting= (e.g. from call push notification)
   useEffect(() => {
     if (typeof window === "undefined") return
     const params = new URLSearchParams(window.location.search)
     const meeting = params.get("meeting")
     if (!meeting) return
+    const conversationId = params.get("c")
     const url = new URL(window.location.href)
     url.searchParams.delete("meeting")
     const qs = url.searchParams.toString()
     window.history.replaceState({}, "", qs ? `${url.pathname}?${qs}` : url.pathname)
-    void joinMeeting(meeting).catch(() => {})
-  }, [joinMeeting])
+    void joinMeetingFromPush(meeting, conversationId)
+  }, [joinMeetingFromPush])
 
   const activeConversation = useMemo(
     () => conversations.find((c) => c.id === activeId) ?? null,
@@ -365,9 +401,15 @@ export function ChatApp({ currentUser: initialUser }: Props) {
         | {
             type?: string
             conversationId?: string
+            meetingId?: string
             title?: string
             body?: string
             openStatus?: boolean
+            fromUserId?: string
+            fromName?: string
+            fromAvatar?: string | null
+            isGroup?: boolean
+            groupName?: string | null
           }
         | undefined
       if (!data?.type) return
@@ -378,6 +420,26 @@ export function ChatApp({ currentUser: initialUser }: Props) {
       if (data.type === "open-conversation" && data.conversationId) {
         setActiveId(data.conversationId)
         setNavTab("chats")
+        return
+      }
+      if (data.type === "join-meeting" && data.meetingId) {
+        void joinMeetingFromPushRef.current(data.meetingId, data.conversationId)
+        return
+      }
+      if (data.type === "meeting-ring" && data.meetingId && data.conversationId && data.fromUserId) {
+        if (data.conversationId) {
+          setActiveId(data.conversationId)
+          setNavTab("chats")
+        }
+        presentIncomingFromPushRef.current({
+          meetingId: data.meetingId,
+          conversationId: data.conversationId,
+          fromUserId: data.fromUserId,
+          fromName: data.fromName || "משתמש",
+          fromAvatar: data.fromAvatar ?? null,
+          isGroup: Boolean(data.isGroup),
+          groupName: data.groupName ?? null,
+        })
         return
       }
       if (data.type === "push-message") {
@@ -394,7 +456,7 @@ export function ChatApp({ currentUser: initialUser }: Props) {
         const isActiveChat =
           activeIdRef.current === data.conversationId && document.visibilityState === "visible"
         if (isActiveChat) return
-          if (prefsRef.current.muted.includes(data.conversationId)) return
+        if (prefsRef.current.muted.includes(data.conversationId)) return
         const convMeta = conversationsRef.current.find((c) => c.id === data.conversationId)
         if (
           shouldSuppressSpaceNotification(
@@ -662,6 +724,32 @@ export function ChatApp({ currentUser: initialUser }: Props) {
     [currentUser.id, reload, updatePrefs],
   )
 
+  const handleOpenMention = useCallback(
+    async (mention: { kind: "user" | "group"; id: string; label: string }) => {
+      if (mention.kind === "group") {
+        const exists = conversations.some((c) => c.id === mention.id)
+        if (!exists) {
+          window.alert(`לא נמצאה הקבוצה "${mention.label}" ברשימת הצ'אטים שלך.`)
+          return
+        }
+        setActiveId(mention.id)
+        setShowInfo(false)
+        setNavTab("chats")
+        return
+      }
+
+      const conversationId = await getOrCreateDirectConversation(currentUser.id, mention.id)
+      if (prefsRef.current.activeSpace === "work") {
+        updatePrefs(setConversationSpace(prefsRef.current, conversationId, "work"))
+      }
+      await reload()
+      setActiveId(conversationId)
+      setShowInfo(false)
+      setNavTab("chats")
+    },
+    [conversations, currentUser.id, reload, updatePrefs],
+  )
+
   const handleLogout = async () => {
     const supabase = createClient()
     await supabase.auth.signOut()
@@ -890,6 +978,7 @@ export function ChatApp({ currentUser: initialUser }: Props) {
                   initialGalleryMessageId={infoGalleryMessageId}
                   onGalleryOpened={() => setInfoGalleryMessageId(null)}
                   onStartChatByEmail={handleStartChatByEmail}
+                  onOpenMention={handleOpenMention}
                 />
               </div>
               {showInfo && (

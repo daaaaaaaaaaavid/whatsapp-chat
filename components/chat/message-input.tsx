@@ -54,6 +54,15 @@ import {
   Sticker,
 } from "lucide-react"
 import { parseReplyContent } from "@/lib/message-content"
+import {
+  encodeMentions,
+  extractMentions,
+  filterMentionCandidates,
+  findMentionQuery,
+  mentionTokensToAtNames,
+  type MentionCandidate,
+  type MentionRef,
+} from "@/lib/mentions"
 import { encodePollPayload, parsePollPayload, pollPreviewLabel } from "@/lib/poll"
 import { encodeContactPayload, parseContactPayload, contactPreviewLabel } from "@/lib/contact-message"
 import { encodeEventPayload, parseEventPayload, eventPreviewLabel } from "@/lib/event-message"
@@ -63,6 +72,7 @@ import { PollDialog } from "./poll-dialog"
 import { ContactShareDialog } from "./contact-share-dialog"
 import { EventDialog } from "./event-dialog"
 import { StickerDialog } from "./sticker-dialog"
+import { Avatar } from "./avatar"
 import {
   decodeFormattedMessage,
   DEFAULT_MESSAGE_FORMATTING,
@@ -104,6 +114,8 @@ type Props = {
   onCancelEdit?: () => void
   onEdited?: (message: Message) => void
   onTyping?: (typing: boolean) => void
+  /** People and groups available for @mentions */
+  mentionCandidates?: MentionCandidate[]
 }
 
 export type MessageInputHandle = {
@@ -194,11 +206,16 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
     onCancelEdit,
     onEdited,
     onTyping,
+    mentionCandidates = [],
   },
   ref,
 ) {
   const emojiPickerId = useId()
   const [text, setText] = useState("")
+  const [pendingMentions, setPendingMentions] = useState<MentionRef[]>([])
+  const [mentionStart, setMentionStart] = useState<number | null>(null)
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null)
+  const [mentionHighlight, setMentionHighlight] = useState(0)
   const [sending, setSending] = useState(false)
   const [showAttach, setShowAttach] = useState(false)
   const [showPoll, setShowPoll] = useState(false)
@@ -322,12 +339,17 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
       ? (editingMessage.content ?? "")
       : (parsed?.body ?? editingMessage.content ?? "")
     const decoded = decodeFormattedMessage(body)
-    setText(decoded.text)
+    const mentions = extractMentions(decoded.text)
+    setPendingMentions(mentions)
+    setMentionStart(null)
+    setMentionQuery(null)
+    setText(mentionTokensToAtNames(decoded.text))
     setFormatting(decoded.formatting)
     onCancelReply?.()
     requestAnimationFrame(() => {
       const input = textInputRef.current
-      const cursor = decoded.text.length
+      const display = mentionTokensToAtNames(decoded.text)
+      const cursor = display.length
       input?.focus()
       input?.setSelectionRange(cursor, cursor)
       textSelectionRef.current = { start: cursor, end: cursor }
@@ -348,6 +370,10 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
 
   useEffect(() => {
     setText("")
+    setPendingMentions([])
+    setMentionStart(null)
+    setMentionQuery(null)
+    setMentionHighlight(0)
     textSelectionRef.current = { start: 0, end: 0 }
     setSending(false)
     setShowAttach(false)
@@ -664,6 +690,88 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
     )
   }
 
+  const mentionSuggestions = filterMentionCandidates(
+    mentionCandidates,
+    mentionQuery ?? "",
+  )
+  const mentionMenuOpen = mentionStart != null && mentionQuery != null && mentionSuggestions.length > 0
+
+  const closeMentionMenu = useCallback(() => {
+    setMentionStart(null)
+    setMentionQuery(null)
+    setMentionHighlight(0)
+  }, [])
+
+  const syncMentionQuery = useCallback((value: string, cursor: number) => {
+    const found = findMentionQuery(value, cursor)
+    if (!found) {
+      setMentionStart(null)
+      setMentionQuery(null)
+      setMentionHighlight(0)
+      return
+    }
+    setMentionStart(found.start)
+    setMentionQuery(found.query)
+    setMentionHighlight(0)
+  }, [])
+
+  const resolveMentionsForSend = useCallback(
+    (value: string, selected: MentionRef[]): MentionRef[] => {
+      const byKey = new Map<string, MentionRef>()
+      for (const m of selected) byKey.set(`${m.kind}:${m.id}`, m)
+
+      // Exact @Label matches against known contacts/groups (case-insensitive)
+      for (const candidate of mentionCandidates) {
+        const label = candidate.label.trim()
+        if (!label) continue
+        const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+        const re = new RegExp(`@${escaped}(?=$|[\\s.,!?;:)\\]}"'\\u200f\\u200e])`, "i")
+        if (re.test(value)) {
+          byKey.set(`${candidate.kind}:${candidate.id}`, {
+            kind: candidate.kind,
+            id: candidate.id,
+            label: candidate.label,
+          })
+        }
+      }
+      return Array.from(byKey.values())
+    },
+    [mentionCandidates],
+  )
+
+  const insertMention = useCallback(
+    (candidate: MentionCandidate) => {
+      if (mentionStart == null) return
+      const start = mentionStart
+      const end = textSelectionRef.current.start
+      const insert = `@${candidate.label} `
+      const next = `${text.slice(0, start)}${insert}${text.slice(end)}`
+      const cursor = start + insert.length
+
+      setPendingMentions((prev) => {
+        const withoutDup = prev.filter(
+          (m) => !(m.kind === candidate.kind && m.id === candidate.id),
+        )
+        return [
+          ...withoutDup,
+          { kind: candidate.kind, id: candidate.id, label: candidate.label },
+        ]
+      })
+      setText(next)
+      closeMentionMenu()
+      textSelectionRef.current = { start: cursor, end: cursor }
+      onTypingRef.current?.(true)
+
+      requestAnimationFrame(() => {
+        const input = textInputRef.current
+        input?.focus()
+        input?.setSelectionRange(cursor, cursor)
+        resizeTextarea()
+      })
+    },
+    [closeMentionMenu, mentionStart, resizeTextarea, text],
+  )
+
   const handleSendText = async (e?: React.FormEvent) => {
     e?.preventDefault()
     const trimmed = text.trim()
@@ -675,18 +783,24 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
     setSending(true)
     setSendError(null)
     setShowEmoji(false)
+    closeMentionMenu()
     onTyping?.(false)
+
+    const mentions = resolveMentionsForSend(trimmed, pendingMentions)
+    const withMentions = encodeMentions(trimmed, mentions)
 
     if (editingMessage) {
       const editedAt = new Date().toISOString()
       const parsed = parseReplyContent(editingMessage.content)
-      const formattedText = encodeFormattedMessage(trimmed, formatting)
+      const formattedText = encodeFormattedMessage(withMentions, formatting)
       const nextContent =
         editingMessage.reply_to_id || !parsed
           ? formattedText
           : `↩ ${parsed.author}: ${parsed.preview}\n${formattedText}`
       const previousText = text
+      const previousMentions = pendingMentions
       setText("")
+      setPendingMentions([])
       try {
         const supabase = createClient()
         const { data, error } = await supabase
@@ -725,6 +839,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
       } catch (err) {
         setSendError(err instanceof Error ? err.message : "עריכה נכשלה")
         setText(previousText)
+        setPendingMentions(previousMentions)
       } finally {
         setSending(false)
       }
@@ -732,11 +847,12 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
     }
 
     setText("")
+    setPendingMentions([])
     const replySnapshot = replyTo
     if (!keepReplyAfterSend) onCancelReply?.()
     try {
       await sendMessage({
-        content: encodeFormattedMessage(trimmed, formatting),
+        content: encodeFormattedMessage(withMentions, formatting),
         type: "text",
         reply_to_id: replySnapshot?.id ?? null,
         reply_to: replySnapshot ?? null,
@@ -746,6 +862,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
     } catch (err) {
       setSendError(err instanceof Error ? err.message : "שליחה נכשלה")
       setText(trimmed)
+      setPendingMentions(mentions)
     } finally {
       setSending(false)
     }
@@ -1649,40 +1766,120 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
           </button>
         )}
 
-        <textarea
-          ref={textInputRef}
-          rows={1}
-          value={text}
-          onChange={(e) => {
-            setText(e.target.value)
-            textSelectionRef.current = {
-              start: e.target.selectionStart,
-              end: e.target.selectionEnd,
-            }
-            onTyping?.(e.target.value.trim().length > 0)
-          }}
-          onClick={rememberTextSelection}
-          onSelect={rememberTextSelection}
-          onKeyUp={rememberTextSelection}
-          onBlur={() => onTyping?.(false)}
-          onPaste={handlePaste}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              if (e.nativeEvent.isComposing) return
-              e.preventDefault()
+        <div className="relative min-w-0 flex-1">
+          {mentionMenuOpen && (
+            <div
+              className="absolute bottom-full left-0 right-0 z-40 mb-1 max-h-56 overflow-y-auto rounded-xl bg-[var(--wa-panel)] py-1 shadow-xl ring-1 ring-black/10"
+              dir="rtl"
+              role="listbox"
+              aria-label="תיוג אנשי קשר"
+            >
+              {mentionSuggestions.map((candidate, index) => {
+                const active = index === mentionHighlight
+                return (
+                  <button
+                    key={`${candidate.kind}:${candidate.id}`}
+                    type="button"
+                    role="option"
+                    aria-selected={active}
+                    className={`flex w-full items-center gap-3 px-3 py-2 text-right transition ${
+                      active ? "bg-[var(--wa-hover)]" : "hover:bg-[var(--wa-hover)]"
+                    }`}
+                    onMouseDown={(event) => {
+                      event.preventDefault()
+                      insertMention(candidate)
+                    }}
+                    onMouseEnter={() => setMentionHighlight(index)}
+                  >
+                    <Avatar
+                      name={candidate.label}
+                      url={candidate.avatarUrl}
+                      size={32}
+                      isGroup={candidate.kind === "group"}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium text-[var(--wa-text)]">
+                        {candidate.label}
+                      </span>
+                      <span className="block text-[11px] text-[var(--wa-text-secondary)]">
+                        {candidate.kind === "group" ? "קבוצה" : "איש קשר"}
+                      </span>
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+          <textarea
+            ref={textInputRef}
+            rows={1}
+            value={text}
+            onChange={(e) => {
+              const value = e.target.value
+              const cursor = e.target.selectionStart
+              setText(value)
+              textSelectionRef.current = {
+                start: cursor,
+                end: e.target.selectionEnd,
+              }
+              syncMentionQuery(value, cursor)
+              onTyping?.(value.trim().length > 0)
+            }}
+            onClick={(e) => {
+              rememberTextSelection()
+              syncMentionQuery(e.currentTarget.value, e.currentTarget.selectionStart)
+            }}
+            onSelect={rememberTextSelection}
+            onKeyUp={rememberTextSelection}
+            onBlur={() => {
               onTyping?.(false)
-              void handleSendText()
-            }
-            // Shift+Enter: allow default newline behavior
-          }}
-          placeholder={isEditing ? "ערוך הודעה" : "הקלדת הודעה"}
-          className="max-h-[120px] min-h-[42px] flex-1 resize-none overflow-y-auto rounded-lg bg-[var(--wa-panel)] px-4 py-2.5 text-[15px] leading-[22px] text-[var(--wa-text)] outline-none placeholder:text-[var(--wa-text-secondary)]"
-          style={{
-            fontWeight: formatting.bold ? 700 : undefined,
-            fontStyle: formatting.italic ? "italic" : undefined,
-            color: formatting.color ?? undefined,
-          }}
-        />
+              // Delay so option mousedown can fire first
+              window.setTimeout(() => closeMentionMenu(), 120)
+            }}
+            onPaste={handlePaste}
+            onKeyDown={(e) => {
+              if (mentionMenuOpen) {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault()
+                  setMentionHighlight((i) => (i + 1) % mentionSuggestions.length)
+                  return
+                }
+                if (e.key === "ArrowUp") {
+                  e.preventDefault()
+                  setMentionHighlight(
+                    (i) => (i - 1 + mentionSuggestions.length) % mentionSuggestions.length,
+                  )
+                  return
+                }
+                if (e.key === "Escape") {
+                  e.preventDefault()
+                  closeMentionMenu()
+                  return
+                }
+                if (e.key === "Enter" || e.key === "Tab") {
+                  e.preventDefault()
+                  const pick = mentionSuggestions[mentionHighlight]
+                  if (pick) insertMention(pick)
+                  return
+                }
+              }
+              if (e.key === "Enter" && !e.shiftKey) {
+                if (e.nativeEvent.isComposing) return
+                e.preventDefault()
+                onTyping?.(false)
+                void handleSendText()
+              }
+              // Shift+Enter: allow default newline behavior
+            }}
+            placeholder={isEditing ? "ערוך הודעה" : "הקלדת הודעה"}
+            className="max-h-[120px] min-h-[42px] w-full resize-none overflow-y-auto rounded-lg bg-[var(--wa-panel)] px-4 py-2.5 text-[15px] leading-[22px] text-[var(--wa-text)] outline-none placeholder:text-[var(--wa-text-secondary)]"
+            style={{
+              fontWeight: formatting.bold ? 700 : undefined,
+              fontStyle: formatting.italic ? "italic" : undefined,
+              color: formatting.color ?? undefined,
+            }}
+          />
+        </div>
 
         {hasText || isEditing ? (
           <button

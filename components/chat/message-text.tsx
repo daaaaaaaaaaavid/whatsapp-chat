@@ -5,6 +5,7 @@ import { createPortal } from "react-dom"
 import { Mail, MessageCircle } from "lucide-react"
 import { highlightQuery, splitTextWithLinks } from "@/lib/message-content"
 import { decodeFormattedMessage, isStandaloneEmojiText } from "@/lib/message-formatting"
+import type { MentionKind } from "@/lib/mentions"
 import { parseYoutubeVideoId } from "@/lib/youtube"
 import { cn } from "@/lib/utils"
 
@@ -19,20 +20,40 @@ const EMAIL_LINK_STYLE: CSSProperties = {
   cursor: "pointer",
 }
 
+const MENTION_LINK_STYLE: CSSProperties = {
+  color: "#027eb5",
+  textDecoration: "none",
+  font: "inherit",
+  background: "transparent",
+  border: 0,
+  padding: 0,
+  cursor: "pointer",
+  fontWeight: 600,
+}
+
+export type OpenMentionHandler = (mention: {
+  kind: MentionKind
+  id: string
+  label: string
+}) => void | Promise<void>
+
 export function MessageText({
   text,
   searchQuery,
   onStartChatByEmail,
+  onOpenMention,
 }: {
   text: string
   searchQuery?: string
   onStartChatByEmail?: (email: string) => Promise<void>
+  onOpenMention?: OpenMentionHandler
 }) {
   const [emailMenu, setEmailMenu] = useState<{
     email: string
     style: CSSProperties
   } | null>(null)
   const [openingChat, setOpeningChat] = useState(false)
+  const [openingMention, setOpeningMention] = useState(false)
   const { text: displayText, formatting } = decodeFormattedMessage(text)
   const largeEmoji = isStandaloneEmojiText(displayText)
   const parts = splitTextWithLinks(displayText)
@@ -81,6 +102,18 @@ export function MessageText({
     }
   }
 
+  const openMention = async (kind: MentionKind, id: string, label: string) => {
+    if (!onOpenMention || openingMention) return
+    setOpeningMention(true)
+    try {
+      await onOpenMention({ kind, id, label })
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "נכשל בפתיחת הצ'אט")
+    } finally {
+      setOpeningMention(false)
+    }
+  }
+
   const formattingStyle: CSSProperties = {
     fontWeight: formatting.bold ? 700 : undefined,
     fontStyle: formatting.italic ? "italic" : undefined,
@@ -123,6 +156,28 @@ export function MessageText({
                 aria-label={`אפשרויות עבור ${p.value}`}
               >
                 {p.value}
+              </button>
+            )
+          }
+          if (p.type === "mention" && p.mentionKind && p.mentionId) {
+            const label = p.value
+            const kind = p.mentionKind
+            const id = p.mentionId
+            return (
+              <button
+                key={i}
+                type="button"
+                disabled={!onOpenMention || openingMention}
+                className="!inline !cursor-pointer !border-0 !bg-[#027eb5]/10 !px-0.5 !rounded-sm !text-[#027eb5] hover:!bg-[#027eb5]/18 disabled:!opacity-60"
+                style={MENTION_LINK_STYLE}
+                onClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  void openMention(kind, id, label)
+                }}
+                aria-label={kind === "group" ? `פתח קבוצה ${label}` : `פתח צ'אט עם ${label}`}
+              >
+                @{label}
               </button>
             )
           }

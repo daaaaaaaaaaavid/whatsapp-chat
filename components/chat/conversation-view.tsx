@@ -31,6 +31,7 @@ import { MediaGallery, mediaItemsFromMessages } from "./media-gallery"
 import { ForwardDialog } from "./forward-dialog"
 import { ViewOnceViewer } from "./view-once-viewer"
 import { convAvatarUrl, convDisplayName, isSelfConversation } from "@/lib/conversation-display"
+import { buildMentionCandidates } from "@/lib/mentions"
 import { formatDateDivider, formatChatListTime } from "@/lib/format"
 import { parseCallSystemPayload } from "@/lib/call-system-message"
 import { parsePollPayload } from "@/lib/poll"
@@ -83,6 +84,11 @@ type Props = {
   initialGalleryMessageId?: string | null
   onGalleryOpened?: () => void
   onStartChatByEmail?: (email: string) => Promise<void>
+  onOpenMention?: (mention: {
+    kind: "user" | "group"
+    id: string
+    label: string
+  }) => void | Promise<void>
 }
 
 function isOnline(lastSeen: string | null | undefined) {
@@ -116,6 +122,7 @@ export function ConversationView({
   initialGalleryMessageId,
   onGalleryOpened,
   onStartChatByEmail,
+  onOpenMention,
 }: Props) {
   const {
     messages,
@@ -160,6 +167,16 @@ export function ConversationView({
   const threadsEnabled = conversation.is_group
   const otherParticipants = (conversation.participants ?? []).filter((p) => p.user_id !== currentUser.id)
   const totalOthers = otherParticipants.length
+
+  const mentionCandidates = useMemo(
+    () =>
+      buildMentionCandidates({
+        currentUserId: currentUser.id,
+        participants: conversation.participants ?? [],
+        conversations,
+      }),
+    [conversation.participants, conversations, currentUser.id],
+  )
 
   const name = convDisplayName(conversation, currentUser.id)
   const avatar = convAvatarUrl(conversation, currentUser.id)
@@ -1088,6 +1105,7 @@ export function ConversationView({
                   isPinned={prefs.pinnedMessages.includes(message.id)}
                   searchQuery={searchOpen ? searchQuery : ""}
                   onStartChatByEmail={onStartChatByEmail}
+                  onOpenMention={onOpenMention}
                   onJoinWatch={onJoinWatch}
                   onStartWatchWithUrl={onStartWatchWithUrl}
                   closedWatchVideoIds={closedWatchVideoIds}
@@ -1150,6 +1168,7 @@ export function ConversationView({
             onMessageActivity?.(msg)
           }}
           onTyping={handleTyping}
+          mentionCandidates={mentionCandidates}
         />
       )}
 
@@ -1230,6 +1249,8 @@ export function ConversationView({
           onTyping={handleTyping}
           onForward={(message) => setForwardMessages([message])}
           onStartChatByEmail={onStartChatByEmail}
+          onOpenMention={onOpenMention}
+          mentionCandidates={mentionCandidates}
         />
       </div>
     )}

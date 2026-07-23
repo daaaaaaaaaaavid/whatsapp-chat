@@ -126,3 +126,23 @@ export function notifyStatusOwner(opts: {
     console.error("notifyStatusOwner failed:", err)
   })
 }
+
+/**
+ * Fire-and-forget: wake callees with a meeting-ring push (even if last_seen looks online).
+ * Complements Realtime broadcast which only works while the chat tab is open.
+ */
+export function notifyMeetingRing(opts: {
+  conversationId: string
+  meetingId: string
+}) {
+  void fetch("/api/push/notify-meeting-ring", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      conversationId: opts.conversationId,
+      meetingId: opts.meetingId,
+    }),
+  }).catch((err) => {
+    console.error("notifyMeetingRing failed:", err)
+  })
+}

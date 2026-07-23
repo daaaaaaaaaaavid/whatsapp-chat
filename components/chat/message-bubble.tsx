@@ -102,6 +102,11 @@ type Props = {
   isPinned?: boolean
   searchQuery?: string
   onStartChatByEmail?: (email: string) => Promise<void>
+  onOpenMention?: (mention: {
+    kind: "user" | "group"
+    id: string
+    label: string
+  }) => void | Promise<void>
   onJoinWatch?: (videoId: string) => void
   onStartWatchWithUrl?: (url: string) => void
   /** Video IDs whose watch session already ended in this chat */
@@ -212,6 +217,7 @@ export function MessageBubble({
   isPinned,
   searchQuery,
   onStartChatByEmail,
+  onOpenMention,
   onJoinWatch,
   onStartWatchWithUrl,
   closedWatchVideoIds,
@@ -806,6 +812,7 @@ export function MessageBubble({
             text={displayBodyText}
             searchQuery={searchQuery}
             onStartChatByEmail={onStartChatByEmail}
+            onOpenMention={onOpenMention}
           />
         )}
 
