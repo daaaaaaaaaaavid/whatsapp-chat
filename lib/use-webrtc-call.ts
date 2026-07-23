@@ -41,12 +41,14 @@ export type ActiveCallInfo = {
 type Options = {
   currentUser: Profile
   conversations: Conversation[]
+  /** When false, skip Realtime inbox (legacy WebRTC UI off). */
+  enabled?: boolean
 }
 
 const RING_TIMEOUT_MS = 45_000
 const DISCONNECT_GRACE_MS = 4_000
 
-export function useWebRtcCall({ currentUser, conversations }: Options) {
+export function useWebRtcCall({ currentUser, conversations, enabled = true }: Options) {
   const [phase, setPhase] = useState<CallPhase>("idle")
   const [call, setCall] = useState<ActiveCallInfo | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -652,6 +654,11 @@ export function useWebRtcCall({ currentUser, conversations }: Options) {
   // Inbox: listen for incoming rings / accept / reject / hangup.
   // Keep conversations in a ref so conversation list updates don't tear down the channel.
   useEffect(() => {
+    if (!enabled) {
+      setError(null)
+      return
+    }
+
     let cancelled = false
     let channel: RealtimeChannel | null = null
 
@@ -746,7 +753,7 @@ export function useWebRtcCall({ currentUser, conversations }: Options) {
       if (channel) void supabase.removeChannel(channel)
       inboxChannelRef.current = null
     }
-  }, [currentUser.id])
+  }, [currentUser.id, enabled])
 
   useEffect(() => {
     if (phase !== "connected") return

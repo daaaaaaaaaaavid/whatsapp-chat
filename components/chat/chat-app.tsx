@@ -192,7 +192,11 @@ export function ChatApp({ currentUser: initialUser }: Props) {
     hangup,
     toggleMute,
     toggleCamera,
-  } = useWebRtcCall({ currentUser, conversations })
+  } = useWebRtcCall({
+    currentUser,
+    conversations,
+    enabled: WEBRTC_CALLS_UI_ENABLED,
+  })
 
   const [watchDialogOpen, setWatchDialogOpen] = useState(false)
   const [watchDialogUrl, setWatchDialogUrl] = useState("")
@@ -1114,7 +1118,7 @@ export function ChatApp({ currentUser: initialUser }: Props) {
         onDismiss={dismissToast}
       />
 
-      {callError && phase === "idle" && (
+      {WEBRTC_CALLS_UI_ENABLED && callError && phase === "idle" && (
         <div className="fixed bottom-6 left-1/2 z-[80] -translate-x-1/2 rounded-lg bg-[#111b21] px-4 py-3 text-sm text-white shadow-lg">
           {callError}
           <button type="button" className="mr-3 text-[#25d366]" onClick={() => setCallError(null)}>
