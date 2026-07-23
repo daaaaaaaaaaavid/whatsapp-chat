@@ -2,6 +2,9 @@ import type { Conversation, Message } from "@/lib/types"
 import { callSystemLabel, parseCallSystemPayload } from "@/lib/call-system-message"
 import { plainMessageText } from "@/lib/message-formatting"
 import { parsePollPayload, pollPreviewLabel } from "@/lib/poll"
+import { parseContactPayload, contactPreviewLabel } from "@/lib/contact-message"
+import { parseEventPayload, eventPreviewLabel } from "@/lib/event-message"
+import { isStickerMessage, stickerPreviewLabel } from "@/lib/sticker-message"
 import { parseWatchSystemPayload, watchSystemLabel } from "@/lib/watch-system-message"
 import { parseMeetingSystemPayload, meetingSystemLabel } from "@/lib/meeting-system-message"
 import { viewOncePreviewLabel } from "@/lib/view-once"
@@ -39,9 +42,18 @@ export function messagePreview(msg: Message | null | undefined): string {
   if (msg.deleted_at) return "ההודעה נמחקה"
   const viewOnce = viewOncePreviewLabel(msg)
   if (viewOnce) return viewOnce
+  if (isStickerMessage(msg)) return stickerPreviewLabel()
   const poll = parsePollPayload(msg.content)
   if (poll || msg.type === "poll") {
     return poll ? pollPreviewLabel(poll) : "📊 סקר"
+  }
+  const contact = parseContactPayload(msg.content)
+  if (contact || msg.type === "contact") {
+    return contact ? contactPreviewLabel(contact) : "👤 איש קשר"
+  }
+  const event = parseEventPayload(msg.content)
+  if (event || msg.type === "event") {
+    return event ? eventPreviewLabel(event) : "📅 אירוע"
   }
   const call = parseCallSystemPayload(msg.content)
   const watch = parseWatchSystemPayload(msg.content)
@@ -64,6 +76,8 @@ export function messagePreview(msg: Message | null | undefined): string {
       return "🎵 הודעה קולית"
     case "file":
       return "📎 " + (msg.file_name ?? "קובץ")
+    case "sticker":
+      return stickerPreviewLabel()
     default:
       return plainMessageText(msg.content)
   }

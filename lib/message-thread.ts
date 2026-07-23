@@ -56,8 +56,14 @@ export function threadReplyPreview(message: Message): string {
   if (message.type === "audio") return "הודעה קולית"
   if (message.type === "file") return message.file_name ?? "קובץ"
   if (message.type === "poll") return "📊 סקר"
+  if (message.type === "contact") return "👤 איש קשר"
+  if (message.type === "event") return "📅 אירוע"
+  if (message.type === "sticker") return "🎨 מדבקה"
   const text = (message.content ?? "").trim()
   if (!text) return "הודעה"
   if (text.startsWith("{") && text.includes('"kind":"poll"')) return "📊 סקר"
+  if (text.startsWith("{") && text.includes('"kind":"contact"')) return "👤 איש קשר"
+  if (text.startsWith("{") && text.includes('"kind":"event"')) return "📅 אירוע"
+  if (text.startsWith("{") && text.includes('"kind":"sticker"')) return "🎨 מדבקה"
   return text.length > 80 ? `${text.slice(0, 80)}…` : text
 }

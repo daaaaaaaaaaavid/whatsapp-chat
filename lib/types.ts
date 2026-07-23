@@ -19,7 +19,17 @@ export type GoogleContact = {
   matched_profile_id: string | null
 }
 
-export type MessageType = "text" | "image" | "file" | "audio" | "video" | "system" | "poll"
+export type MessageType =
+  | "text"
+  | "image"
+  | "file"
+  | "audio"
+  | "video"
+  | "system"
+  | "poll"
+  | "contact"
+  | "event"
+  | "sticker"
 
 /** Structured payload for system call messages (stored as JSON in content). */
 export type CallSystemPayload = {
@@ -77,6 +87,31 @@ export type PollVote = {
   user_id: string
   option_id: string
   created_at: string
+}
+
+/** Structured payload for shared contact cards (JSON in content). */
+export type ContactPayload = {
+  kind: "contact"
+  displayName: string
+  phone?: string | null
+  email?: string | null
+  photoUrl?: string | null
+  matchedProfileId?: string | null
+}
+
+/** Structured payload for shared calendar events (JSON in content). */
+export type EventPayload = {
+  kind: "event"
+  title: string
+  startsAt: string
+  endsAt?: string | null
+  location?: string | null
+  description?: string | null
+}
+
+/** Optional marker when sticker is stored as image+JSON fallback. */
+export type StickerPayload = {
+  kind: "sticker"
 }
 
 export type Message = {

@@ -50,6 +50,9 @@ export function displayMessageContent(content: string | null | undefined, type?:
   const payload = parseCallSystemPayload(content)
   if (payload) return callSystemLabel(payload)
   if (type === "poll") return "📊 סקר"
+  if (type === "contact") return "👤 איש קשר"
+  if (type === "event") return "📅 אירוע"
+  if (type === "sticker") return "🎨 מדבקה"
   return content ?? ""
 }
 

@@ -9,9 +9,11 @@ import {
   useEffect,
   useId,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react"
+import { createPortal } from "react-dom"
 import { createClient } from "@/lib/supabase/client"
 import type { Message, MessageType } from "@/lib/types"
 import { parseCallSystemPayload, callSystemLabel } from "@/lib/call-system-message"
@@ -45,11 +47,22 @@ import {
   LoaderCircle,
   BarChart3,
   Eye,
+  Camera,
+  Headphones,
+  UserRound,
+  CalendarDays,
+  Sticker,
 } from "lucide-react"
 import { parseReplyContent } from "@/lib/message-content"
 import { encodePollPayload, parsePollPayload, pollPreviewLabel } from "@/lib/poll"
-import type { PollPayload } from "@/lib/types"
+import { encodeContactPayload, parseContactPayload, contactPreviewLabel } from "@/lib/contact-message"
+import { encodeEventPayload, parseEventPayload, eventPreviewLabel } from "@/lib/event-message"
+import { encodeStickerPayload, isStickerMessage, stickerPreviewLabel } from "@/lib/sticker-message"
+import type { ContactPayload, EventPayload, PollPayload } from "@/lib/types"
 import { PollDialog } from "./poll-dialog"
+import { ContactShareDialog } from "./contact-share-dialog"
+import { EventDialog } from "./event-dialog"
+import { StickerDialog } from "./sticker-dialog"
 import {
   decodeFormattedMessage,
   DEFAULT_MESSAGE_FORMATTING,
@@ -124,8 +137,13 @@ function replyPreview(message: Message) {
   if (message.type === "video") return "סרטון"
   if (message.type === "audio") return "הודעה קולית"
   if (message.type === "file") return message.file_name ?? "קובץ"
+  if (isStickerMessage(message)) return stickerPreviewLabel()
   const poll = parsePollPayload(message.content)
   if (poll || message.type === "poll") return poll ? pollPreviewLabel(poll) : "📊 סקר"
+  const contact = parseContactPayload(message.content)
+  if (contact || message.type === "contact") return contact ? contactPreviewLabel(contact) : "👤 איש קשר"
+  const event = parseEventPayload(message.content)
+  if (event || message.type === "event") return event ? eventPreviewLabel(event) : "📅 אירוע"
   const call = parseCallSystemPayload(message.content)
   if (call) return callSystemLabel(call)
   if (message.content) return plainMessageText(message.content)
@@ -184,6 +202,9 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
   const [sending, setSending] = useState(false)
   const [showAttach, setShowAttach] = useState(false)
   const [showPoll, setShowPoll] = useState(false)
+  const [showContact, setShowContact] = useState(false)
+  const [showEvent, setShowEvent] = useState(false)
+  const [showSticker, setShowSticker] = useState(false)
   const [showEmoji, setShowEmoji] = useState(false)
   const [showFormatting, setShowFormatting] = useState(false)
   const [formatting, setFormatting] = useState<MessageFormatting>({ ...DEFAULT_MESSAGE_FORMATTING })
@@ -199,7 +220,11 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
   const [viewOnce, setViewOnce] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
   const audioInputRef = useRef<HTMLInputElement>(null)
+  const attachBtnRef = useRef<HTMLButtonElement>(null)
+  const attachMenuRef = useRef<HTMLDivElement>(null)
+  const [attachMenuPos, setAttachMenuPos] = useState<{ bottom: number; right: number } | null>(null)
   const captionInputRef = useRef<HTMLInputElement>(null)
   const textInputRef = useRef<HTMLTextAreaElement>(null)
   const textSelectionRef = useRef({ start: 0, end: 0 })
@@ -214,6 +239,41 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
   const onTypingRef = useRef(onTyping)
   onTypingRef.current = onTyping
   const isEditing = Boolean(editingMessage)
+
+  useLayoutEffect(() => {
+    if (!showAttach) {
+      setAttachMenuPos(null)
+      return
+    }
+    const update = () => {
+      const btn = attachBtnRef.current
+      if (!btn) return
+      const rect = btn.getBoundingClientRect()
+      setAttachMenuPos({
+        bottom: Math.max(12, window.innerHeight - rect.top + 8),
+        right: Math.max(8, window.innerWidth - rect.right),
+      })
+    }
+    update()
+    window.addEventListener("resize", update)
+    window.addEventListener("scroll", update, true)
+    return () => {
+      window.removeEventListener("resize", update)
+      window.removeEventListener("scroll", update, true)
+    }
+  }, [showAttach])
+
+  useEffect(() => {
+    if (!showAttach) return
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node
+      if (attachMenuRef.current?.contains(target)) return
+      if (attachBtnRef.current?.contains(target)) return
+      setShowAttach(false)
+    }
+    document.addEventListener("pointerdown", onPointerDown)
+    return () => document.removeEventListener("pointerdown", onPointerDown)
+  }, [showAttach])
 
   const resizeTextarea = useCallback(() => {
     const el = textInputRef.current
@@ -377,11 +437,18 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
         const { view_once: _omitVo, ...withoutVo } = row
         ;({ data, error } = await supabase.from("messages").insert(withoutVo).select("*").single())
       }
-      // Fallback: store poll as text JSON if poll type not migrated yet
-      if (error && row.type === "poll" && /type|check|poll/i.test(error.message)) {
+      // Fallback: store structured attach types as text JSON if CHECK not migrated yet
+      if (
+        error &&
+        (row.type === "poll" ||
+          row.type === "contact" ||
+          row.type === "event" ||
+          row.type === "sticker") &&
+        /type|check|poll|contact|event|sticker/i.test(error.message)
+      ) {
         ;({ data, error } = await supabase
           .from("messages")
-          .insert({ ...row, type: "text" })
+          .insert({ ...row, type: row.type === "sticker" ? "image" : "text" })
           .select("*")
           .single())
       }
@@ -422,7 +489,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
   const uploadAndSend = useCallback(
     async (
       file: File,
-      kindHint: "image" | "file" | "audio" | "video",
+      kindHint: "image" | "file" | "audio" | "video" | "sticker",
       caption?: string | null,
       reply?: { id: string; message: Message } | null,
       durationSec?: number | null,
@@ -474,7 +541,9 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
 
         let type: MessageType = "file"
         const lower = file.name.toLowerCase()
-        if (kindHint === "audio" || file.type.startsWith("audio/")) {
+        if (kindHint === "sticker") {
+          type = "sticker"
+        } else if (kindHint === "audio" || file.type.startsWith("audio/")) {
           type = "audio"
           if (durationSec && durationSec > 0) {
             publicUrl = withMediaDurationHint(publicUrl, durationSec)
@@ -498,7 +567,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
           file_url: publicUrl,
           file_name: file.name,
           file_size: file.size,
-          content: caption?.trim() || null,
+          content: kindHint === "sticker" ? encodeStickerPayload() : caption?.trim() || null,
           reply_to_id: reply?.id ?? null,
           reply_to: reply?.message ?? null,
         })
@@ -1253,37 +1322,106 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
         </div>
       )}
 
-      {showAttach && (
-        <div className="absolute bottom-16 right-14 z-20 flex flex-col gap-2 rounded-lg bg-[var(--wa-panel)] p-2 shadow-lg ring-1 ring-black/5">
-          <button
-            type="button"
-            onClick={() => imageInputRef.current?.click()}
-            className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-[var(--wa-text)] transition hover:bg-[var(--wa-header)]"
-          >
-            <ImageIcon className="h-5 w-5 text-[#007bfc]" />
-            תמונות וסרטונים
-          </button>
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-[var(--wa-text)] transition hover:bg-[var(--wa-header)]"
-          >
-            <FileText className="h-5 w-5 text-[#7f66ff]" />
-            מסמך
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setShowAttach(false)
-              setShowPoll(true)
+      {showAttach &&
+        attachMenuPos &&
+        createPortal(
+          <div
+            ref={attachMenuRef}
+            role="menu"
+            aria-label="צירוף"
+            className="fixed z-[90] flex w-[220px] flex-col gap-0.5 overflow-y-auto rounded-2xl bg-[var(--wa-panel)] p-2 shadow-2xl ring-1 ring-black/10"
+            style={{
+              bottom: attachMenuPos.bottom,
+              right: attachMenuPos.right,
+              maxHeight: "min(70vh, 420px)",
             }}
-            className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-[var(--wa-text)] transition hover:bg-[var(--wa-header)]"
+            dir="rtl"
           >
-            <BarChart3 className="h-5 w-5 text-[#ffbc38]" />
-            סקר
-          </button>
-        </div>
-      )}
+            {(
+              [
+                {
+                  key: "doc",
+                  label: "מסמך",
+                  icon: FileText,
+                  color: "#7f66ff",
+                  onClick: () => fileInputRef.current?.click(),
+                },
+                {
+                  key: "media",
+                  label: "תמונות וסרטונים",
+                  icon: ImageIcon,
+                  color: "#007bfc",
+                  onClick: () => imageInputRef.current?.click(),
+                },
+                {
+                  key: "camera",
+                  label: "מצלמה",
+                  icon: Camera,
+                  color: "#ff2e74",
+                  onClick: () => cameraInputRef.current?.click(),
+                },
+                {
+                  key: "audio",
+                  label: "שמע",
+                  icon: Headphones,
+                  color: "#ff7f1e",
+                  onClick: () => audioInputRef.current?.click(),
+                },
+                {
+                  key: "contact",
+                  label: "איש קשר",
+                  icon: UserRound,
+                  color: "#0ea5e9",
+                  onClick: () => setShowContact(true),
+                },
+                {
+                  key: "poll",
+                  label: "סקר",
+                  icon: BarChart3,
+                  color: "#ffbc38",
+                  onClick: () => setShowPoll(true),
+                },
+                {
+                  key: "event",
+                  label: "אירוע",
+                  icon: CalendarDays,
+                  color: "#f15c6d",
+                  onClick: () => setShowEvent(true),
+                },
+                {
+                  key: "sticker",
+                  label: "מדבקות",
+                  icon: Sticker,
+                  color: "#02a698",
+                  onClick: () => setShowSticker(true),
+                },
+              ] as const
+            ).map((item) => {
+              const Icon = item.icon
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setShowAttach(false)
+                    item.onClick()
+                  }}
+                  className="flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-sm text-[var(--wa-text)] transition hover:bg-[var(--wa-header)]"
+                >
+                  <span>{item.label}</span>
+                  <span
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
+                    style={{ backgroundColor: `${item.color}22` }}
+                  >
+                    <Icon className="h-5 w-5" style={{ color: item.color }} />
+                  </span>
+                </button>
+              )
+            })}
+          </div>,
+          document.body,
+        )}
 
       <PollDialog
         open={showPoll}
@@ -1311,11 +1449,101 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
         }}
       />
 
+      <ContactShareDialog
+        open={showContact}
+        currentUserId={currentUserId}
+        onClose={() => setShowContact(false)}
+        onSubmit={async (payload: ContactPayload) => {
+          setSendError(null)
+          try {
+            await sendMessage({
+              type: "contact",
+              content: encodeContactPayload(payload),
+              reply_to_id: replyTo?.id ?? null,
+              reply_to: replyTo ?? null,
+            })
+            if (!keepReplyAfterSend) onCancelReply?.()
+          } catch (err) {
+            const msg =
+              err instanceof Error
+                ? err.message
+                : err && typeof err === "object" && "message" in err
+                  ? String((err as { message?: unknown }).message ?? "")
+                  : "שליחת איש הקשר נכשלה"
+            setSendError(msg || "שליחת איש הקשר נכשלה")
+            throw err
+          }
+        }}
+      />
+
+      <EventDialog
+        open={showEvent}
+        onClose={() => setShowEvent(false)}
+        onSubmit={async (payload: EventPayload) => {
+          setSendError(null)
+          try {
+            await sendMessage({
+              type: "event",
+              content: encodeEventPayload(payload),
+              reply_to_id: replyTo?.id ?? null,
+              reply_to: replyTo ?? null,
+            })
+            if (!keepReplyAfterSend) onCancelReply?.()
+          } catch (err) {
+            const msg =
+              err instanceof Error
+                ? err.message
+                : err && typeof err === "object" && "message" in err
+                  ? String((err as { message?: unknown }).message ?? "")
+                  : "שליחת האירוע נכשלה"
+            setSendError(msg || "שליחת האירוע נכשלה")
+            throw err
+          }
+        }}
+      />
+
+      <StickerDialog
+        open={showSticker}
+        onClose={() => setShowSticker(false)}
+        onSubmit={async (file: File) => {
+          setSendError(null)
+          try {
+            await uploadAndSend(
+              file,
+              "sticker",
+              null,
+              replyTo ? { id: replyTo.id, message: replyTo } : null,
+            )
+            if (!keepReplyAfterSend) onCancelReply?.()
+          } catch (err) {
+            const msg =
+              err instanceof Error
+                ? err.message
+                : err && typeof err === "object" && "message" in err
+                  ? String((err as { message?: unknown }).message ?? "")
+                  : "שליחת המדבקה נכשלה"
+            setSendError(msg || "שליחת המדבקה נכשלה")
+            throw err
+          }
+        }}
+      />
+
       <input
         ref={imageInputRef}
         type="file"
         accept="image/*,video/*"
         multiple
+        hidden
+        onChange={(e) => {
+          if (e.target.files?.length) stageFiles(e.target.files)
+          e.target.value = ""
+        }}
+      />
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*,video/*"
+        capture="environment"
         hidden
         onChange={(e) => {
           if (e.target.files?.length) stageFiles(e.target.files)
@@ -1387,6 +1615,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
               <Smile className="h-6 w-6" />
             </button>
             <button
+              ref={attachBtnRef}
               type="button"
               onClick={() => {
                 setShowAttach((v) => !v)
@@ -1395,6 +1624,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
               }}
               className="mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[var(--wa-text-secondary)] transition hover:bg-black/5"
               aria-label="צירוף קובץ"
+              aria-expanded={showAttach}
             >
               {showAttach ? <X className="h-6 w-6" /> : <Plus className="h-6 w-6" />}
             </button>

@@ -40,7 +40,16 @@ export function resolveMediaKind(
 ): "image" | "video" | "file" | null {
   if (type === "image") return "image"
   if (type === "video") return "video"
-  if (type === "audio" || type === "system" || type === "text" || type === "poll") return null
+  if (
+    type === "audio" ||
+    type === "system" ||
+    type === "text" ||
+    type === "poll" ||
+    type === "contact" ||
+    type === "event" ||
+    type === "sticker"
+  )
+    return null
   const probe = `${fileName ?? ""} ${fileUrl ?? ""}`
   if (IMAGE_EXT.test(probe)) return "image"
   if (VIDEO_EXT.test(probe)) return "video"
@@ -83,6 +92,18 @@ export function mediaItemsFromMessages(messages: Message[]): GalleryItem[] {
   const items: GalleryItem[] = []
   for (const m of messages) {
     if (m.deleted_at || !m.file_url || m.view_once) continue
+    if (m.type === "sticker" || (m.content && m.content.includes('"kind":"sticker"'))) {
+      items.push({
+        id: m.id,
+        type: "image",
+        url: m.file_url,
+        name: m.file_name,
+        size: m.file_size,
+        createdAt: m.created_at,
+        senderId: m.sender_id,
+      })
+      continue
+    }
     const kind = resolveMediaKind(m.type, m.file_name, m.file_url)
     if (!kind) continue
     items.push({

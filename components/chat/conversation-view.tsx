@@ -34,6 +34,9 @@ import { convAvatarUrl, convDisplayName, isSelfConversation } from "@/lib/conver
 import { formatDateDivider, formatChatListTime } from "@/lib/format"
 import { parseCallSystemPayload } from "@/lib/call-system-message"
 import { parsePollPayload } from "@/lib/poll"
+import { parseContactPayload } from "@/lib/contact-message"
+import { parseEventPayload } from "@/lib/event-message"
+import { isStickerMessage } from "@/lib/sticker-message"
 import { parseWatchSystemPayload } from "@/lib/watch-system-message"
 import { parseMeetingSystemPayload } from "@/lib/meeting-system-message"
 import { isWatchSessionClosed } from "@/lib/watch-closed"
@@ -1054,7 +1057,13 @@ export function ConversationView({
                     message.sender_id === currentUser.id &&
                     message.type !== "system" &&
                     message.type !== "poll" &&
+                    message.type !== "contact" &&
+                    message.type !== "event" &&
+                    message.type !== "sticker" &&
                     !parsePollPayload(message.content) &&
+                    !parseContactPayload(message.content) &&
+                    !parseEventPayload(message.content) &&
+                    !isStickerMessage(message) &&
                     !message.deleted_at
                       ? () => {
                           setReplyTo(null)

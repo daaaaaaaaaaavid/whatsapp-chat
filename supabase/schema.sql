@@ -51,7 +51,7 @@ create table if not exists public.messages (
   conversation_id uuid not null references public.conversations (id) on delete cascade,
   sender_id uuid not null references auth.users (id) on delete cascade,
   content text,
-  type text not null default 'text' check (type in ('text', 'image', 'file', 'audio', 'video', 'system', 'poll')),
+  type text not null default 'text' check (type in ('text', 'image', 'file', 'audio', 'video', 'system', 'poll', 'contact', 'event', 'sticker')),
   file_url text,
   file_name text,
   file_size bigint,

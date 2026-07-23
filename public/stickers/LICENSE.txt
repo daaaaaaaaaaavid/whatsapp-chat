@@ -1,0 +1,7 @@
+Twemoji artwork © Twitter, Inc and other contributors
+https://github.com/twitter/twemoji
+
+License: Creative Commons Attribution 4.0 International (CC-BY 4.0)
+https://creativecommons.org/licenses/by/4.0/
+
+Graphics used in /public/stickers/*.png are from Twemoji 14.0.2 (72×72 PNG assets).

@@ -8,17 +8,12 @@ import { callSystemLabel, parseCallSystemPayload } from "@/lib/call-system-messa
 import { extractUrls, parseReplyContent } from "@/lib/message-content"
 import { plainMessageText } from "@/lib/message-formatting"
 import { parsePollPayload, pollPreviewLabel } from "@/lib/poll"
-import { parseContactPayload, contactPreviewLabel } from "@/lib/contact-message"
-import { parseEventPayload, eventPreviewLabel } from "@/lib/event-message"
-import { isStickerMessage, stickerPreviewLabel } from "@/lib/sticker-message"
 import { messageTickStatus } from "@/lib/message-status"
 import { parseWatchSystemPayload, watchSystemLabel } from "@/lib/watch-system-message"
 import { parseMeetingSystemPayload, meetingSystemLabel } from "@/lib/meeting-system-message"
 import { MessageTicks } from "./message-ticks"
 import { VoiceMessage } from "./voice-message"
 import { PollMessage } from "./poll-message"
-import { ContactMessage } from "./contact-message"
-import { EventMessage } from "./event-message"
 import { resolveMediaKind } from "./media-gallery"
 import { isExpiredChatMedia, MEDIA_EXPIRED_LABEL } from "@/lib/media-retention"
 import { useSignedMediaUrlControls } from "@/lib/use-signed-media-url"
@@ -120,17 +115,12 @@ function replyPreviewText(message: Message) {
     return message.type === "video" ? VIEW_ONCE_VIDEO_LABEL : VIEW_ONCE_PHOTO_LABEL
   }
   if (isExpiredChatMedia(message)) return MEDIA_EXPIRED_LABEL
-  if (isStickerMessage(message)) return stickerPreviewLabel()
   if (message.type === "image") return "תמונה"
   if (message.type === "video") return "סרטון"
   if (message.type === "audio") return "הודעה קולית"
   if (message.type === "file") return message.file_name ?? "קובץ"
   const poll = parsePollPayload(message.content)
   if (poll || message.type === "poll") return poll ? pollPreviewLabel(poll) : "📊 סקר"
-  const contact = parseContactPayload(message.content)
-  if (contact || message.type === "contact") return contact ? contactPreviewLabel(contact) : "👤 איש קשר"
-  const event = parseEventPayload(message.content)
-  if (event || message.type === "event") return event ? eventPreviewLabel(event) : "📅 אירוע"
   const call = parseCallSystemPayload(message.content)
   if (call) return callSystemLabel(call)
   const watch = parseWatchSystemPayload(message.content)
@@ -148,31 +138,6 @@ function copyMessageText(message: Message) {
   if (poll || message.type === "poll") {
     const lines = [poll?.question ?? "סקר", ...(poll?.options.map((o) => `• ${o.text}`) ?? [])]
     void navigator.clipboard.writeText(lines.filter(Boolean).join("\n"))
-    return
-  }
-  const contact = parseContactPayload(message.content)
-  if (contact || message.type === "contact") {
-    const lines = [
-      contact?.displayName,
-      contact?.phone,
-      contact?.email,
-    ].filter(Boolean)
-    void navigator.clipboard.writeText(lines.join("\n"))
-    return
-  }
-  const event = parseEventPayload(message.content)
-  if (event || message.type === "event") {
-    const lines = [
-      event?.title,
-      event?.startsAt,
-      event?.location,
-      event?.description,
-    ].filter(Boolean)
-    void navigator.clipboard.writeText(lines.join("\n"))
-    return
-  }
-  if (isStickerMessage(message)) {
-    void navigator.clipboard.writeText(stickerPreviewLabel())
     return
   }
   const reply = parseReplyContent(message.content)
@@ -247,11 +212,6 @@ export function MessageBubble({
   const meetingPayload = parseMeetingSystemPayload(message.content)
   const pollPayload = parsePollPayload(message.content)
   const isPoll = message.type === "poll" || Boolean(pollPayload)
-  const contactPayload = parseContactPayload(message.content)
-  const isContact = message.type === "contact" || Boolean(contactPayload)
-  const eventPayload = parseEventPayload(message.content)
-  const isEvent = message.type === "event" || Boolean(eventPayload)
-  const isSticker = isStickerMessage(message)
 
   const readCount = (message.reads ?? []).filter((r) => r.user_id !== message.sender_id).length
   const status = messageTickStatus(message, totalOthers)
@@ -333,12 +293,7 @@ export function MessageBubble({
       meetingPayload.event === "started" &&
       Boolean(closedMeetingIds?.has(meetingPayload.meetingId))
     return (
-      <SystemMeetingMessage
-        message={message}
-        onJoin={onJoinMeeting}
-        joinBlocked={joinBlocked}
-        isGroup={isGroup}
-      />
+      <SystemMeetingMessage message={message} onJoin={onJoinMeeting} joinBlocked={joinBlocked} />
     )
   }
 
@@ -406,10 +361,7 @@ export function MessageBubble({
     : legacyReply
   const bodyText = structuredTarget ? message.content : (legacyReply?.body ?? message.content)
   const pollBody = isPoll ? pollPayload : null
-  const contactBody = isContact ? contactPayload : null
-  const eventBody = isEvent ? eventPayload : null
-  const displayBodyText =
-    pollBody || contactBody || eventBody || isSticker ? null : bodyText
+  const displayBodyText = pollBody ? null : bodyText
   const urls = displayBodyText ? extractUrls(plainMessageText(displayBodyText)) : []
   const canEdit =
     isMine &&
@@ -417,9 +369,6 @@ export function MessageBubble({
     !message.pending &&
     !message.id.startsWith("temp-") &&
     !isPoll &&
-    !isContact &&
-    !isEvent &&
-    !isSticker &&
     (message.type === "text" || Boolean(bodyText?.trim()))
 
   const pickReaction = (emoji: string) => {
@@ -748,44 +697,6 @@ export function MessageBubble({
             currentUserId={currentUserId}
             pending={message.pending}
           />
-        )}
-
-        {contactBody && (
-          <ContactMessage payload={contactBody} onStartChatByEmail={onStartChatByEmail} />
-        )}
-
-        {eventBody && <EventMessage payload={eventBody} />}
-
-        {isSticker && message.file_url && displayFileUrl && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              onOpenMedia?.(message.id)
-            }}
-            className="mb-1 block max-w-[180px]"
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={displayFileUrl}
-              alt="מדבקה"
-              className="max-h-40 max-w-full object-contain"
-              draggable={false}
-            />
-          </button>
-        )}
-
-        {isSticker && message.file_url && !displayFileUrl && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              refreshMediaUrl()
-            }}
-            className="mb-1 flex max-w-xs items-center gap-2 rounded-md bg-black/5 px-3 py-3 text-[13px] text-[var(--wa-text-secondary)]"
-          >
-            <span>{mediaUrlLoading ? "טוען מדבקה…" : "לא ניתן להציג — לחץ לניסיון חוזר"}</span>
-          </button>
         )}
 
         {mediaKind === "file" && message.file_url && (
