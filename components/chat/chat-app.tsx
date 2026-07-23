@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import dynamic from "next/dynamic"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useConversations } from "@/lib/use-conversations"
@@ -40,10 +41,6 @@ import { CallsPanel } from "./calls-panel"
 import { CommunitiesPanel } from "./communities-panel"
 import { SpacesPanel } from "./spaces-panel"
 import { SpaceFilterChips } from "./space-filter-chips"
-import { CallOverlay } from "./call-overlay"
-import { WatchOverlay } from "./watch-overlay"
-import { WatchStartDialog } from "./watch-start-dialog"
-import { MeetingOverlay } from "./meeting-overlay"
 import { MeetingRingOverlay } from "./meeting-ring-overlay"
 import { useWorkSpaces } from "@/lib/use-work-spaces"
 import { useWebRtcCall } from "@/lib/use-webrtc-call"
@@ -66,6 +63,24 @@ import {
   WATCH_TOGETHER_UI_ENABLED,
   WEBRTC_CALLS_UI_ENABLED,
 } from "@/lib/site-config"
+
+/** Heavy / rarely-mounted overlays — keep out of the initial chat bundle. */
+const CallOverlay = dynamic(
+  () => import("./call-overlay").then((m) => m.CallOverlay),
+  { ssr: false },
+)
+const WatchOverlay = dynamic(
+  () => import("./watch-overlay").then((m) => m.WatchOverlay),
+  { ssr: false },
+)
+const WatchStartDialog = dynamic(
+  () => import("./watch-start-dialog").then((m) => m.WatchStartDialog),
+  { ssr: false },
+)
+const MeetingOverlay = dynamic(
+  () => import("./meeting-overlay").then((m) => m.MeetingOverlay),
+  { ssr: false },
+)
 
 type Props = {
   currentUser: Profile
@@ -256,6 +271,7 @@ export function ChatApp({ currentUser: initialUser }: Props) {
 
   const joinMeetingFromPush = useCallback(
     async (meetingId: string, conversationId?: string | null) => {
+      void import("./meeting-overlay")
       if (conversationId) {
         setActiveId(conversationId)
         setNavTab("chats")
@@ -299,6 +315,7 @@ export function ChatApp({ currentUser: initialUser }: Props) {
 
   const handleStartMeeting = useCallback(
     async (conversation: Conversation) => {
+      void import("./meeting-overlay")
       const meeting = await startMeeting(conversation.id)
       if (meeting) {
         await startOutgoingRing({
@@ -309,6 +326,17 @@ export function ChatApp({ currentUser: initialUser }: Props) {
     },
     [startMeeting, startOutgoingRing],
   )
+
+  // Prefetch LiveKit overlay while ringing / joining so UI is ready with the token.
+  useEffect(() => {
+    if (
+      meetingActive ||
+      meetingRingPhase === "incoming" ||
+      meetingRingPhase === "outgoing"
+    ) {
+      void import("./meeting-overlay")
+    }
+  }, [meetingActive, meetingRingPhase])
 
   // Deep link: /chat?meeting= (e.g. from call push notification)
   useEffect(() => {

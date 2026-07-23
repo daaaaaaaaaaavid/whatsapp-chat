@@ -1,5 +1,17 @@
-import { describe, expect, it } from "vitest"
-import { parseMediaStoragePath, parseMediaDurationHint, withMediaDurationHint } from "@/lib/media-url"
+import { afterEach, describe, expect, it, vi } from "vitest"
+import {
+  clearSignedMediaUrlCacheForTests,
+  invalidateMediaDisplayUrl,
+  parseMediaStoragePath,
+  parseMediaDurationHint,
+  peekCachedMediaDisplayUrl,
+  resolveMediaDisplayUrl,
+  withMediaDurationHint,
+} from "@/lib/media-url"
+
+afterEach(() => {
+  clearSignedMediaUrlCacheForTests()
+})
 
 describe("parseMediaStoragePath", () => {
   it("parses public media URLs", () => {
@@ -34,5 +46,63 @@ describe("media duration hint", () => {
     expect(withHint).toContain("#d=12.3")
     expect(parseMediaDurationHint(withHint)).toBe(12.3)
     expect(parseMediaDurationHint("https://example.com/x.webm")).toBeNull()
+  })
+})
+
+function mockSupabase(createSignedUrl: ReturnType<typeof vi.fn>) {
+  return {
+    storage: {
+      from: () => ({ createSignedUrl }),
+    },
+  } as never
+}
+
+describe("resolveMediaDisplayUrl cache", () => {
+  const fileUrl = "https://xyz.supabase.co/storage/v1/object/public/media/user1/avatar.png"
+  const withHash = `${fileUrl}#d=2.5`
+
+  it("caches signed URLs and dedupes in-flight requests", async () => {
+    const createSignedUrl = vi.fn().mockResolvedValue({
+      data: { signedUrl: "https://signed.example/avatar?token=1" },
+      error: null,
+    })
+    const supabase = mockSupabase(createSignedUrl)
+
+    const [a, b] = await Promise.all([
+      resolveMediaDisplayUrl(supabase, fileUrl),
+      resolveMediaDisplayUrl(supabase, withHash),
+    ])
+
+    expect(createSignedUrl).toHaveBeenCalledTimes(1)
+    expect(a).toBe("https://signed.example/avatar?token=1")
+    expect(b).toBe("https://signed.example/avatar?token=1#d=2.5")
+    expect(peekCachedMediaDisplayUrl(withHash)).toBe(
+      "https://signed.example/avatar?token=1#d=2.5",
+    )
+
+    await resolveMediaDisplayUrl(supabase, fileUrl)
+    expect(createSignedUrl).toHaveBeenCalledTimes(1)
+  })
+
+  it("bypasses cache after invalidate", async () => {
+    const createSignedUrl = vi
+      .fn()
+      .mockResolvedValueOnce({
+        data: { signedUrl: "https://signed.example/a?token=1" },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: { signedUrl: "https://signed.example/a?token=2" },
+        error: null,
+      })
+    const supabase = mockSupabase(createSignedUrl)
+
+    await resolveMediaDisplayUrl(supabase, fileUrl)
+    invalidateMediaDisplayUrl(fileUrl)
+    expect(peekCachedMediaDisplayUrl(fileUrl)).toBeNull()
+
+    const next = await resolveMediaDisplayUrl(supabase, fileUrl)
+    expect(createSignedUrl).toHaveBeenCalledTimes(2)
+    expect(next).toBe("https://signed.example/a?token=2")
   })
 })

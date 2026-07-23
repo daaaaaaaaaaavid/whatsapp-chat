@@ -2,19 +2,25 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
-import { resolveMediaDisplayUrl, SIGNED_TTL_SECONDS } from "@/lib/media-url"
+import {
+  invalidateMediaDisplayUrl,
+  peekCachedMediaDisplayUrl,
+  resolveMediaDisplayUrl,
+  SIGNED_TTL_SECONDS,
+} from "@/lib/media-url"
 
 /** Refresh a bit before the signed URL expires. */
 const REFRESH_AFTER_MS = Math.max(60_000, (SIGNED_TTL_SECONDS - 5 * 60) * 1000)
 
 /** Resolve a stored media reference into a short-lived signed URL for display. */
 export function useSignedMediaUrl(fileUrl: string | null | undefined): string | null {
-  const [signed, setSigned] = useState<string | null>(null)
+  const [signed, setSigned] = useState<string | null>(() => peekCachedMediaDisplayUrl(fileUrl))
   const [tick, setTick] = useState(0)
 
   const refresh = useCallback(() => {
+    invalidateMediaDisplayUrl(fileUrl)
     setTick((n) => n + 1)
-  }, [])
+  }, [fileUrl])
 
   useEffect(() => {
     let cancelled = false
@@ -24,6 +30,9 @@ export function useSignedMediaUrl(fileUrl: string | null | undefined): string | 
       setSigned(null)
       return
     }
+
+    const cached = peekCachedMediaDisplayUrl(fileUrl)
+    if (cached) setSigned(cached)
 
     const supabase = createClient()
     void resolveMediaDisplayUrl(supabase, fileUrl).then((url) => {
@@ -51,13 +60,14 @@ export function useSignedMediaUrlControls(fileUrl: string | null | undefined): {
   loading: boolean
   refresh: () => void
 } {
-  const [signed, setSigned] = useState<string | null>(null)
-  const [loading, setLoading] = useState(Boolean(fileUrl))
+  const [signed, setSigned] = useState<string | null>(() => peekCachedMediaDisplayUrl(fileUrl))
+  const [loading, setLoading] = useState(() => Boolean(fileUrl) && !peekCachedMediaDisplayUrl(fileUrl))
   const [tick, setTick] = useState(0)
 
   const refresh = useCallback(() => {
+    invalidateMediaDisplayUrl(fileUrl)
     setTick((n) => n + 1)
-  }, [])
+  }, [fileUrl])
 
   useEffect(() => {
     let cancelled = false
@@ -69,7 +79,14 @@ export function useSignedMediaUrlControls(fileUrl: string | null | undefined): {
       return
     }
 
-    setLoading(true)
+    const cached = peekCachedMediaDisplayUrl(fileUrl)
+    if (cached) {
+      setSigned(cached)
+      setLoading(false)
+    } else {
+      setLoading(true)
+    }
+
     const supabase = createClient()
     void resolveMediaDisplayUrl(supabase, fileUrl)
       .then((url) => {

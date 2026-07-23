@@ -3,6 +3,60 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 const MEDIA_BUCKET = "media"
 export const SIGNED_TTL_SECONDS = 60 * 60 // 1 hour
 
+/** Treat cached URLs as stale this early so refresh can overlap expiry. */
+const CACHE_SKEW_MS = 5 * 60 * 1000
+
+type SignedCacheEntry = {
+  signedUrl: string
+  expiresAt: number
+}
+
+const signedUrlCache = new Map<string, SignedCacheEntry>()
+const signedUrlInflight = new Map<string, Promise<string | null>>()
+
+function withFileUrlFragment(signedUrl: string, fileUrl: string): string {
+  const hashIdx = fileUrl.indexOf("#")
+  if (hashIdx >= 0) return `${signedUrl}${fileUrl.slice(hashIdx)}`
+  return signedUrl
+}
+
+function cacheKeyForFileUrl(fileUrl: string): string | null {
+  return parseMediaStoragePath(fileUrl)
+}
+
+function readFreshCache(path: string): string | null {
+  const entry = signedUrlCache.get(path)
+  if (!entry) return null
+  if (entry.expiresAt <= Date.now() + CACHE_SKEW_MS) {
+    signedUrlCache.delete(path)
+    return null
+  }
+  return entry.signedUrl
+}
+
+/** Drop a cached signed URL (e.g. after a media load failure / forced refresh). */
+export function invalidateMediaDisplayUrl(fileUrl: string | null | undefined): void {
+  if (!fileUrl) return
+  const path = cacheKeyForFileUrl(fileUrl)
+  if (!path) return
+  signedUrlCache.delete(path)
+}
+
+/** Sync peek at a still-valid cached display URL (avoids avatar flash on remount). */
+export function peekCachedMediaDisplayUrl(fileUrl: string | null | undefined): string | null {
+  if (!fileUrl) return null
+  const path = cacheKeyForFileUrl(fileUrl)
+  if (!path) return fileUrl
+  const signed = readFreshCache(path)
+  return signed ? withFileUrlFragment(signed, fileUrl) : null
+}
+
+/** Test helper — clears signed URL cache/inflight maps. */
+export function clearSignedMediaUrlCacheForTests(): void {
+  signedUrlCache.clear()
+  signedUrlInflight.clear()
+}
+
 /** Extract `{ userId/... }` path from a stored media URL or return a raw path. */
 export function parseMediaStoragePath(fileUrl: string): string | null {
   if (!fileUrl) return null
@@ -68,20 +122,39 @@ export async function resolveMediaDisplayUrl(
   const path = parseMediaStoragePath(fileUrl)
   if (!path) return fileUrl
 
-  const { data, error } = await supabase.storage
-    .from(MEDIA_BUCKET)
-    .createSignedUrl(path, expiresIn)
+  const cached = readFreshCache(path)
+  if (cached) return withFileUrlFragment(cached, fileUrl)
 
-  if (error || !data?.signedUrl) {
-    console.error("resolveMediaDisplayUrl:", error?.message)
-    return null
+  const existing = signedUrlInflight.get(path)
+  if (existing) {
+    const signed = await existing
+    return signed ? withFileUrlFragment(signed, fileUrl) : null
   }
-  // Preserve fragment hints like #whachat=video
-  const hashIdx = fileUrl.indexOf("#")
-  if (hashIdx >= 0) {
-    return `${data.signedUrl}${fileUrl.slice(hashIdx)}`
+
+  const request = (async (): Promise<string | null> => {
+    const { data, error } = await supabase.storage
+      .from(MEDIA_BUCKET)
+      .createSignedUrl(path, expiresIn)
+
+    if (error || !data?.signedUrl) {
+      console.error("resolveMediaDisplayUrl:", error?.message)
+      return null
+    }
+
+    signedUrlCache.set(path, {
+      signedUrl: data.signedUrl,
+      expiresAt: Date.now() + expiresIn * 1000,
+    })
+    return data.signedUrl
+  })()
+
+  signedUrlInflight.set(path, request)
+  try {
+    const signed = await request
+    return signed ? withFileUrlFragment(signed, fileUrl) : null
+  } finally {
+    signedUrlInflight.delete(path)
   }
-  return data.signedUrl
 }
 
 /** Download media as a Blob via the authenticated client (best for audio playback). */
