@@ -59,6 +59,8 @@ type Props = {
   conversationLabel: string
   onLeave: () => void
   onEndForAll: () => void
+  /** Fired when the first remote participant connects (clears DM ring UI). */
+  onRemoteJoined?: () => void
   /** Compact strip when Watch Together is also open */
   mediaOnly?: boolean
 }
@@ -83,6 +85,28 @@ function useMeetingUi() {
 
 function trackIdentity(t: TrackReferenceOrPlaceholder): string {
   return t.participant.identity
+}
+
+function RemoteJoinWatcher({ onRemoteJoined }: { onRemoteJoined?: () => void }) {
+  const room = useRoomContext()
+  const firedRef = useRef(false)
+
+  useEffect(() => {
+    if (!onRemoteJoined) return
+    const fire = () => {
+      if (firedRef.current) return
+      if (room.remoteParticipants.size === 0) return
+      firedRef.current = true
+      onRemoteJoined()
+    }
+    fire()
+    room.on(RoomEvent.ParticipantConnected, fire)
+    return () => {
+      room.off(RoomEvent.ParticipantConnected, fire)
+    }
+  }, [room, onRemoteJoined])
+
+  return null
 }
 
 function MeetingUiProvider({ children }: { children: ReactNode }) {
@@ -985,6 +1009,7 @@ export function MeetingOverlay({
   conversationLabel,
   onLeave,
   onEndForAll,
+  onRemoteJoined,
   mediaOnly = false,
 }: Props) {
   const inviteUrl =
@@ -1006,6 +1031,7 @@ export function MeetingOverlay({
           onDisconnected={onLeave}
         >
           <MeetingUiProvider>
+            <RemoteJoinWatcher onRemoteJoined={onRemoteJoined} />
             <RoomAudioRenderer />
             <div className="flex items-center justify-between gap-2 px-3 pt-2 text-xs text-white/70">
               <span className="truncate">פגישה · {conversationLabel}</span>
@@ -1044,6 +1070,7 @@ export function MeetingOverlay({
         onDisconnected={onLeave}
       >
         <MeetingUiProvider>
+          <RemoteJoinWatcher onRemoteJoined={onRemoteJoined} />
           <MeetingHeader conversationLabel={conversationLabel} onLeave={onLeave} />
 
           <div className="relative min-h-0 flex-1 px-2 pb-1">

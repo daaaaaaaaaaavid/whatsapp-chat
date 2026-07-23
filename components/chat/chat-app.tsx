@@ -44,10 +44,12 @@ import { CallOverlay } from "./call-overlay"
 import { WatchOverlay } from "./watch-overlay"
 import { WatchStartDialog } from "./watch-start-dialog"
 import { MeetingOverlay } from "./meeting-overlay"
+import { MeetingRingOverlay } from "./meeting-ring-overlay"
 import { useWorkSpaces } from "@/lib/use-work-spaces"
 import { useWebRtcCall } from "@/lib/use-webrtc-call"
 import { useWatchTogether } from "@/lib/use-watch-together"
 import { useLivekitMeeting } from "@/lib/use-livekit-meeting"
+import { useMeetingRing } from "@/lib/use-meeting-ring"
 import { playIncomingMessageSound, unlockNotificationSound } from "@/lib/notification-sound"
 import {
   ensureNotificationPermission,
@@ -218,6 +220,41 @@ export function ChatApp({ currentUser: initialUser }: Props) {
     leaveMeeting,
     endMeetingForAll,
   } = useLivekitMeeting(currentUser)
+
+  const {
+    phase: meetingRingPhase,
+    ring: meetingRing,
+    error: meetingRingError,
+    setError: setMeetingRingError,
+    startOutgoingRing,
+    acceptIncoming,
+    rejectIncoming,
+    cancelOutgoing,
+    markPeerJoined,
+  } = useMeetingRing({
+    currentUser,
+    conversations,
+    inMeeting: Boolean(meetingActive),
+    onAcceptJoin: async (meetingId) => {
+      await joinMeeting(meetingId)
+    },
+    onCallerRejected: () => {
+      void endMeetingForAll()
+    },
+  })
+
+  const handleStartMeeting = useCallback(
+    async (conversation: Conversation) => {
+      const meeting = await startMeeting(conversation.id)
+      if (!conversation.is_group && meeting) {
+        await startOutgoingRing({
+          meetingId: meeting.meetingId,
+          conversation,
+        })
+      }
+    },
+    [startMeeting, startOutgoingRing],
+  )
 
   // Deep link: /chat?meeting=
   useEffect(() => {
@@ -785,7 +822,7 @@ export function ChatApp({ currentUser: initialUser }: Props) {
                       : undefined
                   }
                   onStartMeeting={() => {
-                    void startMeeting(activeConversation.id).catch(() => {})
+                    void handleStartMeeting(activeConversation).catch(() => {})
                   }}
                   onJoinMeeting={(meetingId) => {
                     void joinMeeting(meetingId).catch(() => {})
@@ -1043,7 +1080,7 @@ export function ChatApp({ currentUser: initialUser }: Props) {
               if (!conv) return undefined
               // Groups (and anyone) can start a LiveKit meeting while watching
               return () => {
-                void startMeeting(conv.id).catch(() => {})
+                void handleStartMeeting(conv).catch(() => {})
               }
             })()
           }
@@ -1062,9 +1099,25 @@ export function ChatApp({ currentUser: initialUser }: Props) {
           }
           onLeave={leaveMeeting}
           onEndForAll={() => void endMeetingForAll()}
+          onRemoteJoined={markPeerJoined}
           mediaOnly={Boolean(
             watchActive && watchActive.conversationId === meetingActive.conversationId,
           )}
+        />
+      )}
+
+      {meetingRing && (meetingRingPhase === "incoming" || meetingRingPhase === "outgoing") && (
+        <MeetingRingOverlay
+          phase={meetingRingPhase}
+          ring={meetingRing}
+          error={meetingRingError}
+          onAccept={() => void acceptIncoming()}
+          onReject={rejectIncoming}
+          onCancel={() => {
+            cancelOutgoing()
+            void endMeetingForAll()
+          }}
+          onDismissError={() => setMeetingRingError(null)}
         />
       )}
 

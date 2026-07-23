@@ -24,6 +24,13 @@ export async function createMeeting(opts: {
     throw new Error("לא ניתן להתחיל פגישה — אחד הצדדים חסום")
   }
 
+  const { data: convRow } = await supabase
+    .from("conversations")
+    .select("is_group")
+    .eq("id", opts.conversationId)
+    .maybeSingle()
+  const isGroup = Boolean(convRow?.is_group)
+
   // Reuse active meeting in this conversation if still valid
   const { data: existing } = await supabase
     .from("meeting_sessions")
@@ -75,12 +82,21 @@ export async function createMeeting(opts: {
   }
 
   const meeting = data as MeetingSession
-  await insertMeetingSystemMessage({
+  const messageId = await insertMeetingSystemMessage({
     conversationId: opts.conversationId,
     senderId: opts.hostId,
     event: "started",
     meetingId: meeting.id,
+    isGroup,
   })
+
+  if (messageId && typeof window !== "undefined") {
+    const { notifyOfflineRecipients } = await import("@/lib/push-client")
+    notifyOfflineRecipients({
+      conversationId: opts.conversationId,
+      messageId,
+    })
+  }
 
   return meeting
 }

@@ -20,12 +20,16 @@ export function parseMeetingSystemPayload(
   return null
 }
 
-export function meetingSystemLabel(payload: MeetingSystemPayload): string {
+export function meetingSystemLabel(
+  payload: MeetingSystemPayload,
+  opts?: { isGroup?: boolean },
+): string {
+  const isGroup = opts?.isGroup !== false
   switch (payload.event) {
     case "started":
-      return "התחילה פגישה קבוצתית"
+      return isGroup ? "התחילה פגישה קבוצתית" : "שיחת וידאו · פגישה משותפת"
     case "ended":
-      return "הפגישה הסתיימה"
+      return isGroup ? "הפגישה הסתיימה" : "שיחת הווידאו הסתיימה"
     default:
       return "פגישה"
   }
@@ -36,7 +40,8 @@ export async function insertMeetingSystemMessage(opts: {
   senderId: string
   event: MeetingSystemPayload["event"]
   meetingId: string
-}) {
+  isGroup?: boolean
+}): Promise<string | null> {
   // Do not embed inviteToken — any chat member could extract a live invite.
   const payload: MeetingSystemPayload = {
     kind: "meeting",
@@ -44,29 +49,39 @@ export async function insertMeetingSystemMessage(opts: {
     meetingId: opts.meetingId,
   }
 
-  const label = meetingSystemLabel(payload)
+  const label = meetingSystemLabel(payload, { isGroup: opts.isGroup })
   const supabase = createClient()
-  const { error } = await supabase.from("messages").insert({
-    conversation_id: opts.conversationId,
-    sender_id: opts.senderId,
-    type: "system",
-    content: JSON.stringify(payload),
-  })
+  const { data, error } = await supabase
+    .from("messages")
+    .insert({
+      conversation_id: opts.conversationId,
+      sender_id: opts.senderId,
+      type: "system",
+      content: JSON.stringify(payload),
+    })
+    .select("id")
+    .single()
 
-  if (error) {
-    const { error: err2 } = await supabase.from("messages").insert({
+  if (!error && data?.id) return data.id as string
+
+  const { data: data2, error: err2 } = await supabase
+    .from("messages")
+    .insert({
       conversation_id: opts.conversationId,
       sender_id: opts.senderId,
       type: "text",
       content: JSON.stringify(payload),
     })
-    if (err2) {
-      await supabase.from("messages").insert({
-        conversation_id: opts.conversationId,
-        sender_id: opts.senderId,
-        type: "text",
-        content: label,
-      })
-    }
-  }
+    .select("id")
+    .single()
+
+  if (!err2 && data2?.id) return data2.id as string
+
+  await supabase.from("messages").insert({
+    conversation_id: opts.conversationId,
+    sender_id: opts.senderId,
+    type: "text",
+    content: label,
+  })
+  return null
 }

@@ -19,8 +19,9 @@ export const PERSONAL_WORK_UI_ENABLED = false
 export const WATCH_TOGETHER_UI_ENABLED = false
 
 /**
- * Legacy 1:1 WebRTC voice/video calls (header buttons + Calls tab).
- * Hidden — use LiveKit group meetings instead. Set true to show again.
+ * Legacy 1:1 WebRTC voice/video calls (header phone buttons + Calls tab).
+ * Disabled — DM “meetings” now ring via LiveKit (`useMeetingRing`).
+ * Set true only if you need the old WebRTC mesh path again.
  */
 export const WEBRTC_CALLS_UI_ENABLED = false
 
