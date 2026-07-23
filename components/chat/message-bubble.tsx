@@ -293,7 +293,12 @@ export function MessageBubble({
       meetingPayload.event === "started" &&
       Boolean(closedMeetingIds?.has(meetingPayload.meetingId))
     return (
-      <SystemMeetingMessage message={message} onJoin={onJoinMeeting} joinBlocked={joinBlocked} />
+      <SystemMeetingMessage
+        message={message}
+        onJoin={onJoinMeeting}
+        joinBlocked={joinBlocked}
+        isGroup={isGroup}
+      />
     )
   }
 
