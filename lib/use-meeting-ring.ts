@@ -26,9 +26,12 @@ export type MeetingRingInfo = {
   peerName: string
   peerAvatar: string | null
   isCaller: boolean
+  isGroup: boolean
+  groupName: string | null
 }
 
-const RING_TIMEOUT_MS = 45_000
+const DM_RING_TIMEOUT_MS = 45_000
+const GROUP_INVITE_TIMEOUT_MS = 90_000
 
 type Opts = {
   currentUser: Profile
@@ -46,6 +49,12 @@ function peerFromConversation(conv: Conversation, selfId: string) {
     name: convDisplayName(conv, selfId),
     avatar: convAvatarUrl(conv, selfId),
   }
+}
+
+function memberIds(conv: Conversation, selfId: string): string[] {
+  return (conv.participants ?? [])
+    .map((p) => p.user_id)
+    .filter((id) => id && id !== selfId)
 }
 
 export function useMeetingRing({
@@ -99,32 +108,69 @@ export function useMeetingRing({
     setRing(null)
   }, [clearTimeoutSafe])
 
-  const scheduleTimeout = useCallback(() => {
-    clearTimeoutSafe()
-    timeoutRef.current = setTimeout(() => {
-      const cur = ringRef.current
-      if (!cur) return
-      if (phaseRef.current === "outgoing") {
-        void sendMeetingRingCancel(
-          { meetingId: cur.meetingId, fromUserId: currentUser.id },
-          cur.peerUserId,
-        )
-        setError("אין מענה")
-        clearRing()
-        onCallerRejectedRef.current?.()
-      } else if (phaseRef.current === "incoming") {
-        clearRing()
-      }
-    }, RING_TIMEOUT_MS)
-  }, [clearRing, clearTimeoutSafe, currentUser.id])
+  const scheduleTimeout = useCallback(
+    (ms: number) => {
+      clearTimeoutSafe()
+      timeoutRef.current = setTimeout(() => {
+        const cur = ringRef.current
+        if (!cur) return
+        if (phaseRef.current === "outgoing" && !cur.isGroup) {
+          void sendMeetingRingCancel(
+            { meetingId: cur.meetingId, fromUserId: currentUser.id },
+            cur.peerUserId,
+          )
+          setError("אין מענה")
+          clearRing()
+          onCallerRejectedRef.current?.()
+        } else if (phaseRef.current === "incoming") {
+          clearRing()
+        }
+      }, ms)
+    },
+    [clearRing, clearTimeoutSafe, currentUser.id],
+  )
 
-  /** Host: after creating a DM meeting, ring the peer. */
+  const buildRingPayload = useCallback(
+    (opts: {
+      meetingId: string
+      conversation: Conversation
+      isGroup: boolean
+    }): MeetingRingPayload => ({
+      meetingId: opts.meetingId,
+      conversationId: opts.conversation.id,
+      fromUserId: currentUser.id,
+      fromName:
+        currentUser.display_name?.trim() ||
+        currentUser.email?.split("@")[0] ||
+        "משתמש",
+      fromAvatar: currentUser.avatar_url,
+      isGroup: opts.isGroup,
+      groupName: opts.isGroup
+        ? opts.conversation.name?.trim() || convDisplayName(opts.conversation, currentUser.id)
+        : null,
+    }),
+    [currentUser],
+  )
+
+  /** Host: after creating a meeting, ring DM peer or notify all group members. */
   const startOutgoingRing = useCallback(
     async (opts: {
       meetingId: string
       conversation: Conversation
     }) => {
-      if (opts.conversation.is_group) return
+      const isGroup = opts.conversation.is_group
+      const payload = buildRingPayload({
+        meetingId: opts.meetingId,
+        conversation: opts.conversation,
+        isGroup,
+      })
+
+      if (isGroup) {
+        const targets = memberIds(opts.conversation, currentUser.id)
+        await Promise.all(targets.map((uid) => sendMeetingRing(payload, uid)))
+        return
+      }
+
       const peer = peerFromConversation(opts.conversation, currentUser.id)
       if (!peer.userId) return
 
@@ -135,27 +181,27 @@ export function useMeetingRing({
         peerName: peer.name,
         peerAvatar: peer.avatar,
         isCaller: true,
+        isGroup: false,
+        groupName: null,
       }
       setError(null)
       setRing(info)
       setPhase("outgoing")
-      scheduleTimeout()
+      scheduleTimeout(DM_RING_TIMEOUT_MS)
 
-      await sendMeetingRing(
-        {
-          meetingId: opts.meetingId,
-          conversationId: opts.conversation.id,
-          fromUserId: currentUser.id,
-          fromName:
-            currentUser.display_name?.trim() ||
-            currentUser.email?.split("@")[0] ||
-            "משתמש",
-          fromAvatar: currentUser.avatar_url,
-        },
-        peer.userId,
-      )
+      await sendMeetingRing(payload, peer.userId)
     },
-    [currentUser, scheduleTimeout],
+    [buildRingPayload, currentUser.id, scheduleTimeout],
+  )
+
+  /** Host ended meeting — dismiss invites for remaining members. */
+  const cancelInvitesForConversation = useCallback(
+    async (opts: { meetingId: string; conversation: Conversation }) => {
+      const targets = memberIds(opts.conversation, currentUser.id)
+      const payload = { meetingId: opts.meetingId, fromUserId: currentUser.id }
+      await Promise.all(targets.map((uid) => sendMeetingRingCancel(payload, uid)))
+    },
+    [currentUser.id],
   )
 
   const acceptIncoming = useCallback(async () => {
@@ -163,10 +209,12 @@ export function useMeetingRing({
     if (!cur || phaseRef.current !== "incoming") return
     clearTimeoutSafe()
     try {
-      await sendMeetingRingAccept(
-        { meetingId: cur.meetingId, fromUserId: currentUser.id },
-        cur.peerUserId,
-      )
+      if (!cur.isGroup) {
+        await sendMeetingRingAccept(
+          { meetingId: cur.meetingId, fromUserId: currentUser.id },
+          cur.peerUserId,
+        )
+      }
       await onAcceptJoinRef.current(cur.meetingId)
       clearRing()
     } catch (err) {
@@ -178,10 +226,12 @@ export function useMeetingRing({
   const rejectIncoming = useCallback(() => {
     const cur = ringRef.current
     if (!cur || phaseRef.current !== "incoming") return
-    void sendMeetingRingReject(
-      { meetingId: cur.meetingId, fromUserId: currentUser.id },
-      cur.peerUserId,
-    )
+    if (!cur.isGroup) {
+      void sendMeetingRingReject(
+        { meetingId: cur.meetingId, fromUserId: currentUser.id },
+        cur.peerUserId,
+      )
+    }
     clearRing()
   }, [clearRing, currentUser.id])
 
@@ -195,7 +245,7 @@ export function useMeetingRing({
     clearRing()
   }, [clearRing, currentUser.id])
 
-  /** Host heard accept — stop the outgoing ring chrome (meeting already open). */
+  /** Host heard accept / remote joined — stop the outgoing DM ring chrome. */
   const markPeerJoined = useCallback(() => {
     if (phaseRef.current === "outgoing") clearRing()
   }, [clearRing])
@@ -203,16 +253,28 @@ export function useMeetingRing({
   useEffect(() => {
     const channel = subscribeMeetingInbox(currentUser.id, {
       onRing: (payload: MeetingRingPayload) => {
+        const conv = conversationsRef.current.find((c) => c.id === payload.conversationId)
+        if (!conv) return
+        if (!conv.participants?.some((p) => p.user_id === currentUser.id)) return
+
+        const isGroup = Boolean(payload.isGroup || conv.is_group)
+
         if (phaseRef.current !== "idle" || inMeetingRef.current) {
-          void sendMeetingRingReject(
-            { meetingId: payload.meetingId, fromUserId: currentUser.id },
-            payload.fromUserId,
-          )
+          // DM: tell caller we're busy. Group: ignore (host keeps meeting).
+          if (!isGroup) {
+            void sendMeetingRingReject(
+              { meetingId: payload.meetingId, fromUserId: currentUser.id },
+              payload.fromUserId,
+            )
+          }
           return
         }
-        const conv = conversationsRef.current.find((c) => c.id === payload.conversationId)
-        if (!conv || conv.is_group) return
-        if (!conv.participants?.some((p) => p.user_id === currentUser.id)) return
+
+        const groupName = isGroup
+          ? payload.groupName?.trim() ||
+            conv.name?.trim() ||
+            convDisplayName(conv, currentUser.id)
+          : null
 
         const info: MeetingRingInfo = {
           meetingId: payload.meetingId,
@@ -220,31 +282,36 @@ export function useMeetingRing({
           peerUserId: payload.fromUserId,
           peerName:
             payload.fromName ||
-            (conv ? convDisplayName(conv, currentUser.id) : "פגישה נכנסת"),
-          peerAvatar:
-            payload.fromAvatar ?? (conv ? convAvatarUrl(conv, currentUser.id) : null),
+            (isGroup ? groupName || "פגישה קבוצתית" : convDisplayName(conv, currentUser.id)),
+          peerAvatar: isGroup
+            ? conv.avatar_url
+            : (payload.fromAvatar ?? convAvatarUrl(conv, currentUser.id)),
           isCaller: false,
+          isGroup,
+          groupName,
         }
         setError(null)
         setRing(info)
         setPhase("incoming")
-        scheduleTimeout()
+        scheduleTimeout(isGroup ? GROUP_INVITE_TIMEOUT_MS : DM_RING_TIMEOUT_MS)
         void ensureNotificationPermission().then(() => {
           void showIncomingCallNotification({
-            title: "פגישת וידאו נכנסת",
-            body: info.peerName,
+            title: isGroup ? "פגישה קבוצתית התחילה" : "פגישת וידאו נכנסת",
+            body: isGroup
+              ? `${payload.fromName} מתחיל פגישה ב${groupName ?? "קבוצה"}`
+              : info.peerName,
             tag: `meeting-${payload.meetingId}`,
           })
         })
       },
       onAccept: (payload) => {
         const cur = ringRef.current
-        if (!cur?.isCaller || cur.meetingId !== payload.meetingId) return
+        if (!cur?.isCaller || cur.isGroup || cur.meetingId !== payload.meetingId) return
         clearRing()
       },
       onReject: (payload) => {
         const cur = ringRef.current
-        if (!cur?.isCaller || cur.meetingId !== payload.meetingId) return
+        if (!cur?.isCaller || cur.isGroup || cur.meetingId !== payload.meetingId) return
         setError("השיחה נדחתה")
         clearRing()
         onCallerRejectedRef.current?.()
@@ -268,6 +335,7 @@ export function useMeetingRing({
     error,
     setError,
     startOutgoingRing,
+    cancelInvitesForConversation,
     acceptIncoming,
     rejectIncoming,
     cancelOutgoing,

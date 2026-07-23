@@ -9,6 +9,9 @@ export type MeetingRingPayload = {
   fromUserId: string
   fromName: string
   fromAvatar: string | null
+  /** Group meeting invite (popup) vs 1:1 call ring */
+  isGroup?: boolean
+  groupName?: string | null
 }
 
 export type MeetingRingResponse = {

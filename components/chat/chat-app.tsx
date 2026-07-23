@@ -227,6 +227,7 @@ export function ChatApp({ currentUser: initialUser }: Props) {
     error: meetingRingError,
     setError: setMeetingRingError,
     startOutgoingRing,
+    cancelInvitesForConversation,
     acceptIncoming,
     rejectIncoming,
     cancelOutgoing,
@@ -243,10 +244,24 @@ export function ChatApp({ currentUser: initialUser }: Props) {
     },
   })
 
+  const handleEndMeetingForAll = useCallback(async () => {
+    const meeting = meetingActive
+    if (meeting) {
+      const conv = conversations.find((c) => c.id === meeting.conversationId)
+      if (conv?.is_group) {
+        void cancelInvitesForConversation({
+          meetingId: meeting.meetingId,
+          conversation: conv,
+        })
+      }
+    }
+    await endMeetingForAll()
+  }, [meetingActive, conversations, cancelInvitesForConversation, endMeetingForAll])
+
   const handleStartMeeting = useCallback(
     async (conversation: Conversation) => {
       const meeting = await startMeeting(conversation.id)
-      if (!conversation.is_group && meeting) {
+      if (meeting) {
         await startOutgoingRing({
           meetingId: meeting.meetingId,
           conversation,
@@ -1098,7 +1113,7 @@ export function ChatApp({ currentUser: initialUser }: Props) {
             })()
           }
           onLeave={leaveMeeting}
-          onEndForAll={() => void endMeetingForAll()}
+          onEndForAll={() => void handleEndMeetingForAll()}
           onRemoteJoined={markPeerJoined}
           mediaOnly={Boolean(
             watchActive && watchActive.conversationId === meetingActive.conversationId,
@@ -1115,7 +1130,7 @@ export function ChatApp({ currentUser: initialUser }: Props) {
           onReject={rejectIncoming}
           onCancel={() => {
             cancelOutgoing()
-            void endMeetingForAll()
+            void handleEndMeetingForAll()
           }}
           onDismissError={() => setMeetingRingError(null)}
         />
