@@ -138,6 +138,64 @@
   animation: watch-float 2.6s ease-out forwards;
 }
 
+@keyframes meeting-float {
+  0% {
+    opacity: 0;
+    transform: translateY(0) scale(0.55) rotate(-8deg);
+  }
+  12% {
+    opacity: 1;
+    transform: translateY(-24px) scale(1.15) rotate(4deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-180px) scale(1) rotate(0deg);
+  }
+}
+
+.meeting-float {
+  animation: meeting-float 2.7s ease-out forwards;
+}
+
+@keyframes meeting-speaking-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgb(37 211 102 / 0.35);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgb(37 211 102 / 0);
+  }
+}
+
+.meeting-speaking {
+  animation: meeting-speaking-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes meeting-hand-pop {
+  0% {
+    transform: scale(0.4) rotate(-20deg);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.15) rotate(8deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+.meeting-hand-badge {
+  animation: meeting-hand-pop 0.45s ease-out;
+}
+
+.meeting-tile {
+  transition:
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+}
+
 .wa-loading-bar {
   animation: wa-loading-bar 1.2s ease-in-out infinite;
 }
