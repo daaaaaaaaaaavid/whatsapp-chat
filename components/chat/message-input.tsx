@@ -542,7 +542,8 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
         let type: MessageType = "file"
         const lower = file.name.toLowerCase()
         if (kindHint === "sticker") {
-          type = "sticker"
+          // Store as image + sticker JSON marker (works without DB `sticker` type).
+          type = "image"
         } else if (kindHint === "audio" || file.type.startsWith("audio/")) {
           type = "audio"
           if (durationSec && durationSec > 0) {
@@ -1329,11 +1330,10 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
             ref={attachMenuRef}
             role="menu"
             aria-label="צירוף"
-            className="fixed z-[90] flex w-[220px] flex-col gap-0.5 overflow-y-auto rounded-2xl bg-[var(--wa-panel)] p-2 shadow-2xl ring-1 ring-black/10"
+            className="fixed z-[90] flex w-[200px] flex-col rounded-xl bg-[var(--wa-panel)] p-1.5 shadow-lg ring-1 ring-black/8"
             style={{
               bottom: attachMenuPos.bottom,
               right: attachMenuPos.right,
-              maxHeight: "min(70vh, 420px)",
             }}
             dir="rtl"
           >
@@ -1407,14 +1407,14 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
                     setShowAttach(false)
                     item.onClick()
                   }}
-                  className="flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-sm text-[var(--wa-text)] transition hover:bg-[var(--wa-header)]"
+                  className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-[13px] leading-none text-[var(--wa-text)] transition hover:bg-[var(--wa-header)]"
                 >
-                  <span>{item.label}</span>
+                  <span className="truncate">{item.label}</span>
                   <span
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
-                    style={{ backgroundColor: `${item.color}22` }}
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
+                    style={{ backgroundColor: `${item.color}1f` }}
                   >
-                    <Icon className="h-5 w-5" style={{ color: item.color }} />
+                    <Icon className="h-3.5 w-3.5" style={{ color: item.color }} />
                   </span>
                 </button>
               )
