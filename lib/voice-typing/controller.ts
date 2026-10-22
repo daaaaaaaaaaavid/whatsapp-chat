@@ -27,6 +27,10 @@ const SILENCE_AFTER_INTERIM_MS = 12000
 const NO_SPEECH_STOP_MS = 18000
 const LIVE_PUNCTUATE_MS = 900
 const INTENT_MS = 1500
+const INTERIM_COMMAND_FLUSH_MS = 700
+const INTERIM_TEXT_FLUSH_MS = 1600
+const BAN_FLUSHED_MS = 4000
+const BAN_DESTRUCTIVE_MS = 3600
 
 const ERROR_MESSAGES: Record<string, string> = {
   denied: "אין גישה למיקרופון. אשרו הרשאה בסרגל הכתובת ונסו שוב.",
@@ -63,10 +67,17 @@ export class VoiceTypingController {
   /** Text that was in the box before this dictation run (left untouched by auto-punctuation). */
   private anchor = ""
   private lastRendered = ""
+  /** Live interim as shown in the box, and the raw transcript it came from. */
   private interim = ""
+  private interimRaw = ""
+  /** Speech already handled (flushed interim, deleted or sent text) — Chrome may replay it. */
+  private banned = ""
+  private bannedUntil = 0
+  private resetRequested = false
   private lastChunk = ""
   private held = ""
 
+  private interimTimer: number | null = null
   private holdTimer: number | null = null
   private silenceTimer: number | null = null
   private punctTimer: number | null = null
@@ -115,6 +126,10 @@ export class VoiceTypingController {
     this.error = null
     this.syncFromHost(true)
     this.interim = ""
+    this.interimRaw = ""
+    this.banned = ""
+    this.bannedUntil = 0
+    this.resetRequested = false
     this.lastChunk = ""
     this.held = ""
     this.armSilenceStop(NO_SPEECH_STOP_MS)
@@ -122,18 +137,22 @@ export class VoiceTypingController {
     this.recognizer.start(this.settings.language)
   }
 
+  /** Stop listening and keep everything already shown (pending interim / held words are committed). */
   stop() {
     if (!this.listening) return
-    const leftover = this.held
-    this.clearHold()
-    this.clearTimer("silenceTimer")
-    this.clearTimer("punctTimer")
     this.listening = false
     this.starting = false
+    this.clearTimer("interimTimer")
+    this.clearTimer("silenceTimer")
+    this.clearTimer("punctTimer")
     this.recognizer.stop()
     this.syncFromHost(false)
+    const pending = `${this.held} ${this.interimRaw}`.replace(/\s+/g, " ").trim()
+    this.clearHold()
     this.interim = ""
-    if (leftover && !this.isCommandPrefix(leftover)) this.apply(QW.processUtterance(leftover, this.settings))
+    this.interimRaw = ""
+    if (pending) this.commitFinalPiece(pending)
+    this.resetRequested = false
     this.finalizePunctuation()
     this.render()
     this.playTone(false)
@@ -148,23 +167,73 @@ export class VoiceTypingController {
 
   // ── speech events ──────────────────────────────────────────────────────────
 
-  private handleInterim(raw: string) {
-    if (!this.listening || QW.isLetterStutter(raw)) return
+  private handleInterim(rawIn: string) {
+    if (!this.listening || QW.isLetterStutter(rawIn)) return
+    const raw = this.withoutBanned(rawIn)
+    if (!raw) {
+      if (this.interim) {
+        this.interim = ""
+        this.interimRaw = ""
+        this.render()
+      }
+      return
+    }
     this.syncFromHost(false)
     this.noteActivity(false)
     let display = raw
+    let commandLike = false
     if (this.settings.voiceCommands) {
       const parsed = QW.processUtterance(raw, this.settings)
+      // Destructive commands run at once (as in the extension) — if we waited, Chrome's next
+      // interim ("old text מחק הכל new words") would paint the deleted text back.
+      if ((parsed.clear || parsed.undoSentence) && !QW.isAmbiguousCommandPrefix(raw, this.settings)) {
+        this.interimRaw = raw
+        this.flushInterim()
+        return
+      }
       display = isAction(parsed) ? parsed.text : parsed.text || raw
+      commandLike = isAction(parsed) || parsed.text.includes("\n")
     }
     this.interim = display
+    this.interimRaw = raw
     this.render()
+
+    // Chrome often keeps the last phrase "interim" for a long time (or never finalizes it),
+    // so like the extension we act on a stable interim instead of waiting for the final.
+    this.clearTimer("interimTimer")
+    this.interimTimer = window.setTimeout(
+      () => this.flushInterim(),
+      commandLike ? INTERIM_COMMAND_FLUSH_MS : INTERIM_TEXT_FLUSH_MS,
+    )
   }
 
-  private handleFinal(raw: string, alts: string[]) {
-    if (!this.listening || QW.isLetterStutter(raw)) return
-    this.syncFromHost(false)
+  /** Commit the current interim ourselves and abandon Chrome's in-flight result. */
+  private flushInterim() {
+    this.clearTimer("interimTimer")
+    if (!this.listening || !this.interimRaw) return
+    const raw = this.interimRaw
     this.interim = ""
+    this.interimRaw = ""
+    this.ban(raw, BAN_FLUSHED_MS)
+    this.recognizer.restart()
+    this.processFinal(raw, [], true)
+  }
+
+  private handleFinal(rawIn: string, alts: string[]) {
+    if (!this.listening || QW.isLetterStutter(rawIn)) return
+    this.clearTimer("interimTimer")
+    this.interim = ""
+    this.interimRaw = ""
+    const raw = this.withoutBanned(rawIn)
+    if (!raw) {
+      this.render()
+      return
+    }
+    this.processFinal(raw, alts, false)
+  }
+
+  private processFinal(raw: string, alts: string[], restarted: boolean) {
+    this.syncFromHost(false)
     this.noteActivity(true)
 
     const lastWord = (this.lastChunk || this.committed).trim().split(/\s+/).pop() || ""
@@ -187,7 +256,47 @@ export class VoiceTypingController {
     }
 
     this.commit(incoming)
+    this.afterApply(incoming, restarted)
     this.render()
+  }
+
+  /**
+   * After send / delete / correction, Chrome may still deliver the words that led to it.
+   * Ban them and restart recognition so they cannot come back (extension: dropDestructiveSpeech).
+   */
+  private afterApply(raw: string, alreadyRestarted = false) {
+    if (!this.resetRequested) return
+    this.resetRequested = false
+    this.ban(raw, BAN_DESTRUCTIVE_MS)
+    if (this.listening && !alreadyRestarted) this.recognizer.restart()
+  }
+
+  private ban(text: string, ms: number) {
+    const norm = QW.normalizeSpeech(text)
+    if (!norm) return
+    const current = this.bannedNow()
+    if (!current || norm.length >= current.length) this.banned = norm
+    this.bannedUntil = Math.max(this.bannedUntil, Date.now() + ms)
+  }
+
+  private bannedNow() {
+    if (Date.now() > this.bannedUntil) this.banned = ""
+    return this.banned
+  }
+
+  /** Strip speech we already handled (port of the extension's remainderAfterBanned). */
+  private withoutBanned(raw: string): string {
+    const banned = this.bannedNow()
+    if (!banned || QW.isExactCommand(raw, this.settings)) return raw
+    const incoming = QW.normalizeSpeech(raw)
+    if (!incoming) return raw
+    if (incoming === banned) return ""
+    if (incoming.startsWith(`${banned} `)) return incoming.slice(banned.length).trim()
+    if (banned.startsWith(incoming)) {
+      const words = incoming.split(/\s+/).filter(Boolean).length
+      if (words >= 2 || incoming.length >= Math.min(16, banned.length)) return ""
+    }
+    return raw
   }
 
   private commit(raw: string) {
@@ -214,6 +323,25 @@ export class VoiceTypingController {
       this.hold(QW.normalizeSpeech(raw))
       return
     }
+    const parsed = QW.processUtterance(raw, s)
+    if (parsed.undoSentence && !QW.isExactCommand(raw, s)) {
+      // "אני מאחר לא את זה" scratches the words in this same utterance — they were never committed.
+      this.resetRequested = true
+      if (parsed.text) this.append(parsed.text)
+      this.flash("מחיקת משפט")
+      return
+    }
+    this.apply(this.punctuate(parsed, raw))
+  }
+
+  /** Commit without holding (used when stopping): a dangling command prefix is dropped, text is kept. */
+  private commitFinalPiece(raw: string) {
+    const s = this.settings
+    const incomplete = QW.incompleteCommandTail(raw, s)
+    if (incomplete && !QW.isExactCommand(incomplete.tail, s)) {
+      if (incomplete.head) this.apply(this.punctuate(QW.processUtterance(incomplete.head, s), incomplete.head))
+      return
+    }
     this.apply(this.punctuate(QW.processUtterance(raw, s), raw))
   }
 
@@ -231,12 +359,14 @@ export class VoiceTypingController {
   // ── applying parsed speech ─────────────────────────────────────────────────
 
   private apply(parsed: ParsedUtterance) {
+    if (parsed.clear || parsed.undoSentence || parsed.undo || parsed.meant || parsed.send) {
+      this.resetRequested = true
+    }
     if (parsed.clear) {
       this.committed = ""
       this.anchor = ""
       this.lastChunk = ""
       this.flash("מחדש")
-      this.recognizer.restart()
       return
     }
     if (parsed.undoSentence) {
@@ -274,7 +404,6 @@ export class VoiceTypingController {
         this.flash("שליחה")
       }
       if (!this.settings.continueAfterSend) this.stop()
-      else this.recognizer.restart()
       return
     }
     if (parsed.text) this.append(parsed.text)
@@ -330,6 +459,7 @@ export class VoiceTypingController {
       this.syncFromHost(false)
       if (QW.isExactCommand(piece, s)) this.apply(QW.processUtterance(piece, s))
       else if (!this.isCommandPrefix(piece)) this.apply(QW.processUtterance(piece, s))
+      this.afterApply(piece)
       this.render()
     }, long ? 1600 : 700)
   }
@@ -409,7 +539,7 @@ export class VoiceTypingController {
     this.emit()
   }
 
-  private clearTimer(key: "holdTimer" | "silenceTimer" | "punctTimer" | "intentTimer") {
+  private clearTimer(key: "interimTimer" | "holdTimer" | "silenceTimer" | "punctTimer" | "intentTimer") {
     const id = this[key]
     if (id !== null) window.clearTimeout(id)
     this[key] = null
