@@ -6,9 +6,34 @@ import type { Message, MessageRead } from "@/lib/types"
 
 export const MESSAGE_PAGE_SIZE = 50
 
+/** Last loaded messages per conversation, so reopening a chat paints instantly. */
+const MESSAGE_CACHE_LIMIT = 30
+const messageCache = new Map<string, Message[]>()
+
+function readMessageCache(conversationId: string | null): Message[] {
+  if (!conversationId) return []
+  const cached = messageCache.get(conversationId)
+  if (!cached) return []
+  messageCache.delete(conversationId)
+  messageCache.set(conversationId, cached)
+  return cached
+}
+
+function writeMessageCache(conversationId: string, messages: Message[]) {
+  messageCache.delete(conversationId)
+  messageCache.set(conversationId, messages)
+  while (messageCache.size > MESSAGE_CACHE_LIMIT) {
+    const oldest = messageCache.keys().next().value
+    if (oldest === undefined) break
+    messageCache.delete(oldest)
+  }
+}
+
 export function useMessages(conversationId: string | null, currentUserId: string) {
-  const [messages, setMessages] = useState<Message[]>([])
-  const [loading, setLoading] = useState(false)
+  const [messages, setMessages] = useState<Message[]>(() => readMessageCache(conversationId))
+  // Start "loading" so read receipts / unread anchors wait for fresh data, not the cache.
+  const [loading, setLoading] = useState(Boolean(conversationId))
+  const loadedForRef = useRef<string | null>(null)
   const [loadingOlder, setLoadingOlder] = useState(false)
   const [hasMore, setHasMore] = useState(false)
   const readsRef = useRef<Map<string, MessageRead[]>>(new Map())
@@ -83,8 +108,17 @@ export function useMessages(conversationId: string | null, currentUserId: string
       )
       return [...withReads, ...pending]
     })
+    loadedForRef.current = forId
     setLoading(false)
   }, [conversationId, attachReads, hydrateReplies, loadReads])
+
+  useEffect(() => {
+    if (!conversationId || loading || loadedForRef.current !== conversationId) return
+    writeMessageCache(
+      conversationId,
+      messages.filter((m) => !m.pending && m.conversation_id === conversationId),
+    )
+  }, [conversationId, loading, messages])
 
   const loadOlder = useCallback(async () => {
     if (!conversationId || loadingOlder || !hasMore) return

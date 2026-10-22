@@ -1,6 +1,5 @@
 import type { Profile } from "@/lib/types"
 import type { User } from "@supabase/supabase-js"
-import { createClient as createBrowserClient, ensureSupabaseConfig } from "@/lib/supabase/client"
 
 export function displayNameFromUser(user: User) {
   const meta = user.user_metadata ?? {}
@@ -31,38 +30,6 @@ export function profileFromUser(user: User, row?: Partial<Profile> | null): Prof
     about: row?.about ?? "זמין",
     last_seen: row?.last_seen ?? null,
     created_at: row?.created_at ?? new Date().toISOString(),
+    google_contacts_synced_at: row?.google_contacts_synced_at ?? null,
   }
-}
-
-/** Ensure profile exists from the browser (after ensureSupabaseConfig). */
-export async function ensureProfileClient(user: {
-  id: string
-  email?: string | null
-  display_name?: string | null
-}): Promise<Profile | null> {
-  await ensureSupabaseConfig()
-  const supabase = createBrowserClient()
-  const { data, error } = await supabase
-    .from("profiles")
-    .upsert(
-      {
-        id: user.id,
-        // Email is overwritten server-side from auth.users when hardening migration is applied.
-        email: user.email ?? null,
-        display_name: user.display_name ?? user.email?.split("@")[0] ?? "משתמש",
-        about: "זמין",
-        last_seen: new Date().toISOString(),
-      },
-      { onConflict: "id" },
-    )
-    .select(
-      "id, email, display_name, avatar_url, about, last_seen, created_at, chat_prefs, blocked_user_ids, google_contacts_synced_at",
-    )
-    .single()
-
-  if (error) {
-    console.error("ensureProfileClient:", error.message)
-    return null
-  }
-  return data as Profile
 }
