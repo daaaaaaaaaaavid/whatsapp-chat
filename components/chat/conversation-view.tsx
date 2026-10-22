@@ -732,7 +732,7 @@ export function ConversationView({
         </div>
       )}
 
-      <header className="wa-chrome flex h-16 items-center gap-3 px-4">
+      <header className={`wa-chrome relative flex h-16 items-center gap-3 px-4 ${menuOpen ? "z-50" : "z-20"}`}>
         {selectionMode ? (
           <>
             <button
@@ -864,7 +864,7 @@ export function ConversationView({
           {menuOpen && (
             <>
               <button type="button" className="fixed inset-0 z-20" aria-label="סגור" onClick={() => setMenuOpen(false)} />
-              <div className="wa-menu absolute left-0 top-12 z-30 w-52 py-2">
+              <div className="wa-menu absolute left-0 top-full z-50 mt-2 w-56 py-2">
                 <button
                   type="button"
                   onClick={() => {

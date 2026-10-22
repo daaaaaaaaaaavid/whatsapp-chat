@@ -10,6 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react"
+import { createPortal } from "react-dom"
 import {
   LiveKitRoom,
   RoomAudioRenderer,
@@ -910,24 +911,29 @@ function MeetingControls({
         >
           <SmilePlus className="h-5 w-5" />
         </button>
-        {showReactions && (
-          <div className="absolute bottom-14 start-1/2 z-40 flex -translate-x-1/2 gap-1 rounded-2xl border border-white/10 bg-[#1a242b]/95 p-2 shadow-xl backdrop-blur">
-            {MEETING_REACTION_EMOJIS.map((emoji) => (
-              <button
-                key={emoji}
-                type="button"
-                onClick={() => {
-                  sendReaction(emoji)
-                  setShowReactions(false)
-                }}
-                className="flex h-10 w-10 items-center justify-center rounded-full text-xl transition hover:scale-125 hover:bg-white/10"
-                aria-label={`תגובה ${emoji}`}
-              >
-                {emoji}
-              </button>
-            ))}
-          </div>
-        )}
+        {showReactions &&
+          typeof document !== "undefined" &&
+          createPortal(
+            <div className="pointer-events-none fixed inset-x-0 bottom-24 z-[120] flex justify-center px-4">
+              <div className="pointer-events-auto flex max-w-full flex-wrap justify-center gap-1 rounded-2xl border border-white/15 bg-[#1a242b] p-2 shadow-2xl">
+                {MEETING_REACTION_EMOJIS.map((emoji) => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    onClick={() => {
+                      sendReaction(emoji)
+                      setShowReactions(false)
+                    }}
+                    className="flex h-11 w-11 items-center justify-center rounded-full text-2xl transition hover:scale-110 hover:bg-white/10"
+                    aria-label={`תגובה ${emoji}`}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            </div>,
+            document.body,
+          )}
       </div>
 
       <button
