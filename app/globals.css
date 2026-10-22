@@ -101,6 +101,8 @@
   --wa-system-pill: rgb(255 255 255 / 78%);
   --wa-skeleton: #e4ecef;
   --wa-glow: rgb(12 190 154 / 0.38);
+  --wa-ring-new: #25d366;
+  --wa-ring-seen: #c5ced3;
 }
 
 @keyframes wa-loading-bar {
@@ -258,6 +260,8 @@
   --wa-system-pill: rgb(16 24 32 / 0.82);
   --wa-skeleton: #1a2631;
   --wa-glow: rgb(62 240 196 / 0.42);
+  --wa-ring-new: #25d366;
+  --wa-ring-seen: #3b4a54;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -315,6 +319,8 @@
     --wa-system-pill: rgb(16 24 32 / 0.82);
     --wa-skeleton: #1a2631;
     --wa-glow: rgb(62 240 196 / 0.42);
+    --wa-ring-new: #25d366;
+    --wa-ring-seen: #3b4a54;
   }
 }
 

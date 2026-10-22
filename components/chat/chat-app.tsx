@@ -35,7 +35,7 @@ import { NewGroupDialog } from "./new-group-dialog"
 import { NewSpaceDialog } from "./new-space-dialog"
 import { NewChannelDialog } from "./new-channel-dialog"
 import { ProfileDialog } from "./profile-dialog"
-import { StatusDialog } from "./status-dialog"
+import { StatusTab } from "./status-panel"
 import { NavRail, type NavTab } from "./nav-rail"
 import { CallsPanel } from "./calls-panel"
 import { CommunitiesPanel } from "./communities-panel"
@@ -98,8 +98,8 @@ export function ChatApp({ currentUser: initialUser }: Props) {
   const [autoSyncGoogle, setAutoSyncGoogle] = useState(false)
   const [newGroupOpen, setNewGroupOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
-  const [statusOpen, setStatusOpen] = useState(false)
   const [navTab, setNavTab] = useState<NavTab>("chats")
+  const statusOpen = navTab === "status"
   const [prefs, setPrefs] = useState<ChatPrefs>(() => loadChatPrefs(initialUser.id))
   const [infoGalleryMessageId, setInfoGalleryMessageId] = useState<string | null>(null)
   const [toasts, setToasts] = useState<MessageToastItem[]>([])
@@ -117,7 +117,7 @@ export function ChatApp({ currentUser: initialUser }: Props) {
 
   const openStatusTab = useCallback(() => {
     setNavTab("status")
-    setStatusOpen(true)
+    setActiveId(null)
   }, [])
 
   const pushToast = useCallback((item: Omit<MessageToastItem, "id">) => {
@@ -150,7 +150,6 @@ export function ChatApp({ currentUser: initialUser }: Props) {
 
     if (tab === "status") {
       setNavTab("status")
-      setStatusOpen(true)
       url.searchParams.delete("tab")
       changed = true
     }
@@ -783,7 +782,6 @@ export function ChatApp({ currentUser: initialUser }: Props) {
 
   const handleNavChange = (tab: NavTab) => {
     setNavTab(tab)
-    if (tab === "status") setStatusOpen(true)
     if (tab === "settings") setProfileOpen(true)
     if (tab !== "chats") {
       setActiveId(null)
@@ -809,6 +807,13 @@ export function ChatApp({ currentUser: initialUser }: Props) {
           onOpenProfile={() => setProfileOpen(true)}
         />
 
+        {navTab === "status" ? (
+          <StatusTab
+            currentUser={currentUser}
+            asideClassName="flex w-full min-w-0 flex-col border-l border-[var(--wa-border)] bg-[var(--wa-panel)] md:w-[min(30%,420px)] md:min-w-[340px] md:max-w-[420px]"
+          />
+        ) : (
+        <>
         {/* Chat list pane */}
         <aside
           className={`flex min-w-0 flex-col border-l border-[var(--wa-border)] bg-[var(--wa-panel)] ${
@@ -1039,6 +1044,8 @@ export function ChatApp({ currentUser: initialUser }: Props) {
             </div>
           )}
         </main>
+        </>
+        )}
       </div>
 
       <NewChatDialog
@@ -1098,15 +1105,6 @@ export function ChatApp({ currentUser: initialUser }: Props) {
         }}
         onUpdated={(p) => setCurrentUser(p)}
       />
-      <StatusDialog
-        open={statusOpen}
-        currentUser={currentUser}
-        onClose={() => {
-          setStatusOpen(false)
-          if (navTab === "status") setNavTab("chats")
-        }}
-      />
-
       <MessageToastStack
         toasts={toasts}
         onOpen={(toast) => {

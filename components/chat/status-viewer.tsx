@@ -1,19 +1,27 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react"
 import { Avatar } from "./avatar"
 import { createClient } from "@/lib/supabase/client"
-import type { Profile, Status, StatusReply } from "@/lib/types"
+import type { Profile, StatusReply } from "@/lib/types"
+import type { StatusGroup } from "@/lib/status-feed"
 import { formatStatusTime } from "@/lib/format"
+import { resolveMediaDisplayUrl } from "@/lib/media-url"
+import { useVoiceTyping } from "@/lib/use-voice-typing"
 import {
+  ArrowRight,
   ChevronLeft,
   ChevronRight,
+  Eye,
+  Heart,
   MessageCircle,
+  Mic,
   MoreVertical,
   Pause,
   Play,
   SendHorizontal,
   Smile,
+  Trash2,
   Volume2,
   VolumeX,
   X,
@@ -22,10 +30,10 @@ import { cn } from "@/lib/utils"
 import { notifyStatusOwner } from "@/lib/push-client"
 import { useSignedMediaUrl } from "@/lib/use-signed-media-url"
 
-export type GroupedStatus = { profile: Profile; statuses: Status[] }
-
 const IMAGE_DURATION_MS = 5000
-const EMOJIS = ["😀", "😂", "😍", "🥰", "😎", "🤔", "😢", "👍", "🙏", "❤️", "🔥", "🎉"]
+const EMOJIS = ["😀", "😂", "😍", "🥰", "😎", "🤔", "😢", "👍", "🙏", "❤️", "🔥", "🎉", "👏", "😮", "🤩", "💯", "✨", "😅"]
+const QUICK_REACTIONS = ["😂", "😮", "😢", "🙏", "👏", "🔥"]
+const LIKE = "❤️"
 
 function isImageUrl(url: string) {
   return /\.(jpe?g|png|gif|webp|bmp|svg|heic|heif|avif)(\?|#|$)/i.test(url)
@@ -40,43 +48,44 @@ function isVideoUrl(url: string) {
   return true
 }
 
-/** Split status text into a mid banner (title lines) and a free caption. */
-function splitOverlayText(content: string | null) {
-  if (!content?.trim()) return { bannerLines: [] as string[], caption: null as string | null }
-  const lines = content
-    .split(/\n+/)
-    .map((l) => l.trim())
-    .filter(Boolean)
-  if (lines.length === 0) return { bannerLines: [], caption: null }
-  if (lines.length === 1) return { bannerLines: [], caption: lines[0] }
-  if (lines.length === 2) return { bannerLines: lines, caption: null }
-  return { bannerLines: lines.slice(0, -1), caption: lines[lines.length - 1] }
+/** Text statuses stay up long enough to read; short ones still get the image duration. */
+function textDurationMs(content: string | null) {
+  return Math.min(12_000, Math.max(IMAGE_DURATION_MS, 3_000 + (content?.length ?? 0) * 45))
 }
 
+function isTypingTarget(target: EventTarget | null) {
+  return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement
+}
+
+type StatusViewRow = { viewer_id: string; viewed_at: string; profile?: Profile }
+
 type Props = {
-  group: GroupedStatus
-  groups: GroupedStatus[]
+  groups: StatusGroup[]
+  groupIndex: number
   index: number
   currentUserId: string
-  onIndexChange: (i: number) => void
-  onGroupChange: (group: GroupedStatus, index: number) => void
+  onNavigate: (groupIndex: number, index: number) => void
   onClose: () => void
+  /** Where to start when auto-advancing into the next contact. */
+  startIndexFor?: (group: StatusGroup) => number
+  onViewed?: (statusId: string) => void
   onStatusDeleted?: (statusId: string) => void
 }
 
 export function StatusViewer({
-  group,
   groups,
+  groupIndex,
   index,
   currentUserId,
-  onIndexChange,
-  onGroupChange,
+  onNavigate,
   onClose,
+  startIndexFor,
+  onViewed,
   onStatusDeleted,
 }: Props) {
-  const status = group.statuses[index]
-  const groupIdx = groups.findIndex((g) => g.profile.id === group.profile.id)
-  const isOwn = group.profile.id === currentUserId
+  const group = groups[groupIndex]
+  const status = group?.statuses[index]
+  const isOwn = group?.profile.id === currentUserId
 
   const [progress, setProgress] = useState(0)
   const [userPaused, setUserPaused] = useState(false)
@@ -84,25 +93,55 @@ export function StatusViewer({
   const [muted, setMuted] = useState(true)
   const [mediaLoading, setMediaLoading] = useState(true)
   const [reply, setReply] = useState("")
+  const [inputFocused, setInputFocused] = useState(false)
   const [sending, setSending] = useState(false)
   const [showEmoji, setShowEmoji] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
-  const [replySent, setReplySent] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
   const [replyError, setReplyError] = useState<string | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [likedIds, setLikedIds] = useState<Set<string>>(() => new Set())
   const [replies, setReplies] = useState<StatusReply[]>([])
-  const [showReplies, setShowReplies] = useState(false)
-  const [repliesLoading, setRepliesLoading] = useState(false)
+  const [views, setViews] = useState<StatusViewRow[]>([])
+  const [sheet, setSheet] = useState<"views" | "replies" | null>(null)
+  const [activityLoading, setActivityLoading] = useState(false)
+  const [captionExpanded, setCaptionExpanded] = useState(false)
 
   const hasMedia = Boolean(status?.media_url)
   const isVideo = hasMedia && status?.media_url ? isVideoUrl(status.media_url) : false
   const displayMediaUrl = useSignedMediaUrl(status?.media_url)
-  const paused = userPaused || holding || Boolean(reply.trim()) || showEmoji || showReplies || Boolean(replyError)
   const progressRef = useRef(0)
   const videoRef = useRef<HTMLVideoElement>(null)
+  const bgCanvasRef = useRef<HTMLCanvasElement>(null)
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  /** Set when a press became a hold, so the click that ends it does not also navigate. */
+  const heldRef = useRef(false)
+  const pointerStart = useRef<{ x: number; y: number } | null>(null)
   const advancingRef = useRef(false)
+  const replyRef = useRef("")
+  replyRef.current = reply
+  const sendReplyRef = useRef<(text?: string) => Promise<void>>(async () => {})
+
+  const voice = useVoiceTyping({
+    getText: () => replyRef.current,
+    setText: (next) => {
+      replyRef.current = next
+      setReply(next)
+    },
+    send: (text) => void sendReplyRef.current(text),
+  })
+
+  const paused =
+    userPaused ||
+    holding ||
+    inputFocused ||
+    Boolean(reply.trim()) ||
+    showEmoji ||
+    menuOpen ||
+    sheet !== null ||
+    Boolean(replyError) ||
+    voice.listening
 
   useEffect(() => {
     progressRef.current = 0
@@ -114,101 +153,126 @@ export function StatusViewer({
     setReply("")
     setShowEmoji(false)
     setMenuOpen(false)
-    setReplySent(false)
+    setNotice(null)
     setReplyError(null)
     setDeleteError(null)
-    setShowReplies(false)
+    setSheet(null)
     setReplies([])
+    setViews([])
+    setCaptionExpanded(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset per slide only
   }, [status?.id])
 
   useEffect(() => {
-    if (!status) return
-    if (status.user_id !== currentUserId) {
-      const supabase = createClient()
-      void supabase
-        .from("status_views")
-        .upsert({ status_id: status.id, viewer_id: currentUserId }, { onConflict: "status_id,viewer_id" })
-    }
-  }, [status, currentUserId])
+    if (!status || status.user_id === currentUserId) return
+    onViewed?.(status.id)
+    const supabase = createClient()
+    void supabase
+      .from("status_views")
+      .upsert({ status_id: status.id, viewer_id: currentUserId }, { onConflict: "status_id,viewer_id" })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per slide
+  }, [status?.id, currentUserId])
 
-  const loadReplies = useCallback(async (statusId: string) => {
-    setRepliesLoading(true)
+  const loadActivity = useCallback(async (statusId: string) => {
+    setActivityLoading(true)
     try {
       const supabase = createClient()
-      const { data } = await supabase
-        .from("status_replies")
-        .select("*")
-        .eq("status_id", statusId)
-        .order("created_at", { ascending: true })
-      if (!data) {
-        setReplies([])
-        return
-      }
-      const uids = Array.from(new Set(data.map((r) => r.user_id)))
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("id, display_name, avatar_url, about, last_seen, created_at")
-        .in("id", uids)
+      const [{ data: replyRows }, { data: viewRows }] = await Promise.all([
+        supabase.from("status_replies").select("*").eq("status_id", statusId).order("created_at", { ascending: true }),
+        supabase
+          .from("status_views")
+          .select("viewer_id, viewed_at")
+          .eq("status_id", statusId)
+          .order("viewed_at", { ascending: false }),
+      ])
+      const uids = Array.from(
+        new Set([...(replyRows ?? []).map((r) => r.user_id), ...(viewRows ?? []).map((v) => v.viewer_id)]),
+      )
+      const { data: profiles } = uids.length
+        ? await supabase
+            .from("profiles")
+            .select("id, display_name, avatar_url, about, last_seen, created_at")
+            .in("id", uids)
+        : { data: [] as Profile[] }
       const pmap = new Map((profiles ?? []).map((p) => [p.id, p as Profile]))
-      setReplies(data.map((r) => ({ ...r, profile: pmap.get(r.user_id) })) as StatusReply[])
+      setReplies((replyRows ?? []).map((r) => ({ ...r, profile: pmap.get(r.user_id) })) as StatusReply[])
+      setViews((viewRows ?? []).map((v) => ({ ...v, profile: pmap.get(v.viewer_id) })))
     } finally {
-      setRepliesLoading(false)
+      setActivityLoading(false)
     }
   }, [])
 
   useEffect(() => {
     if (!status || !isOwn) return
-    void loadReplies(status.id)
-  }, [status?.id, isOwn, loadReplies])
-
-  useEffect(() => {
-    if (!status || !isOwn) return
+    void loadActivity(status.id)
     const supabase = createClient()
     const channel = supabase
       .channel(`status-replies-${status.id}`)
       .on(
         "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "status_replies",
-          filter: `status_id=eq.${status.id}`,
-        },
-        () => {
-          void loadReplies(status.id)
-        },
+        { event: "INSERT", schema: "public", table: "status_replies", filter: `status_id=eq.${status.id}` },
+        () => void loadActivity(status.id),
       )
       .subscribe()
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [status?.id, isOwn, loadReplies])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- per slide
+  }, [status?.id, isOwn, loadActivity])
+
+  const nextTarget = useCallback((): [number, number] | null => {
+    if (!group) return null
+    if (index < group.statuses.length - 1) return [groupIndex, index + 1]
+    if (groupIndex < groups.length - 1) {
+      const next = groups[groupIndex + 1]
+      return [groupIndex + 1, startIndexFor ? startIndexFor(next) : 0]
+    }
+    return null
+  }, [group, index, groupIndex, groups, startIndexFor])
 
   const goNext = useCallback(() => {
     if (advancingRef.current) return
     advancingRef.current = true
-    if (index < group.statuses.length - 1) {
-      onIndexChange(index + 1)
-      return
-    }
-    if (groupIdx >= 0 && groupIdx < groups.length - 1) {
-      onGroupChange(groups[groupIdx + 1], 0)
-      return
-    }
-    onClose()
-  }, [index, group.statuses.length, groupIdx, groups, onIndexChange, onGroupChange, onClose])
+    const target = nextTarget()
+    if (target) onNavigate(target[0], target[1])
+    else onClose()
+  }, [nextTarget, onNavigate, onClose])
 
   const goPrev = useCallback(() => {
     advancingRef.current = false
     if (index > 0) {
-      onIndexChange(index - 1)
+      onNavigate(groupIndex, index - 1)
       return
     }
-    if (groupIdx > 0) {
-      const prev = groups[groupIdx - 1]
-      onGroupChange(prev, prev.statuses.length - 1)
+    if (groupIndex > 0) {
+      const prev = groups[groupIndex - 1]
+      onNavigate(groupIndex - 1, prev.statuses.length - 1)
+      return
     }
-  }, [index, groupIdx, groups, onIndexChange, onGroupChange])
+    progressRef.current = 0
+    setProgress(0)
+    const v = videoRef.current
+    if (v) v.currentTime = 0
+  }, [index, groupIndex, groups, onNavigate])
+
+  // Warm the next image so the following slide appears instantly.
+  useEffect(() => {
+    const target = nextTarget()
+    if (!target) return
+    const next = groups[target[0]]?.statuses[target[1]]
+    if (!next?.media_url || isVideoUrl(next.media_url)) return
+    let cancelled = false
+    void resolveMediaDisplayUrl(createClient(), next.media_url).then((url) => {
+      if (cancelled || !url) return
+      const img = new Image()
+      img.src = url
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [nextTarget, groups])
+
+  const slideDuration = hasMedia ? IMAGE_DURATION_MS : textDurationMs(status?.content ?? null)
 
   // Images / text only — never runs while a video slide is active.
   useEffect(() => {
@@ -216,12 +280,11 @@ export function StatusViewer({
     if (hasMedia && mediaLoading) return
     let cancelled = false
     let raf = 0
-    const startedAt = performance.now() - progressRef.current * IMAGE_DURATION_MS
+    const startedAt = performance.now() - progressRef.current * slideDuration
     const tick = (now: number) => {
       if (cancelled) return
-      // Guard against a stale RAF overlapping onto a video after navigation.
       if (videoRef.current) return
-      const p = Math.min(1, (now - startedAt) / IMAGE_DURATION_MS)
+      const p = Math.min(1, (now - startedAt) / slideDuration)
       progressRef.current = p
       setProgress(p)
       if (p >= 1) goNext()
@@ -232,14 +295,15 @@ export function StatusViewer({
       cancelled = true
       cancelAnimationFrame(raf)
     }
-  }, [status?.id, paused, isVideo, hasMedia, mediaLoading, goNext])
+  }, [status?.id, paused, isVideo, hasMedia, mediaLoading, goNext, slideDuration, status])
 
   // Videos: progress + advance come only from the <video> element duration.
   useEffect(() => {
     if (!status || !isVideo || paused) return
     let cancelled = false
     let raf = 0
-    const tick = () => {
+    let lastBgPaint = 0
+    const tick = (now: number) => {
       if (cancelled) return
       const v = videoRef.current
       if (v) {
@@ -258,6 +322,10 @@ export function StatusViewer({
         if (v.paused && !v.ended && v.readyState >= 2) {
           void v.play().catch(() => {})
         }
+        if (now - lastBgPaint > 1200 && v.readyState >= 2) {
+          lastBgPaint = now
+          paintBackdrop(v)
+        }
       }
       raf = requestAnimationFrame(tick)
     }
@@ -266,27 +334,42 @@ export function StatusViewer({
       cancelled = true
       cancelAnimationFrame(raf)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- paintBackdrop is stable
   }, [status?.id, isVideo, paused, goNext])
+
+  /** Drawing a cross-origin frame taints the canvas, which is fine: it is only displayed, never read. */
+  function paintBackdrop(v: HTMLVideoElement) {
+    const canvas = bgCanvasRef.current
+    const ctx = canvas?.getContext("2d")
+    if (!canvas || !ctx) return
+    try {
+      ctx.drawImage(v, 0, 0, canvas.width, canvas.height)
+    } catch {
+      // ignore
+    }
+  }
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        if (showReplies) {
-          setShowReplies(false)
-          return
-        }
-        onClose()
+        if (sheet) setSheet(null)
+        else if (showEmoji) setShowEmoji(false)
+        else if (menuOpen) setMenuOpen(false)
+        else onClose()
+        return
       }
+      if (isTypingTarget(e.target)) return
       if (e.key === "ArrowLeft") goNext()
       if (e.key === "ArrowRight") goPrev()
       if (e.key === " ") {
         e.preventDefault()
         setUserPaused((p) => !p)
       }
+      if (e.key === "m" || e.key === "M") setMuted((m) => !m)
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [goNext, goPrev, onClose, showReplies])
+  }, [goNext, goPrev, onClose, sheet, showEmoji, menuOpen])
 
   useEffect(() => {
     const prev = document.body.style.overflow
@@ -304,8 +387,13 @@ export function StatusViewer({
     else void v.play().catch(() => {})
   }, [paused, muted, status?.id])
 
-  const sendReply = async () => {
-    const trimmed = reply.trim()
+  const flash = (text: string) => {
+    setNotice(text)
+    window.setTimeout(() => setNotice((n) => (n === text ? null : n)), 1600)
+  }
+
+  const sendReply = async (override?: string) => {
+    const trimmed = (override ?? reply).trim()
     if (!trimmed || sending || isOwn || !status) return
     setSending(true)
     setReplyError(null)
@@ -313,33 +401,29 @@ export function StatusViewer({
       const supabase = createClient()
       const { data, error } = await supabase
         .from("status_replies")
-        .insert({
-          status_id: status.id,
-          user_id: currentUserId,
-          content: trimmed,
-        })
+        .insert({ status_id: status.id, user_id: currentUserId, content: trimmed })
         .select("id")
         .single()
       if (error) {
         setReplyError(error.message || "שליחת התגובה נכשלה")
         return
       }
-      if (data?.id) {
-        notifyStatusOwner({
-          statusId: status.id,
-          replyId: data.id,
-        })
-      }
-      setReply("")
-      setReplySent(true)
+      if (data?.id) notifyStatusOwner({ statusId: status.id, replyId: data.id })
+      if (override === undefined || override === reply) setReply("")
       setShowEmoji(false)
-      setTimeout(() => setReplySent(false), 1500)
+      if (trimmed === LIKE) {
+        setLikedIds((prev) => new Set(prev).add(status.id))
+        flash("סימנת לייק לסטטוס")
+      } else {
+        flash("התגובה נשלחה")
+      }
     } catch (err) {
       setReplyError(err instanceof Error ? err.message : "שליחת התגובה נכשלה")
     } finally {
       setSending(false)
     }
   }
+  sendReplyRef.current = sendReply
 
   const deleteStatus = async () => {
     if (!status || !isOwn || deleting) return
@@ -348,11 +432,7 @@ export function StatusViewer({
     setMenuOpen(false)
     try {
       const supabase = createClient()
-      const { error } = await supabase
-        .from("statuses")
-        .delete()
-        .eq("id", status.id)
-        .eq("user_id", currentUserId)
+      const { error } = await supabase.from("statuses").delete().eq("id", status.id).eq("user_id", currentUserId)
       if (error) {
         setDeleteError(error.message || "מחיקת הסטטוס נכשלה")
         return
@@ -365,196 +445,229 @@ export function StatusViewer({
     }
   }
 
-  if (!status) return null
+  const endHold = (e?: ReactPointerEvent) => {
+    if (holdTimer.current) clearTimeout(holdTimer.current)
+    holdTimer.current = null
+    setHolding(false)
+    const start = pointerStart.current
+    pointerStart.current = null
+    if (e && start && e.clientY - start.y > 90 && Math.abs(e.clientX - start.x) < 80) onClose()
+  }
 
-  const { bannerLines, caption } = hasMedia
-    ? splitOverlayText(status.content)
-    : { bannerLines: [] as string[], caption: null }
+  if (!group || !status) return null
 
-  const canPrev = index > 0 || groupIdx > 0
-  const canNext = index < group.statuses.length - 1 || (groupIdx >= 0 && groupIdx < groups.length - 1)
+  const canPrev = index > 0 || groupIndex > 0
+  const canNext = nextTarget() !== null
+  const liked = likedIds.has(status.id)
+  const caption = hasMedia ? status.content?.trim() : null
+  const bgColor = status.background_color || "#075E54"
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-[var(--wa-header)]"
+      className="fixed inset-0 z-[60] overflow-hidden bg-[#0b141a] text-white"
       role="dialog"
       aria-modal="true"
       aria-label="צפייה בסטטוס"
+      dir="rtl"
     >
-      <button
-        type="button"
-        onClick={onClose}
-        className="absolute top-4 left-4 z-20 rounded-full p-2 text-[var(--wa-text-secondary)] transition hover:bg-black/5"
-        aria-label="סגור"
-      >
-        <X className="h-7 w-7" strokeWidth={1.75} />
-      </button>
+      {/* Blurred backdrop of the current slide */}
+      <div className="pointer-events-none absolute inset-0" aria-hidden>
+        {hasMedia && !isVideo && displayMediaUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            key={status.id}
+            src={displayMediaUrl}
+            alt=""
+            className="h-full w-full scale-125 object-cover opacity-70 blur-3xl"
+          />
+        ) : isVideo ? (
+          <canvas
+            key={status.id}
+            ref={bgCanvasRef}
+            width={36}
+            height={64}
+            className="h-full w-full scale-125 object-cover opacity-70 blur-3xl"
+          />
+        ) : (
+          <div className="h-full w-full opacity-60" style={{ backgroundColor: bgColor }} />
+        )}
+        <div className="absolute inset-0 bg-black/30" />
+      </div>
 
       <button
         type="button"
-        onClick={goPrev}
-        disabled={!canPrev}
-        className={cn(
-          "absolute top-1/2 left-6 z-20 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-[#667781]/90 text-white shadow-md transition hover:bg-[#54656f]",
-          !canPrev && "pointer-events-none opacity-0",
-        )}
-        aria-label="הקודם"
+        onClick={onClose}
+        className="absolute left-3 top-3 z-40 flex h-10 w-10 items-center justify-center rounded-full text-white/90 transition hover:bg-white/10"
+        aria-label="סגירה"
       >
-        <ChevronLeft className="h-7 w-7" />
+        <X className="h-6 w-6" />
+      </button>
+      <button
+        type="button"
+        onClick={onClose}
+        className="absolute right-3 top-3 z-40 flex h-10 w-10 items-center justify-center rounded-full text-white/90 transition hover:bg-white/10"
+        aria-label="חזרה לרשימה"
+      >
+        <ArrowRight className="h-6 w-6" />
       </button>
 
       <button
         type="button"
         onClick={goNext}
-        disabled={!canNext}
         className={cn(
-          "absolute top-1/2 right-6 z-20 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-[#667781]/90 text-white shadow-md transition hover:bg-[#54656f]",
-          !canNext && "pointer-events-none opacity-0",
+          "absolute left-5 top-1/2 z-40 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 text-white shadow-md backdrop-blur transition hover:bg-black/60 md:flex",
+          !canNext && "opacity-60",
         )}
         aria-label="הבא"
       >
-        <ChevronRight className="h-7 w-7" />
+        <ChevronLeft className="h-6 w-6" />
+      </button>
+      <button
+        type="button"
+        onClick={goPrev}
+        className={cn(
+          "absolute right-5 top-1/2 z-40 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 text-white shadow-md backdrop-blur transition hover:bg-black/60 md:flex",
+          !canPrev && "pointer-events-none opacity-0",
+        )}
+        aria-label="הקודם"
+      >
+        <ChevronRight className="h-6 w-6" />
       </button>
 
-      {/* Vertical 9:16 story frame */}
-      <div className="relative flex h-[min(96svh,860px)] w-[min(100vw-2rem,calc(min(96svh,860px)*9/16))] max-w-[420px] flex-col overflow-hidden rounded-sm bg-black shadow-2xl">
-        {/* Progress */}
-        <div className="absolute inset-x-0 top-0 z-30 flex gap-1 px-2 pt-2">
+      {/* 9:16 story column */}
+      <div className="relative mx-auto flex h-full w-full max-w-[min(100vw,calc((100svh-0.75rem)*9/16))] flex-col pt-2.5">
+        <div className="relative z-30 flex gap-1 px-1">
           {group.statuses.map((s, i) => (
             <div key={s.id} className="h-[3px] flex-1 overflow-hidden rounded-full bg-white/35">
               <div
-                className="h-full rounded-full bg-[var(--wa-panel)] transition-none"
-                style={{
-                  width: i < index ? "100%" : i > index ? "0%" : `${progress * 100}%`,
-                }}
+                className="h-full rounded-full bg-white"
+                style={{ width: i < index ? "100%" : i > index ? "0%" : `${progress * 100}%` }}
               />
             </div>
           ))}
         </div>
 
-        {/* Top chrome */}
-        <div className="absolute inset-x-0 top-0 z-30 flex items-start gap-2 bg-gradient-to-b from-black/55 to-transparent px-3 pb-8 pt-5">
-          <div className="flex min-w-0 flex-1 items-center gap-2.5 pt-0.5" dir="rtl">
-            <Avatar name={group.profile.display_name} url={group.profile.avatar_url} size={36} />
-            <div className="min-w-0 flex-1 text-right">
-              <div className="truncate text-[15px] font-medium leading-tight text-white">
-                {group.profile.display_name ?? group.profile.email}
+        <div className="relative mt-1.5 min-h-0 flex-1 overflow-hidden rounded-t-lg bg-black shadow-2xl">
+          {/* Header */}
+          <div className="absolute inset-x-0 top-0 z-30 flex items-center gap-2 bg-gradient-to-b from-black/60 to-transparent px-3 pb-10 pt-3">
+            <Avatar name={group.profile.display_name} url={group.profile.avatar_url} size={34} />
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-[15px] font-medium leading-tight">
+                {isOwn ? "הסטטוס שלי" : (group.profile.display_name ?? group.profile.email)}
               </div>
               <div className="text-[12px] leading-tight text-white/80">{formatStatusTime(status.created_at)}</div>
             </div>
-          </div>
-
-          <div className="flex shrink-0 items-center gap-1 pt-0.5 text-white">
-            {isVideo && (
-              <button
-                type="button"
-                onClick={() => setMuted((m) => !m)}
-                className="rounded-full p-1.5 hover:bg-white/10"
-                aria-label={muted ? "בטל השתקה" : "השתק"}
-              >
-                {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => setUserPaused((p) => !p)}
-              className="rounded-full p-1.5 hover:bg-white/10"
-              aria-label={userPaused ? "המשך" : "השהה"}
-            >
-              {userPaused ? <Play className="h-5 w-5" /> : <Pause className="h-5 w-5" />}
-            </button>
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setMenuOpen((o) => !o)}
-                className="rounded-full p-1.5 hover:bg-white/10"
-                aria-label="עוד"
-              >
-                <MoreVertical className="h-5 w-5" />
-              </button>
-              {menuOpen && (
-                <div className="absolute top-full left-0 mt-1 min-w-[140px] overflow-hidden rounded-md bg-[var(--wa-panel)] py-1 text-sm text-[var(--wa-text)] shadow-lg">
-                  {isOwn && (
+            <div className="flex shrink-0 items-center" dir="ltr">
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setMenuOpen((o) => !o)}
+                  className="rounded-full p-1.5 hover:bg-white/10"
+                  aria-label="אפשרויות"
+                >
+                  <MoreVertical className="h-5 w-5" />
+                </button>
+                {menuOpen && (
+                  <div
+                    className="wa-menu absolute left-0 top-full z-40 mt-1 min-w-[160px] py-1 text-sm text-[var(--wa-text)]"
+                    dir="rtl"
+                  >
+                    {isOwn && (
+                      <button
+                        type="button"
+                        disabled={deleting}
+                        className="flex w-full items-center gap-2 px-4 py-2.5 text-right text-[#ea0038] hover:bg-[var(--wa-hover)] disabled:opacity-50"
+                        onClick={() => void deleteStatus()}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        {deleting ? "מוחק..." : "מחיקת הסטטוס"}
+                      </button>
+                    )}
                     <button
                       type="button"
-                      disabled={deleting}
-                      className="block w-full px-4 py-2.5 text-right text-[#ea0038] hover:bg-[var(--wa-hover)] disabled:opacity-50"
-                      onClick={() => void deleteStatus()}
+                      className="block w-full px-4 py-2.5 text-right hover:bg-[var(--wa-hover)]"
+                      onClick={() => {
+                        setMenuOpen(false)
+                        onClose()
+                      }}
                     >
-                      {deleting ? "מוחק..." : "מחק סטטוס"}
+                      סגירה
                     </button>
-                  )}
-                  <button
-                    type="button"
-                    className="block w-full px-4 py-2.5 text-right hover:bg-[var(--wa-hover)]"
-                    onClick={() => {
-                      setMenuOpen(false)
-                      onClose()
-                    }}
-                  >
-                    סגור
-                  </button>
-                </div>
+                  </div>
+                )}
+              </div>
+              {isVideo && (
+                <button
+                  type="button"
+                  onClick={() => setMuted((m) => !m)}
+                  className="rounded-full p-1.5 hover:bg-white/10"
+                  aria-label={muted ? "ביטול השתקה" : "השתקה"}
+                  title="M"
+                >
+                  {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
+                </button>
               )}
+              <button
+                type="button"
+                onClick={() => setUserPaused((p) => !p)}
+                className="rounded-full p-1.5 hover:bg-white/10"
+                aria-label={paused ? "המשך" : "השהיה"}
+                title="רווח"
+              >
+                {paused ? <Play className="h-5 w-5" /> : <Pause className="h-5 w-5" />}
+              </button>
             </div>
           </div>
-        </div>
 
-        {/* Content */}
-        <div
-          className="relative flex min-h-0 flex-1 select-none"
-          onPointerDown={() => {
-            holdTimer.current = setTimeout(() => setHolding(true), 150)
-          }}
-          onPointerUp={() => {
-            if (holdTimer.current) clearTimeout(holdTimer.current)
-            holdTimer.current = null
-            setHolding(false)
-          }}
-          onPointerCancel={() => {
-            if (holdTimer.current) clearTimeout(holdTimer.current)
-            holdTimer.current = null
-            setHolding(false)
-          }}
-          onPointerLeave={() => {
-            if (holdTimer.current) clearTimeout(holdTimer.current)
-            holdTimer.current = null
-            setHolding(false)
-          }}
-        >
-          {/* Tap zones */}
-          <button
-            type="button"
-            className="absolute inset-y-0 right-0 z-20 w-1/3 cursor-pointer"
-            aria-label="הקודם"
-            onClick={(e) => {
-              e.stopPropagation()
-              goPrev()
+          {/* Content */}
+          <div
+            className="relative flex h-full w-full select-none"
+            onPointerDown={(e) => {
+              pointerStart.current = { x: e.clientX, y: e.clientY }
+              heldRef.current = false
+              holdTimer.current = setTimeout(() => {
+                heldRef.current = true
+                setHolding(true)
+              }, 180)
             }}
-          />
-          <button
-            type="button"
-            className="absolute inset-y-0 left-0 z-20 w-1/3 cursor-pointer"
-            aria-label="הבא"
-            onClick={(e) => {
-              e.stopPropagation()
-              goNext()
-            }}
-          />
+            onPointerUp={endHold}
+            onPointerCancel={() => endHold()}
+            onPointerLeave={() => endHold()}
+          >
+            <button
+              type="button"
+              className="absolute inset-y-0 left-0 z-20 w-1/3 cursor-pointer"
+              aria-label="הבא"
+              onClick={(e) => {
+                e.stopPropagation()
+                if (!heldRef.current) goNext()
+              }}
+            />
+            <button
+              type="button"
+              className="absolute inset-y-0 right-0 z-20 w-1/3 cursor-pointer"
+              aria-label="הקודם"
+              onClick={(e) => {
+                e.stopPropagation()
+                if (!heldRef.current) goPrev()
+              }}
+            />
 
-          {hasMedia && status.media_url && displayMediaUrl ? (
-            <>
-              {isVideo ? (
+            {hasMedia && displayMediaUrl ? (
+              isVideo ? (
                 <video
                   ref={videoRef}
                   key={status.id}
                   src={displayMediaUrl}
-                  className="h-full w-full object-cover"
+                  className="h-full w-full object-contain"
                   playsInline
                   autoPlay
                   preload="auto"
                   muted={muted}
-                  onLoadedData={() => setMediaLoading(false)}
+                  onLoadedData={(e) => {
+                    setMediaLoading(false)
+                    paintBackdrop(e.currentTarget)
+                  }}
                   onCanPlay={() => setMediaLoading(false)}
                   onEnded={goNext}
                   onWaiting={() => setMediaLoading(true)}
@@ -567,199 +680,290 @@ export function StatusViewer({
                   key={status.id}
                   src={displayMediaUrl}
                   alt=""
-                  className="h-full w-full object-cover"
+                  className="wa-fade-in h-full w-full object-contain"
                   onLoad={() => setMediaLoading(false)}
                   onError={() => setMediaLoading(false)}
                 />
-              )}
+              )
+            ) : !hasMedia ? (
+              <div
+                className="flex h-full w-full items-center justify-center px-8 text-center"
+                style={{ backgroundColor: bgColor }}
+              >
+                <p
+                  className={cn(
+                    "whitespace-pre-wrap font-medium leading-snug text-white",
+                    (status.content?.length ?? 0) < 60
+                      ? "text-[1.9rem]"
+                      : (status.content?.length ?? 0) < 200
+                        ? "text-[1.45rem]"
+                        : "text-[1.1rem]",
+                  )}
+                >
+                  {status.content}
+                </p>
+              </div>
+            ) : null}
 
-              {(bannerLines.length > 0 || caption) && (
-                <div className="pointer-events-none absolute inset-x-0 bottom-[18%] z-10 flex flex-col items-center gap-3 px-5">
-                  {bannerLines.length > 0 && (
-                    <div className="w-[88%] rounded-sm bg-black/70 px-4 py-3 text-center text-white shadow-sm">
-                      {bannerLines.map((line, i) => (
-                        <div
-                          key={i}
-                          className={cn(
-                            "font-bold leading-snug",
-                            i === 0 ? "text-[1.35rem]" : "mt-0.5 text-[1.05rem] font-semibold",
-                          )}
-                        >
-                          {line}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {caption && (
-                    <p className="max-w-[90%] text-center text-[1.25rem] font-bold leading-snug text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]">
-                      {caption}
-                    </p>
-                  )}
-                </div>
-              )}
-            </>
-          ) : (
-            <div
-              className="flex h-full w-full items-center justify-center px-8 text-center"
-              style={{ backgroundColor: status.background_color || "#075E54" }}
-            >
-              <p className="text-[1.75rem] font-medium leading-relaxed text-white whitespace-pre-wrap">
-                {status.content}
-              </p>
+            {mediaLoading && hasMedia && (
+              <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+                <div className="h-12 w-12 animate-spin rounded-full border-[3px] border-white/25 border-t-white" />
+              </div>
+            )}
+
+            {holding && (
+              <div className="pointer-events-none absolute inset-0 z-10 bg-black/10" />
+            )}
+          </div>
+
+          {caption && (
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/70 via-black/30 to-transparent px-5 pb-[4.5rem] pt-16">
+              <button
+                type="button"
+                onClick={() => setCaptionExpanded((v) => !v)}
+                className={cn(
+                  "pointer-events-auto mx-auto block max-w-full whitespace-pre-wrap text-center text-[15px] leading-relaxed text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]",
+                  !captionExpanded && "line-clamp-3",
+                )}
+              >
+                {caption}
+              </button>
             </div>
           )}
 
-          {mediaLoading && hasMedia && (
-            <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
-              <div className="h-10 w-10 animate-spin rounded-full border-[3px] border-white/25 border-t-white" />
+          {/* Own status: views + replies sheet */}
+          {isOwn && sheet && (
+            <div className="absolute inset-x-0 bottom-0 z-40 flex max-h-[60%] flex-col rounded-t-2xl bg-[var(--wa-panel)] text-[var(--wa-text)] shadow-2xl">
+              <div className="flex items-center gap-1 border-b border-[var(--wa-border)] px-2 pt-2">
+                {(
+                  [
+                    ["views", `צפו (${views.length})`],
+                    ["replies", `תגובות (${replies.length})`],
+                  ] as const
+                ).map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setSheet(id)}
+                    className={cn(
+                      "flex-1 border-b-2 px-3 pb-2.5 pt-1 text-sm font-medium transition",
+                      sheet === id
+                        ? "border-[#00a884] text-[var(--wa-teal-dark)]"
+                        : "border-transparent text-[var(--wa-text-secondary)]",
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setSheet(null)}
+                  className="mb-1 rounded-full p-1.5 text-[var(--wa-text-secondary)] hover:bg-[var(--wa-hover)]"
+                  aria-label="סגירה"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="wa-scroll min-h-0 flex-1 overflow-y-auto py-1">
+                {activityLoading && views.length === 0 && replies.length === 0 ? (
+                  <div className="py-6 text-center text-sm text-[var(--wa-text-secondary)]">טוען...</div>
+                ) : sheet === "views" ? (
+                  views.length === 0 ? (
+                    <div className="py-6 text-center text-sm text-[var(--wa-text-secondary)]">אף אחד עוד לא צפה</div>
+                  ) : (
+                    views.map((v) => (
+                      <div key={v.viewer_id} className="flex items-center gap-3 px-4 py-2">
+                        <Avatar name={v.profile?.display_name} url={v.profile?.avatar_url} size={36} />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm">{v.profile?.display_name ?? v.profile?.email ?? "משתמש"}</div>
+                          <div className="text-xs text-[var(--wa-text-secondary)]">{formatStatusTime(v.viewed_at)}</div>
+                        </div>
+                        {replies.some((r) => r.user_id === v.viewer_id && r.content === LIKE) && (
+                          <Heart className="h-4 w-4 fill-[#ea0038] text-[#ea0038]" />
+                        )}
+                      </div>
+                    ))
+                  )
+                ) : replies.length === 0 ? (
+                  <div className="py-6 text-center text-sm text-[var(--wa-text-secondary)]">אין תגובות עדיין</div>
+                ) : (
+                  replies.map((r) => (
+                    <div key={r.id} className="flex items-start gap-3 px-4 py-2">
+                      <Avatar name={r.profile?.display_name} url={r.profile?.avatar_url} size={36} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="truncate text-sm font-medium text-[var(--wa-teal-dark)]">
+                            {r.profile?.display_name ?? r.profile?.email ?? "משתמש"}
+                          </span>
+                          <span className="shrink-0 text-[11px] text-[var(--wa-text-secondary)]">
+                            {formatStatusTime(r.created_at)}
+                          </span>
+                        </div>
+                        <div className="whitespace-pre-wrap text-sm">{r.content}</div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           )}
         </div>
+      </div>
 
-        {/* Own status: view replies */}
-        {isOwn && (
-          <div className="absolute inset-x-0 bottom-0 z-30 bg-gradient-to-t from-black/70 to-transparent px-3 pb-4 pt-10">
-            {deleteError && (
-              <div className="mb-2 rounded-lg bg-[#fde8e8] px-3 py-2 text-center text-xs text-[#ea0038]">
-                {deleteError}
-                <button type="button" className="mr-2 underline" onClick={() => setDeleteError(null)}>
-                  סגור
-                </button>
-              </div>
+      {/* Bottom bar */}
+      <div className="absolute inset-x-0 bottom-3 z-40 flex flex-col items-center gap-2 px-3">
+        {(notice || replyError || deleteError || voice.error) && (
+          <div
+            className={cn(
+              "wa-fade-in rounded-full px-4 py-1.5 text-center text-xs shadow",
+              notice ? "bg-black/60 text-white" : "bg-[#fde8e8] text-[#ea0038]",
             )}
-            {showReplies ? (
-              <div className="max-h-56 overflow-y-auto rounded-xl bg-[#1f2c34]/95 p-3" dir="rtl">
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="text-sm font-medium text-white">תגובות ({replies.length})</span>
-                  <button
-                    type="button"
-                    onClick={() => setShowReplies(false)}
-                    className="rounded-full p-1 text-white/80 hover:bg-white/10"
-                    aria-label="סגור תגובות"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-                {repliesLoading ? (
-                  <div className="py-4 text-center text-sm text-white/70">טוען...</div>
-                ) : replies.length === 0 ? (
-                  <div className="py-4 text-center text-sm text-white/70">אין תגובות עדיין</div>
-                ) : (
-                  <ul className="space-y-2.5">
-                    {replies.map((r) => (
-                      <li key={r.id} className="flex items-start gap-2">
-                        <Avatar
-                          name={r.profile?.display_name}
-                          url={r.profile?.avatar_url}
-                          size={28}
-                        />
-                        <div className="min-w-0 flex-1">
-                          <div className="text-xs font-medium text-[#00a884]">
-                            {r.profile?.display_name ?? r.profile?.email ?? "משתמש"}
-                          </div>
-                          <div className="text-sm text-white whitespace-pre-wrap">{r.content}</div>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            ) : (
+          >
+            {notice || replyError || deleteError || voice.error}
+            {!notice && (
               <button
                 type="button"
+                className="mr-2 underline"
                 onClick={() => {
-                  setShowReplies(true)
-                  void loadReplies(status.id)
+                  setReplyError(null)
+                  setDeleteError(null)
+                  voice.clearError()
                 }}
-                className="flex w-full items-center justify-center gap-2 rounded-full bg-black/45 px-4 py-3 text-sm text-white transition hover:bg-black/55"
               >
-                <MessageCircle className="h-4 w-4" />
-                {replies.length > 0 ? `תגובות (${replies.length})` : "אין תגובות עדיין"}
+                סגירה
               </button>
             )}
           </div>
         )}
 
-        {/* Reply bar */}
-        {!isOwn && (
-          <div className="absolute inset-x-0 bottom-0 z-30 bg-gradient-to-t from-black/70 to-transparent px-3 pb-4 pt-10">
-            {replySent ? (
-              <div className="rounded-full bg-black/45 px-4 py-3 text-center text-sm text-white">
-                התגובה נוספה לסטטוס
-              </div>
-            ) : (
-              <div className="relative flex flex-col gap-2">
-                {(replyError || deleteError) && (
-                  <div className="rounded-lg bg-[#fde8e8] px-3 py-2 text-center text-xs text-[#ea0038]">
-                    {replyError || deleteError}
-                    <button
-                      type="button"
-                      className="mr-2 underline"
-                      onClick={() => {
-                        setReplyError(null)
-                        setDeleteError(null)
-                      }}
-                    >
-                      סגור
-                    </button>
-                  </div>
-                )}
-                <div className="relative flex items-center gap-2">
-                {showEmoji && (
-                  <div className="absolute bottom-full mb-2 grid w-full grid-cols-6 gap-1 rounded-xl bg-[#1f2c34] p-2 shadow-lg">
-                    {EMOJIS.map((e) => (
-                      <button
-                        key={e}
-                        type="button"
-                        className="rounded-lg p-1.5 text-xl hover:bg-white/10"
-                        onClick={() => {
-                          setReply((t) => t + e)
-                          setShowEmoji(false)
-                        }}
-                      >
-                        {e}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                <button
-                  type="button"
-                  disabled={!reply.trim() || sending}
-                  onClick={() => void sendReply()}
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white disabled:opacity-40"
-                  aria-label="שלח תגובה"
-                >
-                  <SendHorizontal className="h-6 w-6 -scale-x-100" />
-                </button>
-                <div className="flex min-w-0 flex-1 items-center gap-1 rounded-full bg-[#1f2c34]/85 px-2 py-1.5 ring-1 ring-white/10">
-                  <input
-                    value={reply}
-                    onChange={(e) => {
-                      setReply(e.target.value)
-                      if (replyError) setReplyError(null)
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault()
-                        void sendReply()
-                      }
-                    }}
-                    placeholder="הגב לסטטוס..."
-                    className="min-w-0 flex-1 bg-transparent px-2 py-2 text-[15px] text-white outline-none placeholder:text-white/70"
-                    dir="rtl"
-                  />
+        {isOwn ? (
+          !sheet && (
+            <button
+              type="button"
+              onClick={() => {
+                setSheet("views")
+                void loadActivity(status.id)
+              }}
+              className="flex items-center gap-4 rounded-full bg-black/50 px-5 py-2.5 text-sm backdrop-blur transition hover:bg-black/65"
+            >
+              <span className="flex items-center gap-1.5">
+                <Eye className="h-4 w-4" />
+                {views.length}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <MessageCircle className="h-4 w-4" />
+                {replies.length}
+              </span>
+            </button>
+          )
+        ) : (
+          <div className="relative w-full max-w-[560px]">
+            {showEmoji && (
+              <div className="wa-fade-in absolute bottom-full right-0 mb-2 grid w-full max-w-[340px] grid-cols-6 gap-1 rounded-2xl bg-[#1f2c34]/95 p-2 shadow-xl backdrop-blur">
+                {EMOJIS.map((e) => (
                   <button
+                    key={e}
                     type="button"
-                    onClick={() => setShowEmoji((s) => !s)}
-                    className="rounded-full p-2 text-white/90 hover:bg-white/10"
-                    aria-label="אימוג'י"
+                    className="rounded-lg p-1.5 text-xl transition hover:scale-110 hover:bg-white/10"
+                    onClick={() => setReply((t) => t + e)}
                   >
-                    <Smile className="h-5 w-5" />
+                    {e}
                   </button>
-                </div>
-                </div>
+                ))}
               </div>
             )}
+            {inputFocused && !reply.trim() && !showEmoji && (
+              <div className="wa-fade-in absolute bottom-full left-1/2 mb-2 flex -translate-x-1/2 gap-1 rounded-full bg-black/55 px-2 py-1 backdrop-blur">
+                {QUICK_REACTIONS.map((e) => (
+                  <button
+                    key={e}
+                    type="button"
+                    onPointerDown={(ev) => ev.preventDefault()}
+                    onClick={() => void sendReply(e)}
+                    className="rounded-full p-1.5 text-2xl transition hover:scale-125"
+                    aria-label={`תגובה ${e}`}
+                  >
+                    {e}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowEmoji((s) => !s)}
+                className={cn(
+                  "flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition hover:bg-white/10",
+                  showEmoji && "bg-white/15",
+                )}
+                aria-label="אימוג'י"
+              >
+                <Smile className="h-6 w-6" />
+              </button>
+
+              <div className="flex h-11 min-w-0 flex-1 items-center gap-1 rounded-full bg-[var(--wa-panel)] pr-4 pl-1 text-[var(--wa-text)] shadow-lg">
+                <input
+                  value={reply}
+                  onChange={(e) => {
+                    setReply(e.target.value)
+                    if (replyError) setReplyError(null)
+                  }}
+                  onFocus={() => setInputFocused(true)}
+                  onBlur={() => setInputFocused(false)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault()
+                      void sendReply()
+                    }
+                  }}
+                  placeholder="כאן מקלידים תגובה..."
+                  className="min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-[var(--wa-text-secondary)]"
+                  dir="rtl"
+                />
+                {reply.trim() ? (
+                  <button
+                    type="button"
+                    disabled={sending}
+                    onClick={() => void sendReply()}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white transition hover:bg-[#06cf9c] disabled:opacity-50"
+                    aria-label="שליחת תגובה"
+                  >
+                    <SendHorizontal className="h-4.5 w-4.5 -scale-x-100" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onPointerDown={(e) => e.preventDefault()}
+                    onClick={voice.toggle}
+                    className={cn(
+                      "wa-voice-btn flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition",
+                      voice.listening
+                        ? "wa-voice-live bg-[var(--wa-accent-soft)] text-[var(--wa-teal-dark)]"
+                        : "bg-[#e7f0fe] text-[#1a73e8] hover:bg-[#d6e6fd] dark:bg-[#1a73e8]/20",
+                    )}
+                    aria-label={voice.listening ? "עצירת הקלדה קולית" : "תגובה בקול"}
+                    aria-pressed={voice.listening}
+                    title={voice.listening ? "מקשיב… לחצו לעצירה" : "תגובה בקול"}
+                  >
+                    <Mic className="h-4.5 w-4.5" />
+                  </button>
+                )}
+              </div>
+
+              <button
+                type="button"
+                disabled={sending || liked}
+                onClick={() => void sendReply(LIKE)}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition hover:bg-white/10 disabled:cursor-default"
+                aria-label={liked ? "סימנת לייק" : "לייק"}
+                aria-pressed={liked}
+              >
+                <Heart
+                  className={cn("h-6 w-6 transition", liked && "scale-110 fill-[#ea0038] text-[#ea0038]")}
+                />
+              </button>
+            </div>
           </div>
         )}
       </div>
