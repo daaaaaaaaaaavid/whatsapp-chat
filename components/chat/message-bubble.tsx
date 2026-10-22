@@ -112,6 +112,8 @@ type Props = {
   /** Video IDs whose watch session already ended in this chat */
   closedWatchVideoIds?: Set<string>
   onJoinMeeting?: (meetingId: string) => void
+  /** Meeting currently open on this device, if any. */
+  activeMeetingId?: string | null
   /** Meeting IDs that already ended in this chat */
   closedMeetingIds?: Set<string>
   /** Narrower panel (thread side pane). */
@@ -222,6 +224,7 @@ export function MessageBubble({
   onStartWatchWithUrl,
   closedWatchVideoIds,
   onJoinMeeting,
+  activeMeetingId,
   closedMeetingIds,
   compact,
 }: Props) {
@@ -337,6 +340,8 @@ export function MessageBubble({
         onJoin={onJoinMeeting}
         joinBlocked={joinBlocked}
         isGroup={isGroup}
+        isHost={Boolean(currentUserId && message.sender_id === currentUserId)}
+        inThisCall={Boolean(meetingPayload.meetingId && activeMeetingId === meetingPayload.meetingId)}
       />
     )
   }

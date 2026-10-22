@@ -978,7 +978,7 @@ function MeetingHeader({
         <Users className="h-5 w-5 text-[#25d366]" />
       </div>
       <div className="min-w-0 flex-1">
-        <h2 className="truncate text-sm font-medium">פגישה · {conversationLabel}</h2>
+        <h2 className="truncate text-sm font-medium">שיחת וידאו · {conversationLabel}</h2>
         <p className="truncate text-xs text-white/60">
           {participantCount} משתתפים
           {speakingLabel ? (
@@ -987,7 +987,7 @@ function MeetingHeader({
               <span className="text-[#25d366]">{speakingLabel} מדבר…</span>
             </>
           ) : (
-            " · וידאו · קול · שיתוף מסך"
+            " · המצלמה והמיקרופון למטה"
           )}
         </p>
       </div>

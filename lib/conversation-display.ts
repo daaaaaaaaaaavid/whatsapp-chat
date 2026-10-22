@@ -58,7 +58,7 @@ export function messagePreview(msg: Message | null | undefined): string {
   const call = parseCallSystemPayload(msg.content)
   const watch = parseWatchSystemPayload(msg.content)
   const meeting = parseMeetingSystemPayload(msg.content)
-  if (meeting) return `👥 ${meetingSystemLabel(meeting)}`
+  if (meeting) return meetingSystemLabel(meeting)
   if (watch) return `🎬 ${watchSystemLabel(watch)}`
   if (call || msg.type === "system") {
     return call ? callSystemLabel(call) : (msg.content ?? "הודעת מערכת")

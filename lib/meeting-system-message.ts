@@ -24,14 +24,14 @@ export function meetingSystemLabel(
   payload: MeetingSystemPayload,
   opts?: { isGroup?: boolean },
 ): string {
-  const isGroup = opts?.isGroup !== false
+  const isGroup = opts?.isGroup ?? payload.isGroup ?? false
   switch (payload.event) {
     case "started":
-      return isGroup ? "התחילה פגישה קבוצתית" : "שיחת וידאו · פגישה משותפת"
+      return isGroup ? "שיחת וידאו קבוצתית" : "שיחת וידאו"
     case "ended":
-      return isGroup ? "הפגישה הסתיימה" : "שיחת הווידאו הסתיימה"
+      return isGroup ? "השיחה הקבוצתית הסתיימה" : "שיחת הווידאו הסתיימה"
     default:
-      return "פגישה"
+      return "שיחה"
   }
 }
 
@@ -47,6 +47,7 @@ export async function insertMeetingSystemMessage(opts: {
     kind: "meeting",
     event: opts.event,
     meetingId: opts.meetingId,
+    isGroup: Boolean(opts.isGroup),
   }
 
   const label = meetingSystemLabel(payload, { isGroup: opts.isGroup })

@@ -951,6 +951,7 @@ export function ChatApp({ currentUser: initialUser }: Props) {
                   onJoinMeeting={(meetingId) => {
                     void joinMeeting(meetingId).catch(() => {})
                   }}
+                  activeMeetingId={meetingActive?.meetingId ?? null}
                   onStartWatch={
                     WATCH_TOGETHER_UI_ENABLED
                       ? () => {

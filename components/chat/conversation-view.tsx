@@ -69,6 +69,7 @@ type Props = {
   onStartCall?: (video: boolean) => void
   onStartMeeting?: () => void
   onJoinMeeting?: (meetingId: string) => void
+  activeMeetingId?: string | null
   onStartWatch?: () => void
   onJoinWatch?: (videoId: string) => void
   onStartWatchWithUrl?: (url: string) => void
@@ -107,6 +108,7 @@ export function ConversationView({
   onStartCall,
   onStartMeeting,
   onJoinMeeting,
+  activeMeetingId,
   onStartWatch,
   onJoinWatch,
   onStartWatchWithUrl,
@@ -821,8 +823,8 @@ export function ConversationView({
             <button
               onClick={onStartMeeting}
               className="flex h-10 w-10 items-center justify-center rounded-full transition hover:bg-black/5"
-              aria-label="פגישה קבוצתית"
-              title="פגישה קבוצתית (קישור הזמנה)"
+              aria-label={conversation.is_group ? "שיחת וידאו לקבוצה" : "שיחת וידאו"}
+              title={conversation.is_group ? "התחל שיחת וידאו לקבוצה" : "התחל שיחת וידאו"}
             >
               <Users className="h-5 w-5" />
             </button>
@@ -1110,6 +1112,7 @@ export function ConversationView({
                   onStartWatchWithUrl={onStartWatchWithUrl}
                   closedWatchVideoIds={closedWatchVideoIds}
                   onJoinMeeting={onJoinMeeting}
+                  activeMeetingId={activeMeetingId}
                   closedMeetingIds={closedMeetingIds}
                 />
               </div>

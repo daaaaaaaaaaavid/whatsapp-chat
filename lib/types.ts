@@ -52,6 +52,8 @@ export type MeetingSystemPayload = {
   kind: "meeting"
   event: "started" | "ended"
   meetingId: string
+  /** Present on new messages so previews can tell a group call from a direct one. */
+  isGroup?: boolean
   /** @deprecated Legacy messages may still include this; never write new ones. */
   inviteToken?: string
 }

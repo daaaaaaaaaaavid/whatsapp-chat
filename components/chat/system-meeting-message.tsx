@@ -3,7 +3,7 @@
 import type { Message } from "@/lib/types"
 import { formatTime } from "@/lib/format"
 import { parseMeetingSystemPayload, meetingSystemLabel } from "@/lib/meeting-system-message"
-import { Users, Video } from "lucide-react"
+import { Video } from "lucide-react"
 
 type Props = {
   message: Message
@@ -11,62 +11,84 @@ type Props = {
   joinBlocked?: boolean
   /** DM vs group — slightly different copy */
   isGroup?: boolean
+  /** The person who started the call. They are already in the room. */
+  isHost?: boolean
+  /** This call is the one open on this device. */
+  inThisCall?: boolean
 }
 
-export function SystemMeetingMessage({ message, onJoin, joinBlocked, isGroup }: Props) {
+export function SystemMeetingMessage({
+  message,
+  onJoin,
+  joinBlocked,
+  isGroup,
+  isHost = false,
+  inThisCall = false,
+}: Props) {
   const payload = parseMeetingSystemPayload(message.content)
-  const label = payload
-    ? meetingSystemLabel(payload, { isGroup: isGroup !== false })
-    : "פגישה"
-  const canJoin = payload?.event === "started" && Boolean(onJoin) && !joinBlocked
+  const group = isGroup === true || payload?.isGroup === true
+  const label = payload ? meetingSystemLabel(payload, { isGroup: group }) : "שיחה"
   const isStarted = payload?.event === "started"
+  const live = isStarted && !joinBlocked
+  const time = formatTime(message.created_at)
+
+  const title = isHost && isStarted ? (group ? "התחלת שיחת וידאו קבוצתית" : "התחלת שיחת וידאו") : label
+  const subtitle = !isStarted
+    ? "השיחה נסגרה"
+    : joinBlocked
+      ? "השיחה הסתיימה"
+      : isHost
+        ? inThisCall
+          ? "השיחה פתוחה אצלך"
+          : "יצאת מהחדר. אפשר לחזור בלי להתחיל שיחה חדשה"
+        : group
+          ? "השיחה פתוחה למשתתפי הקבוצה"
+          : "השיחה פתוחה"
 
   return (
     <div className="my-3 flex justify-center px-3">
-      <div
-        className={`inline-flex max-w-[min(100%,420px)] flex-col items-stretch gap-2 rounded-2xl px-4 py-3 text-center shadow-md ${
-          isStarted && !joinBlocked
-            ? "bg-gradient-to-b from-[#00a884]/18 to-[var(--wa-system-pill)] ring-2 ring-[#00a884]/45"
-            : "bg-[var(--wa-system-pill)] ring-1 ring-black/5"
-        }`}
-      >
-        <div className="flex items-center justify-center gap-2">
+      <article className="w-full max-w-[420px] overflow-hidden rounded-2xl border border-[var(--wa-border)] bg-[var(--wa-panel)] text-right shadow-[0_12px_32px_rgb(8_20_28/0.06)]">
+        <div className="flex items-center gap-3 px-4 py-3.5">
           <span
-            className={`flex h-9 w-9 items-center justify-center rounded-full ${
-              isStarted && !joinBlocked ? "bg-[#00a884] text-white" : "bg-[#00a884]/15 text-[#00a884]"
+            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${
+              live ? "bg-[var(--wa-accent-soft)] text-[var(--wa-teal-dark)]" : "bg-[var(--wa-header)] text-[var(--wa-text-secondary)]"
             }`}
           >
-            {isStarted ? <Video className="h-4 w-4" /> : <Users className="h-4 w-4" />}
+            <Video className="h-5 w-5" />
           </span>
-          <div className="min-w-0 text-start">
-            <p
-              className={`text-sm font-semibold leading-snug ${
-                isStarted && !joinBlocked ? "text-[var(--wa-text)]" : "text-[var(--wa-text-secondary)]"
-              }`}
-            >
-              {label}
-            </p>
-            <p className="text-[11px] text-[#8696a0]" dir="ltr">
-              {formatTime(message.created_at)}
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-[var(--wa-text)]">{title}</p>
+            <p className="mt-0.5 text-xs leading-relaxed text-[var(--wa-text-secondary)]">{subtitle}</p>
+            <p className="mt-1 text-[11px] text-[var(--wa-text-secondary)]" dir="ltr">
+              {time}
             </p>
           </div>
         </div>
 
-        {canJoin && payload && (
-          <button
-            type="button"
-            onClick={() => onJoin?.(payload.meetingId)}
-            className="w-full rounded-full bg-[#00a884] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#06cf9c] active:scale-[0.98]"
-          >
-            הצטרף עכשיו
-          </button>
+        {live && !isHost && payload && onJoin && (
+          <div className="border-t border-[var(--wa-border)] px-4 py-3">
+            <button
+              type="button"
+              onClick={() => onJoin(payload.meetingId)}
+              className="wa-btn w-full py-2.5 text-sm"
+            >
+              הצטרפות לשיחה
+            </button>
+          </div>
         )}
-        {payload?.event === "started" && joinBlocked && (
-          <span className="rounded-full bg-black/5 px-3 py-1.5 text-xs text-[var(--wa-text-secondary)]">
-            הפגישה הסתיימה
-          </span>
+
+        {live && isHost && !inThisCall && payload && onJoin && (
+          <div className="border-t border-[var(--wa-border)] px-4 py-2.5">
+            <button
+              type="button"
+              onClick={() => onJoin(payload.meetingId)}
+              className="text-sm font-medium text-[var(--wa-teal-dark)] hover:underline"
+            >
+              חזרה לשיחה
+            </button>
+          </div>
         )}
-      </div>
+      </article>
     </div>
   )
 }
