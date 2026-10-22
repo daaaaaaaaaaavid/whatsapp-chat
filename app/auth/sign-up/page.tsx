@@ -9,7 +9,7 @@ import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useState, Suspense } from "react"
 import { Lock } from "lucide-react"
-import { Logo } from "@/components/brand/logo"
+import { AuthFrame } from "@/components/auth/auth-frame"
 import { AuthLegalFooter } from "@/components/legal/auth-legal-footer"
 import { safeRedirectPath } from "@/lib/safe-redirect"
 
@@ -112,14 +112,18 @@ function SignUpForm() {
   }
 
   return (
-    <div className="flex min-h-svh w-full flex-col bg-[var(--wa-header)]">
-      <div className="h-32 w-full bg-[#00a884]" />
-      <div className="mx-auto -mt-24 w-full max-w-md px-4 pb-10">
-        <div className="mb-6 flex justify-center">
-          <Logo size={8} withWordmark variant="white" wordmarkClassName="text-sm font-medium tracking-wide" />
-        </div>
-        <div className="rounded-lg bg-[var(--wa-panel)] p-8 shadow-sm">
-          <h1 className="text-2xl font-normal text-[var(--wa-text)]">יצירת חשבון</h1>
+    <AuthFrame
+      footer={
+        <>
+          <p className="mt-6 flex items-center justify-center gap-1.5 text-xs text-[var(--wa-text-secondary)]">
+            <Lock className="h-3 w-3" />
+            השיחות מוגנות ב־HTTPS ובהרשאות גישה
+          </p>
+          <AuthLegalFooter />
+        </>
+      }
+    >
+          <h1 className="text-2xl font-medium text-[var(--wa-text)]">יצירת חשבון</h1>
           <p className="mt-1 text-sm text-[var(--wa-text-secondary)]">הצטרף כדי להתחיל לשלוח הודעות</p>
 
           <div className="mt-6">
@@ -131,9 +135,9 @@ function SignUpForm() {
           </div>
 
           <div className="my-5 flex items-center gap-3">
-            <div className="h-px flex-1 bg-[#e9edef]" />
-            <span className="text-xs text-[#8696a0]">או</span>
-            <div className="h-px flex-1 bg-[#e9edef]" />
+            <div className="h-px flex-1 bg-[var(--wa-border)]" />
+            <span className="text-xs text-[var(--wa-text-secondary)]">או</span>
+            <div className="h-px flex-1 bg-[var(--wa-border)]" />
           </div>
 
           <form onSubmit={handleSignUp} className="flex flex-col gap-4" noValidate>
@@ -148,7 +152,7 @@ function SignUpForm() {
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 placeholder="השם שיראו אחרים"
-                className="rounded-md border border-[#d1d7db] bg-[var(--wa-panel)] px-3 py-2.5 text-[var(--wa-text)] outline-none transition focus:border-[#00a884] focus:ring-1 focus:ring-[#00a884]"
+                className="wa-field"
               />
             </div>
             <div className="flex flex-col gap-1.5">
@@ -163,7 +167,7 @@ function SignUpForm() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="name@example.com"
-                className="rounded-md border border-[#d1d7db] bg-[var(--wa-panel)] px-3 py-2.5 text-[var(--wa-text)] outline-none transition focus:border-[#00a884] focus:ring-1 focus:ring-[#00a884]"
+                className="wa-field"
               />
             </div>
             <div className="flex flex-col gap-1.5">
@@ -178,7 +182,7 @@ function SignUpForm() {
                 dir="ltr"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="rounded-md border border-[#d1d7db] bg-[var(--wa-panel)] px-3 py-2.5 text-[var(--wa-text)] outline-none transition focus:border-[#00a884] focus:ring-1 focus:ring-[#00a884]"
+                className="wa-field"
               />
             </div>
             <div className="flex flex-col gap-1.5">
@@ -193,7 +197,7 @@ function SignUpForm() {
                 dir="ltr"
                 value={repeatPassword}
                 onChange={(e) => setRepeatPassword(e.target.value)}
-                className="rounded-md border border-[#d1d7db] bg-[var(--wa-panel)] px-3 py-2.5 text-[var(--wa-text)] outline-none transition focus:border-[#00a884] focus:ring-1 focus:ring-[#00a884]"
+                className="wa-field"
               />
             </div>
 
@@ -209,7 +213,7 @@ function SignUpForm() {
             <button
               type="submit"
               disabled={isLoading || googleLoading}
-              className="mt-2 rounded-full bg-[#00a884] px-4 py-2.5 font-medium text-white transition hover:bg-[#008069] disabled:opacity-60"
+              className="wa-btn mt-2 px-4 py-3 disabled:opacity-60"
             >
               {isLoading ? "יוצר חשבון..." : "הרשמה"}
             </button>
@@ -223,20 +227,12 @@ function SignUpForm() {
                   ? `/auth/login?next=${encodeURIComponent(nextPath)}`
                   : "/auth/login"
               }
-              className="font-medium text-[#008069] hover:underline"
+              className="font-medium text-[var(--wa-teal-dark)] hover:underline"
             >
               התחברות
             </Link>
           </p>
-        </div>
-
-        <p className="mt-6 flex items-center justify-center gap-1.5 text-xs text-[var(--wa-text-secondary)]">
-          <Lock className="h-3 w-3" />
-          השיחות מוגנות ב־HTTPS ובהרשאות גישה
-        </p>
-        <AuthLegalFooter />
-      </div>
-    </div>
+    </AuthFrame>
   )
 }
 

@@ -14,7 +14,7 @@ export function ChatThreadHeader({
 }) {
   return (
     <>
-      <div className="mx-auto mb-4 flex items-center gap-1.5 rounded-lg bg-[#fdf4c5] px-3 py-1.5 text-center text-xs text-[var(--wa-text-secondary)] shadow-sm">
+      <div className="wa-privacy-pill mx-auto mb-4 flex items-center gap-1.5 px-3.5 py-1.5 text-center text-xs">
         <Lock className="h-3 w-3" />
         הודעות פרטיות — מוגנות ב־HTTPS ובהרשאות למשתתפי השיחה
       </div>

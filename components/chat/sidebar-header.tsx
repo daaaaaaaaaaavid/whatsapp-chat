@@ -34,7 +34,7 @@ export function SidebarHeader({
   }, [])
 
   return (
-    <header className="flex h-[60px] items-center justify-between bg-[var(--wa-panel)] px-4 pt-1">
+    <header className="wa-chrome flex h-16 items-center justify-between px-4">
       <h1 className="flex items-center gap-2">
         <Logo size={7} withWordmark wordmarkClassName="text-[22px]" />
         {space === "work" && (
@@ -61,7 +61,7 @@ export function SidebarHeader({
             <MoreVertical className="h-5 w-5" />
           </button>
           {menuOpen && (
-            <div className="absolute left-0 top-11 z-20 w-56 overflow-hidden rounded-xl bg-[var(--wa-panel)] py-2 shadow-xl ring-1 ring-black/10">
+            <div className="wa-menu absolute left-0 top-12 z-20 w-56 py-2">
               <button
                 onClick={() => {
                   setMenuOpen(false)

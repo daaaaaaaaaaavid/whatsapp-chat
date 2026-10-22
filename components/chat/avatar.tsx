@@ -23,7 +23,7 @@ export function Avatar({ name, url, size = 40, isGroup = false, isSelf = false, 
       <div
         style={dimension}
         className={cn(
-          "flex shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white",
+          "flex shrink-0 items-center justify-center rounded-full bg-[var(--wa-teal)] text-[#04241c] shadow-[0_6px_16px_var(--wa-glow)]",
           className,
         )}
       >
@@ -38,7 +38,7 @@ export function Avatar({ name, url, size = 40, isGroup = false, isSelf = false, 
         src={signedUrl || "/placeholder.svg"}
         alt={name ?? "avatar"}
         style={dimension}
-        className={cn("shrink-0 rounded-full object-cover", className)}
+        className={cn("shrink-0 rounded-full object-cover shadow-[0_0_0_1px_color-mix(in_srgb,var(--wa-teal)_28%,transparent)]", className)}
       />
     )
   }
@@ -46,7 +46,7 @@ export function Avatar({ name, url, size = 40, isGroup = false, isSelf = false, 
   return (
     <div
       style={{ ...dimension, backgroundColor: isGroup ? "#6a7175" : avatarColor(name ?? "?") }}
-      className={cn("flex shrink-0 items-center justify-center rounded-full text-white", className)}
+      className={cn("flex shrink-0 items-center justify-center rounded-full text-white shadow-[0_8px_18px_rgb(8_20_28/0.12)]", className)}
     >
       {isGroup ? (
         <Users style={{ width: size * 0.5, height: size * 0.5 }} />

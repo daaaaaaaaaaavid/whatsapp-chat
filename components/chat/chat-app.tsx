@@ -798,8 +798,8 @@ export function ChatApp({ currentUser: initialUser }: Props) {
   }
 
   return (
-    <div className="flex h-svh w-svw max-w-[100vw] overflow-hidden bg-[var(--wa-panel)]">
-      <div className="flex h-full min-w-0 w-full flex-1 overflow-hidden">
+    <div className="flex h-svh w-svw max-w-[100vw] overflow-hidden p-0 sm:p-2.5 lg:p-3">
+      <div className="wa-shell flex h-full min-w-0 w-full flex-1 overflow-hidden">
         <NavRail
           active={navTab === "settings" ? "settings" : navTab === "status" ? "status" : navTab}
           currentUser={currentUser}

@@ -5,13 +5,13 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: APP_NAME,
     short_name: APP_NAME,
-    description: "פשוט. אמין. הודעות פרטיות.",
+    description: "הודעות, שיחות ופגישות — שקטות, מהירות, פרטיות.",
     start_url: "/chat",
     scope: "/",
     display: "standalone",
     orientation: "any",
-    background_color: "#0b141a",
-    theme_color: "#00a884",
+    background_color: "#070d13",
+    theme_color: "#070d13",
     lang: "he",
     dir: "rtl",
     icons: [

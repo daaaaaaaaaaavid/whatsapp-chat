@@ -20,7 +20,7 @@ export function SpaceSwitcher({ active, personalUnread, workUnread, onChange }: 
 
   return (
     <div
-      className="mx-3 mb-2 flex rounded-lg bg-[var(--wa-header)] p-1"
+      className="mx-3 mb-2 flex rounded-full bg-[var(--wa-header)] p-1 shadow-[inset_0_0_0_1px_var(--wa-border)]"
       role="tablist"
       aria-label="מצב צ'אט"
     >
@@ -34,7 +34,7 @@ export function SpaceSwitcher({ active, personalUnread, workUnread, onChange }: 
             aria-selected={isActive}
             onClick={() => onChange(id)}
             className={cn(
-              "relative flex flex-1 items-center justify-center gap-1.5 rounded-md py-2 text-sm transition",
+              "relative flex flex-1 items-center justify-center gap-1.5 rounded-full py-2 text-sm transition",
               isActive
                 ? id === "work"
                   ? "bg-[#1a73e8]/15 font-medium text-[#1a73e8]"

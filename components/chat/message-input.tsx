@@ -52,8 +52,11 @@ import {
   UserRound,
   CalendarDays,
   Sticker,
+  Speech,
 } from "lucide-react"
 import { parseReplyContent } from "@/lib/message-content"
+import { useVoiceTyping } from "@/lib/use-voice-typing"
+import { VoiceTypingBar } from "./voice-typing-bar"
 import {
   encodeMentions,
   extractMentions,
@@ -772,9 +775,10 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
     [closeMentionMenu, mentionStart, resizeTextarea, text],
   )
 
-  const handleSendText = async (e?: React.FormEvent) => {
+  const handleSendText = async (e?: React.FormEvent, overrideText?: string) => {
     e?.preventDefault()
-    const trimmed = text.trim()
+    const sourceText = overrideText ?? text
+    const trimmed = sourceText.trim()
     if (!trimmed || sending) return
     if (trimmed.length > MAX_MESSAGE_LENGTH) {
       setSendError(`ההודעה ארוכה מדי (מקסימום ${MAX_MESSAGE_LENGTH} תווים)`)
@@ -797,7 +801,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
         editingMessage.reply_to_id || !parsed
           ? formattedText
           : `↩ ${parsed.author}: ${parsed.preview}\n${formattedText}`
-      const previousText = text
+      const previousText = sourceText
       const previousMentions = pendingMentions
       setText("")
       setPendingMentions([])
@@ -867,6 +871,51 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
       setSending(false)
     }
   }
+
+  const textRef = useRef(text)
+  textRef.current = text
+  const handleSendTextRef = useRef(handleSendText)
+  handleSendTextRef.current = handleSendText
+  const [voiceSettingsOpen, setVoiceSettingsOpen] = useState(false)
+
+  const voice = useVoiceTyping({
+    getText: () => textRef.current,
+    setText: (next) => {
+      textRef.current = next
+      setText(next)
+      onTypingRef.current?.(next.trim().length > 0)
+      requestAnimationFrame(() => {
+        const input = textInputRef.current
+        if (!input) return
+        const end = input.value.length
+        if (document.activeElement === input) input.setSelectionRange(end, end)
+        textSelectionRef.current = { start: end, end }
+        input.scrollTop = input.scrollHeight
+      })
+    },
+    send: (value) => {
+      void handleSendTextRef.current(undefined, value)
+    },
+  })
+  const voiceToggleRef = useRef(voice.toggle)
+  voiceToggleRef.current = voice.toggle
+
+  // Same shortcut as the extension. The thread composer only reacts while focused.
+  useEffect(() => {
+    if (!voice.supported) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!event.altKey || !event.shiftKey || event.code !== "KeyV") return
+      const input = textInputRef.current
+      const active = document.activeElement
+      const focusedHere = Boolean(input && active === input)
+      const focusedOtherComposer = active instanceof HTMLTextAreaElement && active !== input
+      if (threadMode ? !focusedHere : focusedOtherComposer) return
+      event.preventDefault()
+      voiceToggleRef.current()
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [threadMode, voice.supported])
 
   const sendPendingMedia = async () => {
     if (pending.length === 0 || sendingMedia) return
@@ -1694,7 +1743,20 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
         }}
       />
 
-      <form onSubmit={handleSendText} className="flex items-end gap-2 bg-[var(--wa-header)] px-4 py-2.5">
+      <VoiceTypingBar
+        listening={voice.listening}
+        starting={voice.starting}
+        intent={voice.intent}
+        error={voice.error}
+        prefs={voice.prefs}
+        settingsOpen={voiceSettingsOpen}
+        onToggleSettings={() => setVoiceSettingsOpen((v) => !v)}
+        onStop={voice.stop}
+        onDismissError={voice.clearError}
+        onPrefsChange={voice.updatePrefs}
+      />
+
+      <form onSubmit={handleSendText} className="wa-composer mx-2 mb-2 mt-1 flex items-end gap-1.5 rounded-[1.6rem] px-2 py-1.5">
         <button
           type="button"
           onClick={() => {
@@ -1872,7 +1934,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
               // Shift+Enter: allow default newline behavior
             }}
             placeholder={isEditing ? "ערוך הודעה" : "הקלדת הודעה"}
-            className="max-h-[120px] min-h-[42px] w-full resize-none overflow-y-auto rounded-lg bg-[var(--wa-panel)] px-4 py-2.5 text-[15px] leading-[22px] text-[var(--wa-text)] outline-none placeholder:text-[var(--wa-text-secondary)]"
+            className="max-h-[120px] min-h-[42px] w-full resize-none overflow-y-auto rounded-[1.25rem] bg-transparent px-3 py-2.5 text-[15px] leading-[22px] text-[var(--wa-text)] outline-none placeholder:text-[var(--wa-text-secondary)]"
             style={{
               fontWeight: formatting.bold ? 700 : undefined,
               fontStyle: formatting.italic ? "italic" : undefined,
@@ -1881,14 +1943,36 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
           />
         </div>
 
+        {voice.supported && (
+          <button
+            type="button"
+            onPointerDown={(event) => event.preventDefault()}
+            onClick={voice.toggle}
+            onContextMenu={(event) => {
+              event.preventDefault()
+              setVoiceSettingsOpen((v) => !v)
+            }}
+            className={`wa-voice-btn mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition ${
+              voice.listening
+                ? "wa-voice-live bg-[var(--wa-accent-soft)] text-[var(--wa-teal-dark)]"
+                : "text-[var(--wa-text-secondary)] hover:bg-black/5"
+            }`}
+            aria-label={voice.listening ? "עצירת הקלדה קולית" : "הקלדה קולית"}
+            aria-pressed={voice.listening}
+            title={voice.listening ? "מקשיב… לחצו שוב לעצירה" : "הקלדה קולית (Alt+Shift+V) · קליק ימני להגדרות"}
+          >
+            <Speech className="h-5.5 w-5.5" />
+          </button>
+        )}
+
         {hasText || isEditing ? (
           <button
             type="submit"
             disabled={sending || !hasText}
-            className={`mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition disabled:opacity-40 ${
+            className={`mb-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition disabled:opacity-40 ${
               isEditing
-                ? "bg-[#00a884] text-white hover:bg-[#06cf9c]"
-                : "text-[var(--wa-text-secondary)] hover:bg-black/5"
+                ? "bg-[var(--wa-teal)] text-[#04241c] hover:brightness-110"
+                : "wa-send"
             }`}
             aria-label={isEditing ? "שמור עריכה" : "שלח"}
           >

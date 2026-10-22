@@ -158,7 +158,7 @@ export default function EmojiPicker({ id, onSelect, onClose }: Props) {
       role="dialog"
       aria-label="בחירת אימוג׳י"
       dir="rtl"
-      className="absolute bottom-16 left-2 right-2 z-30 flex h-[390px] flex-col overflow-hidden rounded-xl bg-[var(--wa-panel)] shadow-xl ring-1 ring-black/10 sm:left-auto sm:right-4 sm:w-[370px]"
+      className="wa-menu absolute bottom-20 left-2 right-2 z-30 flex h-[390px] flex-col sm:left-auto sm:right-4 sm:w-[370px]"
     >
       <div className="flex items-center gap-2 border-b border-[var(--wa-border)] p-3">
         <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg bg-[var(--wa-header)] px-3">

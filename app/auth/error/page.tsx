@@ -28,10 +28,9 @@ function AuthErrorInner() {
   const reason = params.get("reason")
 
   return (
-    <div className="flex min-h-svh w-full flex-col bg-[var(--wa-header)]">
-      <div className="h-32 w-full bg-[#00a884]" />
-      <div className="mx-auto -mt-24 w-full max-w-md px-4">
-        <div className="rounded-lg bg-[var(--wa-panel)] p-8 text-center shadow-sm">
+    <div className="flex min-h-svh w-full items-center justify-center px-4 py-10">
+      <div className="w-full max-w-md">
+        <div className="wa-auth-card p-8 text-center">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-red-50">
             <AlertTriangle className="h-7 w-7 text-red-500" />
           </div>
@@ -63,7 +62,7 @@ function AuthErrorInner() {
 
           <Link
             href="/auth/login"
-            className="mt-6 inline-block rounded-full bg-[#00a884] px-6 py-2.5 font-medium text-white transition hover:bg-[#008069]"
+            className="wa-btn mt-6 inline-block px-6 py-2.5"
           >
             חזרה להתחברות
           </Link>

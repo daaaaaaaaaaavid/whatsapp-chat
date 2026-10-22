@@ -730,7 +730,7 @@ export function ConversationView({
         </div>
       )}
 
-      <header className="flex h-16 items-center gap-3 bg-[var(--wa-header)] px-4">
+      <header className="wa-chrome flex h-16 items-center gap-3 px-4">
         {selectionMode ? (
           <>
             <button
@@ -862,7 +862,7 @@ export function ConversationView({
           {menuOpen && (
             <>
               <button type="button" className="fixed inset-0 z-20" aria-label="סגור" onClick={() => setMenuOpen(false)} />
-              <div className="absolute left-0 top-11 z-30 w-52 overflow-hidden rounded-md bg-[var(--wa-panel)] py-2 shadow-lg ring-1 ring-black/5">
+              <div className="wa-menu absolute left-0 top-12 z-30 w-52 py-2">
                 <button
                   type="button"
                   onClick={() => {

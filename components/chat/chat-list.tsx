@@ -110,7 +110,7 @@ export function ChatList({
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-[var(--wa-panel)]">
       <div className="px-3 pb-2">
-        <div className="flex flex-1 items-center gap-3 rounded-lg bg-[var(--wa-header)] px-4 py-1.5">
+        <div className="wa-search flex flex-1 items-center gap-3 rounded-full px-4 py-2">
           <Search className="h-4 w-4 text-[var(--wa-text-secondary)]" />
           <input
             value={query}
@@ -137,7 +137,7 @@ export function ChatList({
               className={cn(
                 "rounded-full px-3 py-1 text-sm transition",
                 filter === f.id && !showArchive
-                  ? "bg-[var(--wa-accent-soft)] font-medium text-[var(--wa-teal-dark)]"
+                  ? "wa-chip-active font-medium"
                   : "bg-[var(--wa-header)] text-[var(--wa-text-secondary)] hover:bg-[var(--wa-active)] hover:text-[var(--wa-text)]",
               )}
             >
@@ -211,8 +211,8 @@ export function ChatList({
                     setMenuId(conv.id)
                   }}
                   className={cn(
-                    "wa-interactive-row flex w-full items-center gap-3 px-3 py-3 text-right hover:bg-[var(--wa-hover)]",
-                    isActive && "bg-[var(--wa-active)] hover:bg-[var(--wa-active)]",
+                    "wa-interactive-row mx-2 flex w-[calc(100%-1rem)] items-center gap-3 rounded-2xl px-2 py-2.5 text-right hover:bg-[var(--wa-hover)]",
+                    isActive && "bg-[var(--wa-active)] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--wa-teal)_32%,transparent)] hover:bg-[var(--wa-active)]",
                   )}
                 >
                   <Avatar
@@ -222,7 +222,7 @@ export function ChatList({
                     isSelf={isSelf}
                     size={49}
                   />
-                  <div className="flex min-w-0 flex-1 flex-col border-b border-[var(--wa-border)] pb-3">
+                  <div className="flex min-w-0 flex-1 flex-col">
                     <div className="flex items-center justify-between gap-2">
                       <span className="truncate text-[var(--wa-text)]">{name}</span>
                       <div className="flex shrink-0 items-center gap-1">
@@ -231,7 +231,7 @@ export function ChatList({
                           <span
                             className={cn(
                               "text-xs",
-                              conv.unread_count ? "text-[#25d366]" : "text-[var(--wa-text-secondary)]",
+                              conv.unread_count ? "font-medium text-[var(--wa-teal-dark)]" : "text-[var(--wa-text-secondary)]",
                             )}
                           >
                             {formatChatListTime(last.created_at)}
@@ -251,7 +251,7 @@ export function ChatList({
                       <div className="flex shrink-0 items-center gap-1">
                         {isFav && <Star className="h-3.5 w-3.5 fill-[#25d366] text-[#25d366]" />}
                         {!!conv.unread_count && (
-                          <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#25d366] px-1.5 text-xs font-medium text-white">
+                          <span className="wa-badge flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs">
                             {conv.unread_count}
                           </span>
                         )}
@@ -268,7 +268,7 @@ export function ChatList({
                       aria-label="סגור תפריט"
                       onClick={() => setMenuId(null)}
                     />
-                    <div className="absolute left-3 top-12 z-40 w-44 overflow-hidden rounded-md bg-[var(--wa-panel)] py-1 shadow-lg ring-1 ring-black/5">
+                    <div className="wa-menu absolute left-3 top-12 z-40 w-44 py-1">
                       {!isSelf && (
                         <button
                           type="button"

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import type { Conversation, Message, Profile } from "@/lib/types"
 import { createClient } from "@/lib/supabase/client"
 import {
@@ -8,6 +8,7 @@ import {
   createConversationInvite,
   leaveConversation,
 } from "@/lib/chat-actions"
+import { CopyFailedError, copyTextWhenReady } from "@/lib/copy-text"
 import { Avatar } from "./avatar"
 import { convAvatarUrl, convDisplayName, isSelfConversation, otherParticipantId } from "@/lib/conversation-display"
 import { mediaItemsFromMessages, type GalleryItem } from "./media-gallery"
@@ -78,6 +79,10 @@ export function ConversationInfo({
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [inviteCopied, setInviteCopied] = useState(false)
+  const [inviteError, setInviteError] = useState<string | null>(null)
+  const [inviteLink, setInviteLink] = useState<string | null>(null)
+  const inviteInputRef = useRef<HTMLInputElement>(null)
+  const inviteErrorRef = useRef<HTMLParagraphElement>(null)
   const [messages, setMessages] = useState<Message[]>([])
 
   // One-shot media load — do NOT reuse useMessages (same realtime channel as the open chat).
@@ -102,6 +107,16 @@ export function ConversationInfo({
       cancelled = true
     }
   }, [conversation.id])
+
+  useEffect(() => {
+    if (inviteLink) {
+      inviteInputRef.current?.scrollIntoView({ block: "nearest" })
+      inviteInputRef.current?.focus()
+      inviteInputRef.current?.select()
+      return
+    }
+    if (inviteError) inviteErrorRef.current?.scrollIntoView({ block: "nearest" })
+  }, [inviteLink, inviteError])
 
   const isSelf = isSelfConversation(conversation, currentUser.id)
   const name = convDisplayName(conversation, currentUser.id)
@@ -155,14 +170,23 @@ export function ConversationInfo({
     if (busy) return
     setBusy(true)
     setActionError(null)
+    setInviteError(null)
+    setInviteLink(null)
     try {
-      const token = await createConversationInvite(conversation.id, currentUser.id)
-      const url = `${window.location.origin}/invite/${token}`
-      await navigator.clipboard.writeText(url)
+      // Must start in this click. Awaiting the invite first makes the browser reject clipboard.writeText.
+      await copyTextWhenReady(async () => {
+        const token = await createConversationInvite(conversation.id, currentUser.id)
+        return `${window.location.origin}/invite/${token}`
+      })
       setInviteCopied(true)
       window.setTimeout(() => setInviteCopied(false), 2500)
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : "יצירת הקישור נכשלה")
+      if (err instanceof CopyFailedError) {
+        setInviteLink(err.text)
+        setInviteError("הדפדפן חסם את ההעתקה. לחץ על הקישור למטה והעתק אותו.")
+      } else {
+        setInviteError(err instanceof Error ? err.message : "יצירת הקישור נכשלה")
+      }
     } finally {
       setBusy(false)
     }
@@ -170,7 +194,7 @@ export function ConversationInfo({
 
   return (
     <aside className="flex h-full min-h-0 w-full max-w-md shrink-0 flex-col border-r border-[var(--wa-border)] bg-[var(--wa-panel)] lg:w-[360px]">
-      <header className="flex h-16 shrink-0 items-center gap-4 bg-[#00a884] px-4 text-white">
+      <header className="wa-brand-bar flex h-16 shrink-0 items-center gap-4 px-4">
         <button type="button" onClick={onClose} aria-label="סגור" className="rounded-full p-1 transition hover:bg-white/10">
           <X className="h-6 w-6" />
         </button>
@@ -291,6 +315,24 @@ export function ConversationInfo({
               {inviteCopied ? <Check className="h-5 w-5 text-[#00a884]" /> : <Link2 className="h-5 w-5 text-[var(--wa-text-secondary)]" />}
               {inviteCopied ? "הקישור הועתק" : "העתק קישור הזמנה"}
             </button>
+          )}
+          {inviteLink && (
+            <div className="px-6 pb-3">
+              <input
+                ref={inviteInputRef}
+                readOnly
+                value={inviteLink}
+                dir="ltr"
+                onFocus={(e) => e.currentTarget.select()}
+                aria-label="קישור הזמנה"
+                className="w-full rounded-lg border border-[var(--wa-border)] bg-[var(--wa-header)] px-3 py-2 text-left text-xs text-[var(--wa-text)] outline-none"
+              />
+            </div>
+          )}
+          {inviteError && (
+            <p ref={inviteErrorRef} className="px-6 pb-3 text-sm text-[#ea0038]">
+              {inviteError}
+            </p>
           )}
           {!isSelf && onTogglePinned && (
             <button

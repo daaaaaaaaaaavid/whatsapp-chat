@@ -23,12 +23,12 @@ export function Modal({ open, onClose, title, children }: Props) {
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-md" onClick={onClose}>
       <div
-        className="flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-lg bg-[var(--wa-panel)] shadow-xl"
+        className="wa-auth-card flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <header className="flex h-16 items-center gap-4 bg-[#00a884] px-5 text-white">
+        <header className="wa-brand-bar flex h-16 items-center gap-4 px-5">
           <button onClick={onClose} aria-label="סגור">
             <X className="h-6 w-6" />
           </button>

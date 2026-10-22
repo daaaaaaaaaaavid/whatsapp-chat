@@ -350,8 +350,8 @@ export function MessageBubble({
       <div className={cn("flex px-2", isMine ? "justify-start" : "justify-end")} dir="ltr">
         <div
           className={cn(
-            "relative my-0.5 max-w-[65%] rounded-lg px-2.5 py-1.5 shadow-sm",
-            isMine ? "bubble-tail-out rounded-tl-none bg-[var(--wa-bubble-out)]" : "bubble-tail-in rounded-tr-none bg-[var(--wa-bubble-in)]",
+            "relative my-0.5 max-w-[min(72%,34rem)] rounded-[1.25rem] px-3 py-2",
+            isMine ? "bubble-tail-out rounded-tl-md bg-[var(--wa-bubble-out)]" : "bubble-tail-in rounded-tr-md bg-[var(--wa-bubble-in)]",
           )}
           dir="rtl"
         >
@@ -586,9 +586,9 @@ export function MessageBubble({
       <div
         ref={bubbleRef}
         className={cn(
-          "relative my-0.5 rounded-lg px-2.5 py-1.5 shadow-sm",
-          compact ? "max-w-[95%]" : "max-w-[65%]",
-          isMine ? "bubble-tail-out rounded-tl-none bg-[var(--wa-bubble-out)]" : "bubble-tail-in rounded-tr-none bg-[var(--wa-bubble-in)]",
+          "relative my-0.5 rounded-[1.25rem] px-3 py-2",
+          compact ? "max-w-[95%]" : "max-w-[min(72%,34rem)]",
+          isMine ? "bubble-tail-out rounded-tl-md bg-[var(--wa-bubble-out)]" : "bubble-tail-in rounded-tr-md bg-[var(--wa-bubble-in)]",
           menuOpen && "z-20",
           isPinned && "ring-1 ring-[#00a884]/40",
         )}

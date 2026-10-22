@@ -1,10 +1,16 @@
 import type { Metadata, Viewport } from "next"
+import { Rubik } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import "./globals.css"
 
+const rubik = Rubik({
+  subsets: ["hebrew", "latin"],
+  display: "swap",
+})
+
 export const metadata: Metadata = {
   title: "WhaChat",
-  description: "פשוט. אמין. הודעות פרטיות.",
+  description: "הודעות, שיחות ופגישות — שקטות, מהירות, פרטיות.",
   generator: "v0.app",
   applicationName: "WhaChat",
   appleWebApp: {
@@ -26,7 +32,10 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
-  themeColor: "#00a884",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#e6eef2" },
+    { media: "(prefers-color-scheme: dark)", color: "#070d13" },
+  ],
   colorScheme: "light dark",
 }
 
@@ -36,12 +45,12 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="he" dir="rtl" className="h-full bg-[var(--wa-panel)]" suppressHydrationWarning>
+    <html lang="he" dir="rtl" className="h-full" suppressHydrationWarning>
       <head>
         {/* eslint-disable-next-line @next/next/no-sync-scripts */}
         <script src="/theme-init.js" />
       </head>
-      <body className="h-full min-h-svh overflow-hidden antialiased">
+      <body className={`${rubik.className} min-h-svh overflow-x-hidden antialiased`}>
         {children}
         {process.env.NODE_ENV === "production" && <Analytics />}
       </body>
