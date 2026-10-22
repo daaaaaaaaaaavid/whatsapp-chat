@@ -178,9 +178,9 @@ begin
     and lower(trim(gc.email)) = lower(trim(p.email))
     and p.id is distinct from auth.uid();
 
-  update public.profiles
+  update public.profiles me
   set google_contacts_synced_at = now()
-  where id = auth.uid();
+  where me.id = auth.uid();
 
   return query
     select distinct on (p.id)
