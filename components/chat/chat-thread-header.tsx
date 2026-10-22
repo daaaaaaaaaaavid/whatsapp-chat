@@ -25,7 +25,7 @@ export function ChatThreadHeader({
             type="button"
             disabled={loadingOlder}
             onClick={onLoadOlder}
-            className="rounded-full bg-[var(--wa-panel)] px-3 py-1 text-xs text-[var(--wa-text-secondary)] shadow-sm hover:bg-white disabled:opacity-60"
+            className="rounded-full bg-[var(--wa-panel)] px-3 py-1 text-xs text-[var(--wa-text-secondary)] shadow-sm hover:bg-[var(--wa-header)] disabled:opacity-60"
           >
             {loadingOlder ? "טוען הודעות ישנות..." : "טען הודעות ישנות יותר"}
           </button>

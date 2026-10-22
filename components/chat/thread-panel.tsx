@@ -164,7 +164,7 @@ export function ThreadPanel({
       </header>
 
       <div ref={scrollRef} className="wa-chat-bg wa-scroll flex-1 overflow-y-auto px-3 py-4">
-        <div className="mb-4 rounded-xl bg-white/90 p-3 shadow-sm ring-1 ring-black/5">
+        <div className="mb-4 rounded-xl bg-[var(--wa-system-pill)] p-3 shadow-sm ring-1 ring-black/5">
           <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-[#8696a0]">
             הודעה מקורית
           </div>
@@ -173,11 +173,11 @@ export function ThreadPanel({
 
         {replies.length > 0 && (
           <div className="mb-3 flex items-center gap-3 px-1">
-            <div className="h-px flex-1 bg-[#d1d7db]" />
+            <div className="h-px flex-1 bg-[var(--wa-border)]" />
             <span className="shrink-0 text-[11px] font-medium text-[var(--wa-text-secondary)]">
               {replies.length === 1 ? "תגובה" : `${replies.length} תגובות`}
             </span>
-            <div className="h-px flex-1 bg-[#d1d7db]" />
+            <div className="h-px flex-1 bg-[var(--wa-border)]" />
           </div>
         )}
 

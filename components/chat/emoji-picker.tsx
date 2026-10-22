@@ -3,8 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Search, X } from "lucide-react"
 import emojiGroupsJson from "unicode-emoji-json/data-by-group.json"
-import annotationsJson from "cldr-annotations-full/annotations/he/annotations.json"
-import derivedAnnotationsJson from "cldr-annotations-derived-full/annotationsDerived/he/annotations.json"
 
 type EmojiItem = {
   emoji: string
@@ -53,12 +51,28 @@ const GROUP_ICONS: Record<string, string> = {
   flags: "🏳️",
 }
 
-const annotations = annotationsJson.annotations.annotations as Record<string, Annotation>
-const derivedAnnotations = derivedAnnotationsJson.annotationsDerived.annotations as Record<
-  string,
-  Annotation
->
 const emojiGroups = emojiGroupsJson as EmojiGroup[]
+
+type AnnotationMap = Record<string, Annotation>
+
+/** Hebrew CLDR names (~1.3 MB) — loaded after the picker paints, shared across opens. */
+let annotationsPromise: Promise<AnnotationMap> | null = null
+
+function loadHebrewAnnotations(): Promise<AnnotationMap> {
+  annotationsPromise ??= Promise.all([
+    import("cldr-annotations-full/annotations/he/annotations.json"),
+    import("cldr-annotations-derived-full/annotationsDerived/he/annotations.json"),
+  ])
+    .then(([base, derived]) => ({
+      ...(base.default.annotations.annotations as AnnotationMap),
+      ...(derived.default.annotationsDerived.annotations as AnnotationMap),
+    }))
+    .catch((err) => {
+      annotationsPromise = null
+      throw err
+    })
+  return annotationsPromise
+}
 
 function normalizeSearch(value: string) {
   return value
@@ -70,15 +84,26 @@ function normalizeSearch(value: string) {
     .trim()
 }
 
-function annotationFor(emoji: string) {
-  return derivedAnnotations[emoji] ?? annotations[emoji]
-}
-
 export default function EmojiPicker({ id, onSelect, onClose }: Props) {
   const pickerRef = useRef<HTMLDivElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const [query, setQuery] = useState("")
   const [activeGroup, setActiveGroup] = useState(emojiGroups[0]?.slug ?? "")
+  const [annotations, setAnnotations] = useState<AnnotationMap | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    loadHebrewAnnotations()
+      .then((map) => {
+        if (!cancelled) setAnnotations(map)
+      })
+      .catch((err) => console.error("emoji annotations:", err))
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const annotationFor = (emoji: string) => annotations?.[emoji]
 
   useEffect(() => {
     searchRef.current?.focus()
@@ -108,7 +133,7 @@ export default function EmojiPicker({ id, onSelect, onClose }: Props) {
     return emojiGroups
       .flatMap((group) => group.emojis)
       .filter((item) => {
-        const annotation = annotationFor(item.emoji)
+        const annotation = annotations?.[item.emoji]
         const searchText = normalizeSearch(
           [
             ...(annotation?.tts ?? []),
@@ -119,7 +144,7 @@ export default function EmojiPicker({ id, onSelect, onClose }: Props) {
         )
         return words.every((word) => searchText.includes(word))
       })
-  }, [activeGroup, normalizedQuery])
+  }, [activeGroup, normalizedQuery, annotations])
 
   const activeLabel =
     GROUP_LABELS[activeGroup] ??

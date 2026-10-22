@@ -26,8 +26,8 @@ export function SystemMeetingMessage({ message, onJoin, joinBlocked, isGroup }: 
       <div
         className={`inline-flex max-w-[min(100%,420px)] flex-col items-stretch gap-2 rounded-2xl px-4 py-3 text-center shadow-md ${
           isStarted && !joinBlocked
-            ? "bg-gradient-to-b from-[#00a884]/18 to-white/95 ring-2 ring-[#00a884]/45"
-            : "bg-white/95 ring-1 ring-black/5"
+            ? "bg-gradient-to-b from-[#00a884]/18 to-[var(--wa-system-pill)] ring-2 ring-[#00a884]/45"
+            : "bg-[var(--wa-system-pill)] ring-1 ring-black/5"
         }`}
       >
         <div className="flex items-center justify-center gap-2">
@@ -41,7 +41,7 @@ export function SystemMeetingMessage({ message, onJoin, joinBlocked, isGroup }: 
           <div className="min-w-0 text-start">
             <p
               className={`text-sm font-semibold leading-snug ${
-                isStarted && !joinBlocked ? "text-[#0b141a]" : "text-[var(--wa-text-secondary)]"
+                isStarted && !joinBlocked ? "text-[var(--wa-text)]" : "text-[var(--wa-text-secondary)]"
               }`}
             >
               {label}

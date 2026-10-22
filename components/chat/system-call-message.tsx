@@ -35,7 +35,7 @@ export function SystemCallMessage({ message }: { message: Message }) {
 
   return (
     <div className="my-2 flex justify-center px-2">
-      <div className="inline-flex max-w-[90%] items-center gap-2 rounded-lg bg-white/90 px-3 py-1.5 text-xs text-[var(--wa-text-secondary)] shadow-sm">
+      <div className="inline-flex max-w-[90%] items-center gap-2 rounded-lg bg-[var(--wa-system-pill)] px-3 py-1.5 text-xs text-[var(--wa-text-secondary)] shadow-sm">
         {isVideo ? (
           <Video className={cn("h-3.5 w-3.5 shrink-0", iconColor)} />
         ) : (

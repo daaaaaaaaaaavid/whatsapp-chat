@@ -347,7 +347,7 @@ export function NewGroupDialog({ open, currentUserId, onClose, onCreated }: Prop
               disabled={busy}
               className="flex w-full items-center gap-3 px-5 py-3 text-right transition hover:bg-[var(--wa-hover)] disabled:opacity-60"
             >
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--wa-accent-soft)] text-[#008069]">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--wa-accent-soft)] text-[var(--wa-teal-dark)]">
                 <Mail className="h-6 w-6" />
               </div>
               <div className="min-w-0 flex-1 text-right">
@@ -359,7 +359,7 @@ export function NewGroupDialog({ open, currentUserId, onClose, onCreated }: Prop
 
           {/* WhaChat contacts first */}
           {onWhachatCount > 0 && (
-            <div className="px-5 py-2 text-xs font-medium text-[#008069]">
+            <div className="px-5 py-2 text-xs font-medium text-[var(--wa-teal-dark)]">
               {isSearching ? "ב-WhaChat" : "אנשי קשר ב-WhaChat"}
             </div>
           )}
@@ -457,7 +457,7 @@ export function NewGroupDialog({ open, currentUserId, onClose, onCreated }: Prop
           <button
             type="button"
             onClick={() => setStep("members")}
-            className="mb-4 flex items-center gap-2 text-sm text-[#008069]"
+            className="mb-4 flex items-center gap-2 text-sm text-[var(--wa-teal-dark)]"
           >
             <ArrowLeft className="h-4 w-4 rotate-180" />
             חזרה לבחירת חברים

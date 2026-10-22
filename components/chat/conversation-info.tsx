@@ -21,7 +21,7 @@ function InfoMediaThumb({ item, onOpen }: { item: GalleryItem; onOpen: () => voi
     <button
       type="button"
       onClick={onOpen}
-      className="relative aspect-square overflow-hidden bg-[#e9edef]"
+      className="relative aspect-square overflow-hidden bg-[var(--wa-skeleton)]"
     >
       {item.type === "image" && url ? (
         <img src={url} alt="" className="h-full w-full object-cover" loading="lazy" />
@@ -198,14 +198,14 @@ export function ConversationInfo({
 
         {!conversation.is_group && !isSelf && (
           <div className="mt-2 bg-[var(--wa-panel)] px-6 py-4 shadow-sm">
-            <div className="text-sm text-[#008069]">מידע</div>
+            <div className="text-sm text-[var(--wa-teal-dark)]">מידע</div>
             <p className="mt-1 text-[var(--wa-text)]">{other?.about ?? "זמין"}</p>
           </div>
         )}
 
         {conversation.is_group && (
           <div className="mt-2 bg-[var(--wa-panel)] shadow-sm">
-            <div className="flex items-center gap-2 px-6 py-3 text-sm text-[#008069]">
+            <div className="flex items-center gap-2 px-6 py-3 text-sm text-[var(--wa-teal-dark)]">
               <Users className="h-4 w-4" />
               {(conversation.participants ?? []).length} משתתפים
             </div>
@@ -222,7 +222,7 @@ export function ConversationInfo({
                     <div className="flex items-center justify-between gap-2">
                       <span className="truncate text-[var(--wa-text)]">{label}</span>
                       {p.is_admin && (
-                        <span className="shrink-0 rounded bg-[var(--wa-accent-soft)] px-1.5 py-0.5 text-[10px] font-medium text-[#008069]">
+                        <span className="shrink-0 rounded bg-[var(--wa-accent-soft)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--wa-teal-dark)]">
                           מנהל/ת
                         </span>
                       )}
@@ -236,7 +236,7 @@ export function ConversationInfo({
         )}
 
         <div className="mt-2 bg-[var(--wa-panel)] shadow-sm">
-          <div className="flex items-center gap-2 px-6 py-3 text-sm text-[#008069]">
+          <div className="flex items-center gap-2 px-6 py-3 text-sm text-[var(--wa-teal-dark)]">
             <ImageIcon className="h-4 w-4" />
             מדיה, קישורים ומסמכים
             <span className="mr-auto text-[var(--wa-text-secondary)]">{mediaItems.length}</span>
@@ -255,7 +255,7 @@ export function ConversationInfo({
                 type="button"
                 onClick={() => setMediaTab(id)}
                 className={`rounded-full px-3 py-1 text-xs ${
-                  mediaTab === id ? "bg-[var(--wa-accent-soft)] text-[#008069]" : "bg-[var(--wa-header)] text-[var(--wa-text-secondary)]"
+                  mediaTab === id ? "bg-[var(--wa-accent-soft)] text-[var(--wa-teal-dark)]" : "bg-[var(--wa-header)] text-[var(--wa-text-secondary)]"
                 }`}
               >
                 {label}

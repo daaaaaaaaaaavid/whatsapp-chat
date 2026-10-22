@@ -137,8 +137,8 @@ export function ChatList({
               className={cn(
                 "rounded-full px-3 py-1 text-sm transition",
                 filter === f.id && !showArchive
-                  ? "bg-[var(--wa-accent-soft)] font-medium text-[#008069]"
-                  : "bg-[var(--wa-header)] text-[var(--wa-text-secondary)] hover:bg-[#e9edef]",
+                  ? "bg-[var(--wa-accent-soft)] font-medium text-[var(--wa-teal-dark)]"
+                  : "bg-[var(--wa-header)] text-[var(--wa-text-secondary)] hover:bg-[var(--wa-active)] hover:text-[var(--wa-text)]",
               )}
             >
               {f.label}
@@ -180,7 +180,7 @@ export function ChatList({
         )}
 
         {loading ? (
-          <div className="p-4 text-center text-sm text-[var(--wa-text-secondary)]">טוען צ&apos;אטים...</div>
+          <ChatListSkeleton />
         ) : filtered.length === 0 ? (
           <div className="p-8 text-center text-sm text-[var(--wa-text-secondary)]">
             {query
@@ -212,7 +212,7 @@ export function ChatList({
                   }}
                   className={cn(
                     "wa-interactive-row flex w-full items-center gap-3 px-3 py-3 text-right hover:bg-[var(--wa-hover)]",
-                    isActive && "bg-[var(--wa-header)]",
+                    isActive && "bg-[var(--wa-active)] hover:bg-[var(--wa-active)]",
                   )}
                 >
                   <Avatar
@@ -356,6 +356,27 @@ export function ChatList({
           </button>
         </div>
       )}
+    </div>
+  )
+}
+
+const SKELETON_ROWS = [72, 56, 64, 48, 68, 52, 60]
+
+function ChatListSkeleton() {
+  return (
+    <div aria-busy="true" aria-label="טוען צ'אטים">
+      {SKELETON_ROWS.map((width, i) => (
+        <div key={i} className="flex items-center gap-3 px-3 py-3">
+          <div className="wa-skeleton h-[49px] w-[49px] shrink-0 rounded-full" />
+          <div className="flex min-w-0 flex-1 flex-col gap-2 border-b border-[var(--wa-border)] pb-3">
+            <div className="flex items-center justify-between gap-4">
+              <div className="wa-skeleton h-3.5 rounded-full" style={{ width: `${width / 1.6}%` }} />
+              <div className="wa-skeleton h-2.5 w-8 rounded-full" />
+            </div>
+            <div className="wa-skeleton h-3 rounded-full" style={{ width: `${width}%` }} />
+          </div>
+        </div>
+      ))}
     </div>
   )
 }

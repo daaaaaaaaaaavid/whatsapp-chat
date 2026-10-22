@@ -365,7 +365,7 @@ export function StatusDialog({ open, currentUser, onClose }: Props) {
                   onClick={() => selectAudienceMode(option.mode)}
                   className="flex w-full items-center gap-3 px-5 py-3 text-right hover:bg-[var(--wa-hover)]"
                 >
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--wa-accent-soft)] text-[#008069]">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--wa-accent-soft)] text-[var(--wa-teal-dark)]">
                     <Icon className="h-5 w-5" />
                   </div>
                   <div className="min-w-0 flex-1">
@@ -510,7 +510,7 @@ export function StatusDialog({ open, currentUser, onClose }: Props) {
             className="mx-4 mb-3 flex items-center gap-3 rounded-lg bg-[var(--wa-header)] px-3 py-2.5 text-right"
             dir="rtl"
           >
-            <Settings className="h-5 w-5 text-[#008069]" />
+            <Settings className="h-5 w-5 text-[var(--wa-teal-dark)]" />
             <div className="min-w-0 flex-1">
               <div className="text-sm font-medium text-[var(--wa-text)]">מי יכול לראות</div>
               <div className="truncate text-xs text-[var(--wa-text-secondary)]">
@@ -602,7 +602,7 @@ export function StatusDialog({ open, currentUser, onClose }: Props) {
             className="flex w-full items-center gap-3 border-b border-[var(--wa-border)] px-5 py-3 text-right transition hover:bg-[var(--wa-hover)]"
             dir="rtl"
           >
-            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--wa-accent-soft)] text-[#008069]">
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--wa-accent-soft)] text-[var(--wa-teal-dark)]">
               <Settings className="h-5 w-5" />
             </div>
             <div className="min-w-0 flex-1">

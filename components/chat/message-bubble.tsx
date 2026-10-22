@@ -351,7 +351,7 @@ export function MessageBubble({
         <div
           className={cn(
             "relative my-0.5 max-w-[65%] rounded-lg px-2.5 py-1.5 shadow-sm",
-            isMine ? "bubble-tail-out rounded-tl-none bg-[var(--wa-bubble-out)]" : "bubble-tail-in rounded-tr-none bg-[var(--wa-panel)]",
+            isMine ? "bubble-tail-out rounded-tl-none bg-[var(--wa-bubble-out)]" : "bubble-tail-in rounded-tr-none bg-[var(--wa-bubble-in)]",
           )}
           dir="rtl"
         >
@@ -588,7 +588,7 @@ export function MessageBubble({
         className={cn(
           "relative my-0.5 rounded-lg px-2.5 py-1.5 shadow-sm",
           compact ? "max-w-[95%]" : "max-w-[65%]",
-          isMine ? "bubble-tail-out rounded-tl-none bg-[var(--wa-bubble-out)]" : "bubble-tail-in rounded-tr-none bg-[var(--wa-panel)]",
+          isMine ? "bubble-tail-out rounded-tl-none bg-[var(--wa-bubble-out)]" : "bubble-tail-in rounded-tr-none bg-[var(--wa-bubble-in)]",
           menuOpen && "z-20",
           isPinned && "ring-1 ring-[#00a884]/40",
         )}
@@ -1007,7 +1007,7 @@ export function MessageBubble({
             onOpenThread()
           }}
           className={cn(
-            "mb-1 flex max-w-[min(100%,320px)] items-center gap-2 rounded-lg border border-[#d1d7db] bg-[var(--wa-panel)] px-3 py-1.5 text-right shadow-sm transition hover:bg-[var(--wa-header)]",
+            "mb-1 flex max-w-[min(100%,320px)] items-center gap-2 rounded-lg border border-[var(--wa-border)] bg-[var(--wa-panel)] px-3 py-1.5 text-right shadow-sm transition hover:bg-[var(--wa-header)]",
             isMine ? "self-start" : "self-end",
           )}
           dir="rtl"

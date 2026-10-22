@@ -94,7 +94,7 @@ export function ProfileDialog({
 
       <div className="bg-[var(--wa-panel)]">
         <div className="px-6 py-4">
-          <label className="text-sm text-[#008069]">שם</label>
+          <label className="text-sm text-[var(--wa-teal-dark)]">שם</label>
           <div className="mt-1 flex items-center gap-2">
             {editingName ? (
               <>
@@ -130,7 +130,7 @@ export function ProfileDialog({
         </p>
 
         <div className="border-t border-[var(--wa-border)] px-6 py-4">
-          <label className="text-sm text-[#008069]">מידע (סטטוס)</label>
+          <label className="text-sm text-[var(--wa-teal-dark)]">מידע (סטטוס)</label>
           <div className="mt-1 flex items-center gap-2">
             {editingAbout ? (
               <>
@@ -162,7 +162,7 @@ export function ProfileDialog({
         </div>
 
         <div className="border-t border-[var(--wa-border)] px-6 py-4">
-          <label className="text-sm text-[#008069]">אימייל</label>
+          <label className="text-sm text-[var(--wa-teal-dark)]">אימייל</label>
           <div className="mt-1 text-[var(--wa-text)]" dir="ltr">
             {currentUser.email}
           </div>
@@ -177,7 +177,7 @@ export function ProfileDialog({
 
         {prefs && onPrefsChange && (
           <div className="border-t border-[var(--wa-border)] px-6 py-4">
-            <label className="text-sm text-[#008069]">שעות שקט — מצב עבודה</label>
+            <label className="text-sm text-[var(--wa-teal-dark)]">שעות שקט — מצב עבודה</label>
             <p className="mt-1 text-xs text-[var(--wa-text-secondary)]">
               בשעות אלה התראות מצ׳אטי עבודה מושתקות (גם כשאתה במצב עבודה).
             </p>

@@ -649,21 +649,6 @@ export function ChatApp({ currentUser: initialUser }: Props) {
   }, [conversations, currentUser.id, updatePrefs])
 
   useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      try {
-        const { ensureProfileClient } = await import("@/lib/ensure-profile-client")
-        const updated = await ensureProfileClient({
-          id: currentUser.id,
-          email: currentUser.email,
-          display_name: currentUser.display_name,
-        })
-        if (!cancelled && updated) setCurrentUser(updated)
-      } catch {
-        // profiles table may not exist yet
-      }
-    })()
-
     const bump = () => {
       if (document.visibilityState !== "visible") return
       try {
@@ -686,11 +671,10 @@ export function ChatApp({ currentUser: initialUser }: Props) {
     document.addEventListener("visibilitychange", onVisibility)
     bump()
     return () => {
-      cancelled = true
       window.clearInterval(id)
       document.removeEventListener("visibilitychange", onVisibility)
     }
-  }, [currentUser.id, currentUser.email, currentUser.display_name])
+  }, [currentUser.id])
 
   const selectConversation = useCallback((conv: Conversation) => {
     setActiveId(conv.id)

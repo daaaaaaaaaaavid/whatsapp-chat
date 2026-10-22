@@ -19,7 +19,7 @@ export function SystemWatchMessage({ message, onJoin, joinBlocked }: Props) {
 
   return (
     <div className="my-2 flex justify-center px-2">
-      <div className="inline-flex max-w-[95%] flex-wrap items-center justify-center gap-2 rounded-lg bg-white/90 px-3 py-1.5 text-xs text-[var(--wa-text-secondary)] shadow-sm">
+      <div className="inline-flex max-w-[95%] flex-wrap items-center justify-center gap-2 rounded-lg bg-[var(--wa-system-pill)] px-3 py-1.5 text-xs text-[var(--wa-text-secondary)] shadow-sm">
         <Clapperboard className="h-3.5 w-3.5 shrink-0 text-[#00a884]" />
         <span>{label}</span>
         <span className="text-[#8696a0]" dir="ltr">

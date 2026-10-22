@@ -334,7 +334,7 @@ export function ConversationView({
   }, [conversation.id, hasMore, loadingOlder, loadOlder])
 
   useEffect(() => {
-    if (loading || searchOpen) return
+    if ((loading && messages.length === 0) || searchOpen) return
     const el = scrollRef.current
     if (!el) return
     const switched = prevConvIdRef.current !== conversation.id
@@ -1011,8 +1011,8 @@ export function ConversationView({
             onLoadOlder={() => void loadOlder()}
           />
 
-          {loading ? (
-            <div className="py-8 text-center text-sm text-[var(--wa-text-secondary)]">טוען הודעות...</div>
+          {loading && visibleMessages.length === 0 ? (
+            <MessagesSkeleton />
           ) : visibleMessages.length === 0 ? (
             <div className="py-8 text-center text-sm text-[var(--wa-text-secondary)]">אין הודעות עדיין. שלח את ההודעה הראשונה!</div>
           ) : (
@@ -1020,18 +1020,18 @@ export function ConversationView({
               <div key={message.id} data-message-id={message.id}>
                 {showDivider && (
                   <div className="my-3 flex justify-center">
-                    <span className="rounded-lg bg-white/90 px-3 py-1 text-xs text-[var(--wa-text-secondary)] shadow-sm">
+                    <span className="rounded-lg bg-[var(--wa-system-pill)] px-3 py-1 text-xs text-[var(--wa-text-secondary)] shadow-sm">
                       {formatDateDivider(message.created_at)}
                     </span>
                   </div>
                 )}
                 {unreadAnchorId === message.id && unreadCountAtOpen > 0 && (
                   <div className="my-3 flex items-center gap-3">
-                    <div className="h-px flex-1 bg-[#e9edef]" />
-                    <span className="rounded-full bg-[var(--wa-panel)] px-3 py-1 text-xs font-medium text-[#00a884] shadow-sm">
+                    <div className="h-px flex-1 bg-[var(--wa-border)]" />
+                    <span className="rounded-full bg-[var(--wa-system-pill)] px-3 py-1 text-xs font-medium text-[#00a884] shadow-sm">
                       {unreadCountAtOpen} הודעות שלא נקראו
                     </span>
-                    <div className="h-px flex-1 bg-[#e9edef]" />
+                    <div className="h-px flex-1 bg-[var(--wa-border)]" />
                   </div>
                 )}
                 <MessageBubble
@@ -1254,6 +1254,30 @@ export function ConversationView({
         />
       </div>
     )}
+    </div>
+  )
+}
+
+const SKELETON_BUBBLES: { mine: boolean; width: number }[] = [
+  { mine: false, width: 46 },
+  { mine: false, width: 30 },
+  { mine: true, width: 38 },
+  { mine: false, width: 54 },
+  { mine: true, width: 26 },
+  { mine: true, width: 42 },
+]
+
+function MessagesSkeleton() {
+  return (
+    <div className="flex flex-col gap-2 py-4" aria-busy="true" aria-label="טוען הודעות">
+      {SKELETON_BUBBLES.map(({ mine, width }, i) => (
+        <div key={i} className={mine ? "flex justify-start" : "flex justify-end"}>
+          <div
+            className="wa-skeleton h-9 rounded-lg shadow-sm"
+            style={{ width: `${width}%`, background: mine ? "var(--wa-bubble-out)" : "var(--wa-bubble-in)" }}
+          />
+        </div>
+      ))}
     </div>
   )
 }
