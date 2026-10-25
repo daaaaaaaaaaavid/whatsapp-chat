@@ -4,6 +4,7 @@ import { createServiceClient } from "@/lib/supabase/admin"
 import { checkRateLimitAsync } from "@/lib/rate-limit"
 import { parseMediaStoragePath } from "@/lib/media-url"
 import { isChatMediaStoragePath } from "@/lib/media-cleanup"
+import { isDriveMediaUrl } from "@/lib/google-drive"
 
 export const dynamic = "force-dynamic"
 
@@ -68,14 +69,23 @@ export async function POST(req: Request) {
   let storageDeleted = false
 
   if (fileUrl && !result?.already_opened) {
-    const path = parseMediaStoragePath(fileUrl)
-    if (path && isChatMediaStoragePath(path)) {
-      const admin = createServiceClient()
-      if (admin) {
-        const { error: removeErr } = await admin.storage.from("media").remove([path])
-        storageDeleted = !removeErr
-        if (removeErr) {
-          console.error("view-once storage delete failed", removeErr.message)
+    if (isDriveMediaUrl(fileUrl)) {
+      try {
+        const { deleteDriveMediaRefs } = await import("@/lib/google-drive-server")
+        storageDeleted = (await deleteDriveMediaRefs([fileUrl])) > 0
+      } catch (err) {
+        console.error("view-once drive delete failed", err)
+      }
+    } else {
+      const path = parseMediaStoragePath(fileUrl)
+      if (path && isChatMediaStoragePath(path)) {
+        const admin = createServiceClient()
+        if (admin) {
+          const { error: removeErr } = await admin.storage.from("media").remove([path])
+          storageDeleted = !removeErr
+          if (removeErr) {
+            console.error("view-once storage delete failed", removeErr.message)
+          }
         }
       }
     }

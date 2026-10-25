@@ -40,6 +40,7 @@ export async function signInWithGoogle(nextPath = "/chat") {
 }
 
 const CONTACTS_SCOPE = "https://www.googleapis.com/auth/contacts.readonly"
+const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file"
 
 /**
  * Incremental Google consent for People API (contacts.readonly).
@@ -71,4 +72,37 @@ export async function connectGoogleContacts(nextPath = "/chat?google_contacts=1"
     return
   }
   throw new Error("לא התקבלה כתובת הרשאה ל־Google Contacts. בדוק שהוספת contacts.readonly ב־Google Cloud.")
+}
+
+/**
+ * Incremental Google consent for Drive (drive.file) + a refresh token.
+ * After redirect, /chat?google_drive=1 saves the token server-side.
+ */
+export async function connectGoogleDrive(nextPath = "/chat?google_drive=1") {
+  await ensureSupabaseConfig()
+  const supabase = createClient()
+
+  setNextPath(nextPath)
+  const redirectTo = `${window.location.origin}/auth/callback`
+
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo,
+      scopes: DRIVE_SCOPE,
+      queryParams: {
+        access_type: "offline",
+        prompt: "consent",
+        include_granted_scopes: "true",
+      },
+      skipBrowserRedirect: false,
+    },
+  })
+
+  if (error) throw error
+  if (data.url) {
+    window.location.assign(data.url)
+    return
+  }
+  throw new Error("לא התקבלה כתובת הרשאה לגוגל דרייב. בדוק שהוספת drive.file ב־Google Cloud.")
 }

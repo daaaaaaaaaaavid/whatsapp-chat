@@ -30,6 +30,12 @@ describe("parseMediaStoragePath", () => {
     expect(parseMediaStoragePath("user1/avatar-1.png")).toBe("user1/avatar-1.png")
   })
 
+  it("does not treat drive refs as storage paths", () => {
+    expect(
+      parseMediaStoragePath("gdrive:11111111-1111-4111-8111-111111111111/1AbCDefGhIjkLmnopQRstuVWXyz012345"),
+    ).toBeNull()
+  })
+
   it("ignores duration hash when parsing path from public URL", () => {
     const url =
       "https://xyz.supabase.co/storage/v1/object/public/media/user1/conv1/voice.webm#d=3.5"
@@ -46,6 +52,15 @@ describe("media duration hint", () => {
     expect(withHint).toContain("#d=12.3")
     expect(parseMediaDurationHint(withHint)).toBe(12.3)
     expect(parseMediaDurationHint("https://example.com/x.webm")).toBeNull()
+  })
+
+  it("keeps existing hash params when adding duration", () => {
+    const withHint = withMediaDurationHint(
+      "gdrive:11111111-1111-4111-8111-111111111111/file1234567#whachat=video",
+      8,
+    )
+    expect(parseMediaDurationHint(withHint)).toBe(8)
+    expect(withHint).toContain("whachat=video")
   })
 })
 

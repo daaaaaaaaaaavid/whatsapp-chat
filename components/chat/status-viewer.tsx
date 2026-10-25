@@ -28,7 +28,9 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { notifyStatusOwner } from "@/lib/push-client"
-import { useSignedMediaUrl } from "@/lib/use-signed-media-url"
+import { useChatMediaDisplay } from "@/lib/use-chat-media"
+import { DriveDownloadCard } from "./drive-download-card"
+import { useDriveOptional } from "./drive-provider"
 
 const IMAGE_DURATION_MS = 5000
 const EMOJIS = ["😀", "😂", "😍", "🥰", "😎", "🤔", "😢", "👍", "🙏", "❤️", "🔥", "🎉", "👏", "😮", "🤩", "💯", "✨", "😅"]
@@ -108,9 +110,12 @@ export function StatusViewer({
   const [activityLoading, setActivityLoading] = useState(false)
   const [captionExpanded, setCaptionExpanded] = useState(false)
 
+  const drive = useDriveOptional()
+  const [driveBusy, setDriveBusy] = useState(false)
+  const [driveError, setDriveError] = useState<string | null>(null)
   const hasMedia = Boolean(status?.media_url)
   const isVideo = hasMedia && status?.media_url ? isVideoUrl(status.media_url) : false
-  const displayMediaUrl = useSignedMediaUrl(status?.media_url)
+  const { url: displayMediaUrl, needsDownload } = useChatMediaDisplay(status?.media_url)
   const progressRef = useRef(0)
   const videoRef = useRef<HTMLVideoElement>(null)
   const bgCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -141,7 +146,8 @@ export function StatusViewer({
     menuOpen ||
     sheet !== null ||
     Boolean(replyError) ||
-    voice.listening
+    voice.listening ||
+    needsDownload
 
   useEffect(() => {
     progressRef.current = 0
@@ -149,7 +155,9 @@ export function StatusViewer({
     setProgress(0)
     setUserPaused(false)
     setHolding(false)
-    setMediaLoading(Boolean(status?.media_url))
+    setMediaLoading(Boolean(status?.media_url) && !needsDownload)
+    setDriveError(null)
+    setDriveBusy(false)
     setReply("")
     setShowEmoji(false)
     setMenuOpen(false)
@@ -260,7 +268,7 @@ export function StatusViewer({
     const target = nextTarget()
     if (!target) return
     const next = groups[target[0]]?.statuses[target[1]]
-    if (!next?.media_url || isVideoUrl(next.media_url)) return
+    if (!next?.media_url || isVideoUrl(next.media_url) || next.media_url.startsWith("gdrive:")) return
     let cancelled = false
     void resolveMediaDisplayUrl(createClient(), next.media_url).then((url) => {
       if (cancelled || !url) return
@@ -653,7 +661,26 @@ export function StatusViewer({
               }}
             />
 
-            {hasMedia && displayMediaUrl ? (
+            {hasMedia && needsDownload ? (
+              <div className="flex h-full w-full items-center justify-center bg-[#0b141a] px-6">
+                <DriveDownloadCard
+                  kind={isVideo ? "video" : "image"}
+                  loading={driveBusy}
+                  error={driveError}
+                  onDownload={() => {
+                    if (!drive || !status?.media_url) return
+                    setDriveBusy(true)
+                    setDriveError(null)
+                    void drive
+                      .copyToMyDrive({ kind: "status", id: status.id, fileUrl: status.media_url })
+                      .catch((err) => {
+                        setDriveError(err instanceof Error ? err.message : "ההורדה נכשלה")
+                      })
+                      .finally(() => setDriveBusy(false))
+                  }}
+                />
+              </div>
+            ) : hasMedia && displayMediaUrl ? (
               isVideo ? (
                 <video
                   ref={videoRef}
@@ -705,7 +732,7 @@ export function StatusViewer({
               </div>
             ) : null}
 
-            {mediaLoading && hasMedia && (
+            {mediaLoading && hasMedia && !needsDownload && (
               <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
                 <div className="h-12 w-12 animate-spin rounded-full border-[3px] border-white/25 border-t-white" />
               </div>

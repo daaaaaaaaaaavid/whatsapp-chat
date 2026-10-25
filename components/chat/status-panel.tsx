@@ -18,6 +18,7 @@ import { formatStatusTime } from "@/lib/format"
 import type { Profile } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { Camera, ImageIcon, Lock, MoreVertical, Pencil, Plus, PlusCircle, RefreshCw, Shield } from "lucide-react"
+import { DriveConnectBanner } from "./drive-connect-banner"
 
 type Pane = "home" | "text" | "media" | "privacy"
 
@@ -297,6 +298,7 @@ export function StatusTab({ currentUser, asideClassName }: Props) {
             </div>
           </div>
         </header>
+        <DriveConnectBanner />
 
         <div className="wa-scroll min-h-0 flex-1 overflow-y-auto pb-4">
           <div className="relative" ref={myRef}>

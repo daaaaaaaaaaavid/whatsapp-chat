@@ -31,5 +31,6 @@ export function profileFromUser(user: User, row?: Partial<Profile> | null): Prof
     last_seen: row?.last_seen ?? null,
     created_at: row?.created_at ?? new Date().toISOString(),
     google_contacts_synced_at: row?.google_contacts_synced_at ?? null,
+    google_drive_connected_at: row?.google_drive_connected_at ?? null,
   }
 }

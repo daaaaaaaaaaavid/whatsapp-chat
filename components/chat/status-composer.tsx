@@ -5,7 +5,9 @@ import { Avatar } from "./avatar"
 import { createClient } from "@/lib/supabase/client"
 import { fetchContacts } from "@/lib/chat-actions"
 import { isAllowedMediaFile, resolveFileMime, UNSUPPORTED_MEDIA_MESSAGE } from "@/lib/media-mime"
-import { mediaReferenceUrl } from "@/lib/media-url"
+import { uploadUserDriveMedia } from "@/lib/google-drive-client"
+import { DriveNotConnectedError } from "@/lib/google-drive"
+import { useDriveOptional } from "./drive-provider"
 import type { Profile, StatusAudienceMode } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import {
@@ -93,23 +95,6 @@ export function statusMediaError(file: File): string | null {
   return null
 }
 
-const MIME_EXT: Record<string, string> = {
-  "image/jpeg": "jpg",
-  "image/png": "png",
-  "image/gif": "gif",
-  "image/webp": "webp",
-  "image/bmp": "bmp",
-  "image/heic": "heic",
-  "image/heif": "heif",
-  "image/avif": "avif",
-  "video/mp4": "mp4",
-  "video/webm": "webm",
-  "video/quicktime": "mov",
-  "video/x-msvideo": "avi",
-  "video/3gpp": "3gp",
-  "video/x-matroska": "mkv",
-}
-
 export async function postStatus(opts: {
   userId: string
   text: string
@@ -124,25 +109,13 @@ export async function postStatus(opts: {
     const file = opts.mediaFile
     const mime = resolveFileMime(file)
     const isVideoFile = mime.startsWith("video/") || file.type.startsWith("video/")
-    const namedExt = file.name.split(".").pop()?.toLowerCase()
-    const ext =
-      MIME_EXT[mime] ||
-      (namedExt && /^[a-z0-9]{2,5}$/.test(namedExt) ? namedExt : null) ||
-      (isVideoFile ? "mp4" : "jpg")
-    const path = `${opts.userId}/status/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
-    const { error } = await supabase.storage.from("media").upload(path, file, { contentType: mime })
-    if (error) {
-      const msg = error.message.toLowerCase()
-      if (msg.includes("bucket") || msg.includes("not found")) {
-        throw new Error("חסר bucket בשם media ב־Supabase. הרץ את migration-media-storage.sql")
-      }
-      if (msg.includes("policy") || msg.includes("row-level") || msg.includes("security")) {
-        throw new Error("אין הרשאה להעלות. הרץ את migration-media-storage.sql ב־Supabase")
-      }
-      throw new Error(error.message)
-    }
-    // Client-only hash so the viewer classifies media without relying on extension alone.
-    mediaUrl = `${mediaReferenceUrl(supabase, path)}#whachat=${isVideoFile ? "video" : "image"}`
+    mediaUrl = await uploadUserDriveMedia({
+      userId: opts.userId,
+      file,
+      fileName: file.name || `status.${isVideoFile ? "mp4" : "jpg"}`,
+      mimeType: mime,
+      extraHash: `whachat=${isVideoFile ? "video" : "image"}`,
+    })
   }
 
   const { error } = await supabase.from("statuses").insert({
@@ -391,6 +364,7 @@ export function MediaStatusComposer({
   const [posting, setPosting] = useState(false)
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const drive = useDriveOptional()
   const selectedIndex = Math.max(0, Math.min(selected, drafts.length - 1))
   const current = drafts[selectedIndex]
 
@@ -410,6 +384,11 @@ export function MediaStatusComposer({
 
   const post = async () => {
     if (posting) return
+    if (!drive?.connected) {
+      drive?.requestConnect()
+      setError(new DriveNotConnectedError().message)
+      return
+    }
     setPosting(true)
     setError(null)
     let remaining = drafts

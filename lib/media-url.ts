@@ -60,6 +60,7 @@ export function clearSignedMediaUrlCacheForTests(): void {
 /** Extract `{ userId/... }` path from a stored media URL or return a raw path. */
 export function parseMediaStoragePath(fileUrl: string): string | null {
   if (!fileUrl) return null
+  if (fileUrl.startsWith("gdrive:")) return null
   // Already a storage path (no scheme)
   if (!fileUrl.includes("://") && !fileUrl.startsWith("/")) {
     return fileUrl.replace(/^\/+/, "") || null
@@ -107,9 +108,13 @@ export function parseMediaDurationHint(fileUrl: string | null | undefined): numb
 
 /** Append or replace `#d=` duration hint on a media reference URL. */
 export function withMediaDurationHint(fileUrl: string, durationSec: number): string {
-  const base = fileUrl.split("#")[0] ?? fileUrl
+  const hashIdx = fileUrl.indexOf("#")
+  const base = hashIdx >= 0 ? fileUrl.slice(0, hashIdx) : fileUrl
+  const existing = hashIdx >= 0 ? fileUrl.slice(hashIdx + 1) : ""
+  const params = new URLSearchParams(existing.replace(/;/g, "&"))
   const safe = Math.max(0.1, Math.round(durationSec * 10) / 10)
-  return `${base}#d=${safe}`
+  params.set("d", String(safe))
+  return `${base}#${params.toString()}`
 }
 
 /** Resolve a displayable URL (signed) from a stored file_url / media_url. */

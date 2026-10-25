@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client"
 import { inferAudioMimeFromUrl } from "@/lib/media-mime"
 import { downloadMediaBlob, parseMediaDurationHint } from "@/lib/media-url"
 import { useSignedMediaUrlControls } from "@/lib/use-signed-media-url"
+import { useChatMediaDisplay } from "@/lib/use-chat-media"
 import { MessageTicks } from "./message-ticks"
 
 /** Deterministic fake waveform bars from a seed (message id). */
@@ -60,6 +61,7 @@ export function VoiceMessage({
   avatarName,
 }: Props) {
   const { url: signedAvatarUrl } = useSignedMediaUrlControls(avatarUrl)
+  const driveMedia = useChatMediaDisplay(fileUrl)
   const hintDuration = parseMediaDurationHint(fileUrl) ?? 0
   const [ready, setReady] = useState(false)
   const [playing, setPlaying] = useState(false)
@@ -209,7 +211,12 @@ export function VoiceMessage({
     void (async () => {
       try {
         const supabase = createClient()
-        const blob = await downloadMediaBlob(supabase, fileUrl)
+        const blob = driveMedia.url
+          ? await fetch(driveMedia.url).then((res) => {
+              if (!res.ok) throw new Error("empty media")
+              return res.blob()
+            })
+          : await downloadMediaBlob(supabase, fileUrl)
         if (cancelled) return
         if (!blob || blob.size === 0) throw new Error("empty media")
 
@@ -257,7 +264,7 @@ export function VoiceMessage({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fileUrl, reloadToken])
+  }, [fileUrl, reloadToken, driveMedia.url])
 
   const toggle = async () => {
     if (buffering) {

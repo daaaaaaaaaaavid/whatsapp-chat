@@ -7,6 +7,7 @@ export type Profile = {
   last_seen: string | null
   created_at: string
   google_contacts_synced_at?: string | null
+  google_drive_connected_at?: string | null
 }
 
 /** Imported Google contact row (private to the signed-in user). */
@@ -165,6 +166,8 @@ export type Conversation = {
   created_by: string | null
   created_at: string
   updated_at: string
+  /** Direct chats with someone new stay pending until they accept. */
+  request_status?: "pending" | "accepted" | "declined" | null
   /** When set, this group is a channel inside a Work Space */
   work_space_id?: string | null
   participants?: Participant[]

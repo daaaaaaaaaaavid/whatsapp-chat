@@ -16,6 +16,7 @@ create table if not exists public.profiles (
 
 alter table public.profiles add column if not exists chat_prefs jsonb not null default '{}'::jsonb;
 alter table public.profiles add column if not exists google_contacts_synced_at timestamptz;
+alter table public.profiles add column if not exists google_drive_connected_at timestamptz;
 
 -- Work Spaces live in dedicated tables; see migration-work-spaces.sql
 -- conversations.work_space_id links group channels to a space (no message duplication).
@@ -34,6 +35,9 @@ create table if not exists public.conversations (
 
 alter table public.conversations
   add column if not exists work_space_id uuid;
+
+alter table public.conversations
+  add column if not exists request_status text not null default 'accepted';
 
 -- Participants
 create table if not exists public.conversation_participants (
@@ -1076,3 +1080,41 @@ $$;
 
 revoke all on function public.join_meeting_by_invite(text) from public;
 grant execute on function public.join_meeting_by_invite(text) to authenticated;
+
+-- Per-user Google Drive media. Tokens are service-role only.
+create table if not exists public.google_drive_accounts (
+  user_id uuid primary key references auth.users (id) on delete cascade,
+  refresh_token text not null,
+  google_email text,
+  folder_id text,
+  connected_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.google_drive_accounts enable row level security;
+
+create table if not exists public.drive_media_copies (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  source_owner_id uuid not null,
+  source_file_id text not null,
+  dest_file_id text not null,
+  kind text not null check (kind in ('message', 'status')),
+  source_row_id uuid,
+  created_at timestamptz not null default now(),
+  unique (user_id, source_owner_id, source_file_id)
+);
+
+create index if not exists drive_media_copies_user_idx
+  on public.drive_media_copies (user_id);
+
+create index if not exists drive_media_copies_source_idx
+  on public.drive_media_copies (source_owner_id, source_file_id);
+
+alter table public.drive_media_copies enable row level security;
+
+drop policy if exists "drive_copies_select_own" on public.drive_media_copies;
+create policy "drive_copies_select_own"
+  on public.drive_media_copies for select
+  to authenticated
+  using (user_id = auth.uid());

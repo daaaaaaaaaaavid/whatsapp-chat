@@ -6,6 +6,7 @@ import {
   mediaRetentionCutoffIso,
 } from "@/lib/media-retention"
 import { parseMediaStoragePath } from "@/lib/media-url"
+import { isDriveMediaUrl } from "@/lib/google-drive"
 
 const BATCH_SIZE = 200
 const MEDIA_BUCKET = "media"
@@ -105,7 +106,12 @@ async function cleanupExpiredChatMedia(
     const urls = [...new Set(eligible.map((r) => r.file_url).filter(Boolean) as string[])]
 
     const pathsToDelete: string[] = []
+    const driveUrls: string[] = []
     for (const fileUrl of urls) {
+      if (isDriveMediaUrl(fileUrl)) {
+        driveUrls.push(fileUrl)
+        continue
+      }
       const path = parseMediaStoragePath(fileUrl)
       if (!path || !isChatMediaStoragePath(path)) {
         storageSkipped += 1
@@ -139,6 +145,15 @@ async function cleanupExpiredChatMedia(
         storageDeleted += uniquePaths.length
       }
     }
+    if (driveUrls.length > 0) {
+      try {
+        const { deleteDriveMediaRefs } = await import("@/lib/google-drive-server")
+        storageDeleted += await deleteDriveMediaRefs(driveUrls)
+      } catch (err) {
+        storageErrors += driveUrls.length
+        console.error("[media-cleanup] drive remove failed:", err)
+      }
+    }
   }
 
   return { expiredMessages, storageDeleted, storageSkipped, storageErrors }
@@ -162,6 +177,9 @@ async function cleanupExpiredStatusMedia(admin: SupabaseClient): Promise<number>
     const paths = rows
       .map((row) => (row.media_url ? parseMediaStoragePath(row.media_url) : null))
       .filter((path): path is string => Boolean(path))
+    const driveUrls = rows
+      .map((row) => row.media_url)
+      .filter((url): url is string => Boolean(url && isDriveMediaUrl(url)))
 
     const ids = rows.map((row) => row.id)
     const { error: updateError } = await admin.from("statuses").update({ media_url: null }).in("id", ids)
@@ -172,6 +190,14 @@ async function cleanupExpiredStatusMedia(admin: SupabaseClient): Promise<number>
       const { error: removeError } = await admin.storage.from(MEDIA_BUCKET).remove(uniquePaths)
       if (removeError) {
         console.error("[media-cleanup] status storage remove failed:", removeError.message)
+      }
+    }
+    if (driveUrls.length > 0) {
+      try {
+        const { deleteDriveMediaRefs } = await import("@/lib/google-drive-server")
+        await deleteDriveMediaRefs(driveUrls)
+      } catch (err) {
+        console.error("[media-cleanup] status drive remove failed:", err)
       }
     }
 

@@ -75,6 +75,16 @@ export async function getOrCreateSelfConversation(currentUserId: string): Promis
     throw new Error(errMessage(partsError, "נכשל בהוספת משתתפים לשיחה"))
   }
 
+  const { error: selfErr } = await supabase.rpc("accept_self_conversation", {
+    p_conversation_id: conversationId,
+  })
+  if (selfErr) {
+    const msg = selfErr.message.toLowerCase()
+    if (!msg.includes("does not exist") && !msg.includes("could not find")) {
+      console.error("accept_self_conversation:", selfErr.message)
+    }
+  }
+
   return conversationId
 }
 
@@ -104,23 +114,36 @@ export async function getOrCreateDirectConversation(currentUserId: string, other
 
     const sharedIds = (theirs ?? []).map((p) => p.conversation_id)
     if (sharedIds.length) {
-      const { data: convs } = await supabase
-        .from("conversations")
-        .select("id, is_group")
-        .in("id", sharedIds)
-        .eq("is_group", false)
-      if (convs && convs.length) return convs[0].id
+      const existing = await findExistingDirectConversation(supabase, sharedIds)
+      if (existing) {
+        if (
+          existing.request_status === "declined" &&
+          existing.created_by &&
+          existing.created_by !== currentUserId
+        ) {
+          await respondToChatRequest(existing.id, true)
+        }
+        return existing.id
+      }
     }
   }
 
-  // Generate id client-side so we don't need RETURNING (SELECT RLS blocks before we're a participant)
+  // Generate id client-side so we don't need RETURNING (SELECT RLS blocks before we're a participant).
+  // New 1:1 chats stay pending until the other person accepts (see migration-chat-requests.sql).
   const conversationId = crypto.randomUUID()
   const { error } = await supabase.from("conversations").insert({
     id: conversationId,
     is_group: false,
     created_by: currentUserId,
+    request_status: "pending",
   })
   if (error) {
+    const msg = error.message.toLowerCase()
+    if (msg.includes("request_status")) {
+      throw new Error(
+        "כדי לפתוח שיחה עם מישהו חדש צריך להריץ את supabase/migration-chat-requests.sql ב־Supabase.",
+      )
+    }
     throw new Error(
       errMessage(error, "נכשל ביצירת שיחה. ודא שהרצת את schema.sql ב־Supabase."),
     )
@@ -137,6 +160,64 @@ export async function getOrCreateDirectConversation(currentUserId: string, other
   }
 
   return conversationId
+}
+
+type DirectConvRow = { id: string; request_status?: string | null; created_by?: string | null }
+
+async function findExistingDirectConversation(
+  supabase: ReturnType<typeof createClient>,
+  sharedIds: string[],
+): Promise<DirectConvRow | null> {
+  const withStatus = await supabase
+    .from("conversations")
+    .select("id, request_status, created_by")
+    .in("id", sharedIds)
+    .eq("is_group", false)
+
+  if (withStatus.error) {
+    const msg = withStatus.error.message.toLowerCase()
+    if (!msg.includes("request_status")) return null
+    const plain = await supabase
+      .from("conversations")
+      .select("id")
+      .in("id", sharedIds)
+      .eq("is_group", false)
+    const id = plain.data?.[0]?.id
+    return id ? { id } : null
+  }
+
+  const rows = (withStatus.data ?? []) as DirectConvRow[]
+  const accepted = rows.find((row) => !row.request_status || row.request_status === "accepted")
+  return accepted ?? rows[0] ?? null
+}
+
+function requestRpcError(error: { message?: string }, fallback: string): Error {
+  const msg = (error.message ?? "").toLowerCase()
+  if (msg.includes("does not exist") || msg.includes("could not find the function")) {
+    return new Error("הרץ את supabase/migration-chat-requests.sql ב־Supabase.")
+  }
+  return new Error(errMessage(error, fallback))
+}
+
+/** The recipient accepts or declines a new direct chat. */
+export async function respondToChatRequest(conversationId: string, accept: boolean): Promise<void> {
+  await ensureSupabaseConfig()
+  const supabase = createClient()
+  const { error } = await supabase.rpc("respond_to_chat_request", {
+    p_conversation_id: conversationId,
+    p_accept: accept,
+  })
+  if (error) throw requestRpcError(error, accept ? "נכשל באישור השיחה" : "נכשל בדחיית השיחה")
+}
+
+/** After a decline, the sender can ask again in the same chat. */
+export async function resendChatRequest(conversationId: string): Promise<void> {
+  await ensureSupabaseConfig()
+  const supabase = createClient()
+  const { error } = await supabase.rpc("resend_chat_request", {
+    p_conversation_id: conversationId,
+  })
+  if (error) throw requestRpcError(error, "נכשל בשליחת הבקשה")
 }
 
 export async function createGroupConversation(

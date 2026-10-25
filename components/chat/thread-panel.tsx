@@ -39,6 +39,7 @@ type Props = {
     label: string
   }) => void | Promise<void>
   mentionCandidates?: MentionCandidate[]
+  canCompose?: boolean
 }
 
 export function ThreadPanel({
@@ -61,6 +62,7 @@ export function ThreadPanel({
   onStartChatByEmail,
   onOpenMention,
   mentionCandidates,
+  canCompose = true,
 }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -196,6 +198,7 @@ export function ThreadPanel({
         <div ref={bottomRef} />
       </div>
 
+      {canCompose && (
       <div className="shrink-0 border-t border-[var(--wa-border)] bg-[var(--wa-header)]">
         <MessageInput
           conversationId={conversation.id}
@@ -217,6 +220,7 @@ export function ThreadPanel({
           mentionCandidates={mentionCandidates}
         />
       </div>
+      )}
     </aside>
   )
 }

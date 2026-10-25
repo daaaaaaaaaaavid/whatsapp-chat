@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Eye, X } from "lucide-react"
-import { useSignedMediaUrl } from "@/lib/use-signed-media-url"
+import { useChatMediaDisplay } from "@/lib/use-chat-media"
+import { copyDriveMedia } from "@/lib/google-drive-client"
+import { isDriveMediaUrl, parseDriveMediaRef } from "@/lib/google-drive"
+import { useDriveOptional } from "./drive-provider"
 import { openViewOnceMessage } from "@/lib/view-once"
 import type { Message } from "@/lib/types"
 
@@ -15,12 +18,49 @@ type Props = {
 }
 
 export function ViewOnceViewer({ message, burnsOnClose, onBurned, onClose }: Props) {
-  const url = useSignedMediaUrl(message.file_url)
+  const drive = useDriveOptional()
+  const driveRef = parseDriveMediaRef(message.file_url)
+  const media = useChatMediaDisplay(message.file_url, { enabled: !driveRef || !burnsOnClose })
+  const [grantedUrl, setGrantedUrl] = useState<string | null>(null)
+  const [granting, setGranting] = useState(false)
   const [closing, setClosing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const burnedRef = useRef(false)
   const videoRef = useRef<HTMLVideoElement>(null)
   const isVideo = message.type === "video"
+  const url = grantedUrl ?? media.url
+
+  useEffect(() => {
+    if (!driveRef || !burnsOnClose || !message.file_url) return
+    if (!drive?.ready) return
+    if (!drive.connected) {
+      drive.requestConnect()
+      setError("חבר את גוגל דרייב כדי לצפות")
+      return
+    }
+    let cancelled = false
+    const objectUrls: string[] = []
+    setGranting(true)
+    void (async () => {
+      try {
+        await copyDriveMedia({ kind: "message", id: message.id, mode: "view" })
+        const blob = await drive.downloadBlob(driveRef.fileId)
+        if (cancelled) return
+        const next = URL.createObjectURL(blob)
+        objectUrls.push(next)
+        setGrantedUrl(next)
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : "לא ניתן לפתוח את המדיה")
+      } finally {
+        if (!cancelled) setGranting(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+      for (const u of objectUrls) URL.revokeObjectURL(u)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [burnsOnClose, message.file_url, message.id, drive?.ready, drive?.connected])
 
   const finish = useCallback(async () => {
     if (closing) return
@@ -48,12 +88,13 @@ export function ViewOnceViewer({ message, burnsOnClose, onBurned, onClose }: Pro
     return () => window.removeEventListener("keydown", onKey)
   }, [finish])
 
-  // Block context menu / save-as
   useEffect(() => {
     const block = (e: Event) => e.preventDefault()
     document.addEventListener("contextmenu", block)
     return () => document.removeEventListener("contextmenu", block)
   }, [])
+
+  const loading = Boolean(message.file_url) && !url && !error && (granting || media.loading || isDriveMediaUrl(message.file_url))
 
   return (
     <div className="fixed inset-0 z-[90] flex flex-col bg-black text-white">
@@ -77,9 +118,7 @@ export function ViewOnceViewer({ message, burnsOnClose, onBurned, onClose }: Pro
       </header>
 
       <div className="relative flex min-h-0 flex-1 items-center justify-center px-3 pb-6">
-        {!url && !error && (
-          <p className="text-sm text-white/60">טוען...</p>
-        )}
+        {loading && <p className="text-sm text-white/60">טוען...</p>}
         {error && <p className="px-6 text-center text-sm text-red-300">{error}</p>}
         {url && isVideo && (
           <video

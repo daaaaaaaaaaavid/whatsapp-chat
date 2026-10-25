@@ -16,7 +16,9 @@ import {
   X,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { useSignedMediaUrl } from "@/lib/use-signed-media-url"
+import { useChatMediaDisplay } from "@/lib/use-chat-media"
+import { DriveDownloadCard } from "./drive-download-card"
+import { useDriveOptional } from "./drive-provider"
 import { Avatar } from "./avatar"
 
 export type GalleryItem = {
@@ -64,7 +66,7 @@ function GalleryThumb({
   thumb: GalleryItem
   duration?: number
 }) {
-  const url = useSignedMediaUrl(thumb.url)
+  const { url } = useChatMediaDisplay(thumb.url)
   if (thumb.type === "image") {
     return url ? <img src={url} alt="" className="h-full w-full object-cover" /> : null
   }
@@ -156,7 +158,10 @@ export function MediaGallery({
   const stripRef = useRef<HTMLDivElement>(null)
   const [mounted, setMounted] = useState(false)
   const [videoDurations, setVideoDurations] = useState<Record<string, number>>({})
-  const displayUrl = useSignedMediaUrl(item?.url)
+  const { url: displayUrl, needsDownload } = useChatMediaDisplay(item?.url)
+  const drive = useDriveOptional()
+  const [driveBusy, setDriveBusy] = useState(false)
+  const [driveError, setDriveError] = useState<string | null>(null)
 
   useEffect(() => setMounted(true), [])
 
@@ -353,6 +358,24 @@ export function MediaGallery({
           className="flex max-h-full max-w-full items-center justify-center"
           onClick={(e) => e.stopPropagation()}
         >
+          {needsDownload && (
+            <DriveDownloadCard
+              kind={item.type === "video" ? "video" : item.type === "file" ? "file" : "image"}
+              fileName={item.name}
+              fileSize={item.size}
+              loading={driveBusy}
+              error={driveError}
+              onDownload={() => {
+                if (!drive || !item) return
+                setDriveBusy(true)
+                setDriveError(null)
+                void drive
+                  .copyToMyDrive({ kind: "message", id: item.id, fileUrl: item.url })
+                  .catch((err) => setDriveError(err instanceof Error ? err.message : "ההורדה נכשלה"))
+                  .finally(() => setDriveBusy(false))
+              }}
+            />
+          )}
           {item.type === "image" && displayUrl && (
             <img
               src={displayUrl}

@@ -6,7 +6,8 @@ import { Avatar } from "./avatar"
 import { createClient } from "@/lib/supabase/client"
 import { mediaReferenceUrl } from "@/lib/media-url"
 import type { Profile } from "@/lib/types"
-import { Camera, Check, Pencil } from "lucide-react"
+import { Camera, Check, HardDrive, Pencil } from "lucide-react"
+import { useDriveOptional } from "./drive-provider"
 import { ThemeToggle } from "@/components/theme-toggle"
 import type { ChatPrefs } from "@/lib/chat-prefs"
 
@@ -33,6 +34,9 @@ export function ProfileDialog({
   const [editingName, setEditingName] = useState(false)
   const [editingAbout, setEditingAbout] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const drive = useDriveOptional()
+  const [driveBusy, setDriveBusy] = useState(false)
+  const [driveError, setDriveError] = useState<string | null>(null)
 
   useEffect(() => {
     if (open) {
@@ -166,6 +170,46 @@ export function ProfileDialog({
           <div className="mt-1 text-[var(--wa-text)]" dir="ltr">
             {currentUser.email}
           </div>
+        </div>
+
+        <div className="border-t border-[var(--wa-border)] px-6 py-4">
+          <label className="text-sm text-[var(--wa-teal-dark)]">גוגל דרייב</label>
+          <p className="mt-1 text-xs text-[var(--wa-text-secondary)]">
+            תמונות, סרטונים וסטטוסים נשמרים בחשבון שלך. כדי לצפות — לוחצים ומעתיקים לדרייב שלך.
+          </p>
+          {drive?.connected ? (
+            <div className="mt-3 flex items-center gap-2">
+              <HardDrive className="h-4 w-4 text-[#00a884]" />
+              <span className="min-w-0 flex-1 truncate text-sm text-[var(--wa-text)]">
+                מחובר{drive.googleEmail ? ` · ${drive.googleEmail}` : ""}
+              </span>
+              <button
+                type="button"
+                disabled={driveBusy}
+                onClick={() => {
+                  setDriveBusy(true)
+                  setDriveError(null)
+                  void drive
+                    .disconnect()
+                    .catch((err) => setDriveError(err instanceof Error ? err.message : "ניתוק נכשל"))
+                    .finally(() => setDriveBusy(false))
+                }}
+                className="text-sm text-red-500"
+              >
+                נתק
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => drive?.requestConnect()}
+              className="mt-3 inline-flex items-center gap-2 rounded-full bg-[#00a884] px-4 py-2 text-sm font-medium text-white"
+            >
+              <HardDrive className="h-4 w-4" />
+              חבר את גוגל דרייב
+            </button>
+          )}
+          {driveError && <p className="mt-2 text-xs text-red-500">{driveError}</p>}
         </div>
 
         <div className="border-t border-[var(--wa-border)]">

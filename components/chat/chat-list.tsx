@@ -12,7 +12,9 @@ import {
 import { formatChatListTime } from "@/lib/format"
 import { MessageTicks } from "./message-ticks"
 import { messageTickStatus } from "@/lib/message-status"
-import { Archive, Download, Pin, Search, Star, X, Briefcase, User } from "lucide-react"
+import { Archive, Download, Mail, Pin, Search, Star, X, Briefcase, User } from "lucide-react"
+import { chatRequestView } from "@/lib/chat-request"
+import { isValidEmail } from "@/lib/validation"
 import { useMemo, useState } from "react"
 import { cn } from "@/lib/utils"
 import type { ChatSpace } from "@/lib/chat-space"
@@ -32,6 +34,7 @@ type Props = {
   onToggleFavorite: (id: string) => void
   onTogglePinned: (id: string) => void
   onMoveToSpace?: (id: string, space: ChatSpace) => void
+  onStartByEmail?: (email: string) => Promise<void>
 }
 
 const FILTERS: { id: FilterId; label: string }[] = [
@@ -53,12 +56,15 @@ export function ChatList({
   onToggleFavorite,
   onTogglePinned,
   onMoveToSpace,
+  onStartByEmail,
 }: Props) {
   const { showBanner, install, canInstall, iosHint } = usePwaInstall()
   const [query, setQuery] = useState("")
   const [filter, setFilter] = useState<FilterId>("all")
   const [showArchive, setShowArchive] = useState(false)
   const [menuId, setMenuId] = useState<string | null>(null)
+  const [startingEmail, setStartingEmail] = useState(false)
+  const [startError, setStartError] = useState<string | null>(null)
 
   const archivedSet = useMemo(() => new Set(prefs.archived), [prefs.archived])
   const favoriteSet = useMemo(() => new Set(prefs.favorites), [prefs.favorites])
@@ -69,10 +75,25 @@ export function ChatList({
     [conversations, archivedSet],
   )
 
+  const incomingRequests = useMemo(() => {
+    if (showArchive) return []
+    const q = query.trim().toLowerCase()
+    return conversations.filter((c) => {
+      if (archivedSet.has(c.id)) return false
+      if (chatRequestView(c, currentUser.id) !== "incoming") return false
+      if (!q) return true
+      return convDisplayName(c, currentUser.id).toLowerCase().includes(q)
+    })
+  }, [archivedSet, conversations, currentUser.id, query, showArchive])
+
+  const emailQuery = isValidEmail(query.trim()) ? query.trim() : ""
+
   const filtered = useMemo(() => {
-    let list = conversations.filter((c) =>
-      showArchive ? archivedSet.has(c.id) : !archivedSet.has(c.id),
-    )
+    let list = conversations.filter((c) => {
+      const view = chatRequestView(c, currentUser.id)
+      if (view === "hidden" || view === "incoming") return false
+      return showArchive ? archivedSet.has(c.id) : !archivedSet.has(c.id)
+    })
 
     if (filter === "unread") list = list.filter((c) => (c.unread_count ?? 0) > 0)
     if (filter === "favorites") list = list.filter((c) => favoriteSet.has(c.id))
@@ -104,6 +125,20 @@ export function ChatList({
     currentUser.id,
     pinnedSet,
   ])
+
+  const startByEmail = async () => {
+    if (!onStartByEmail || !emailQuery || startingEmail) return
+    setStartingEmail(true)
+    setStartError(null)
+    try {
+      await onStartByEmail(emailQuery)
+      setQuery("")
+    } catch (err) {
+      setStartError(err instanceof Error ? err.message : "נכשל בפתיחת שיחה")
+    } finally {
+      setStartingEmail(false)
+    }
+  }
 
   const archiveUnread = archivedConvs.reduce((sum, c) => sum + (c.unread_count ?? 0), 0)
 
@@ -179,9 +214,62 @@ export function ChatList({
           </button>
         )}
 
+        {emailQuery && onStartByEmail && (
+          <button
+            type="button"
+            disabled={startingEmail}
+            onClick={() => void startByEmail()}
+            className="mx-2 flex w-[calc(100%-1rem)] items-center gap-3 rounded-2xl px-2 py-2.5 text-right transition hover:bg-[var(--wa-hover)] disabled:opacity-60"
+          >
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#00a884] text-white">
+              <Mail className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1 text-right">
+              <div className="truncate font-medium text-[var(--wa-text)]">שיחה חדשה</div>
+              <div className="truncate text-sm text-[var(--wa-text-secondary)]">
+                {startingEmail ? "פותח..." : `${emailQuery} · יאשרו לפני שהשיחה נפתחת`}
+              </div>
+            </div>
+          </button>
+        )}
+
+        {startError && (
+          <p className="px-4 pb-2 text-center text-xs text-red-600 dark:text-red-300">{startError}</p>
+        )}
+
+        {!showArchive && incomingRequests.length > 0 && (
+          <div className="pb-1">
+            <div className="px-4 pb-1 pt-2 text-xs font-medium text-[var(--wa-teal-dark)]">בקשות שיחה</div>
+            {incomingRequests.map((conv) => {
+              const name = convDisplayName(conv, currentUser.id)
+              const last = conv.last_message
+              const isActive = conv.id === activeId
+              return (
+                <button
+                  key={conv.id}
+                  type="button"
+                  onClick={() => onSelect(conv)}
+                  className={cn(
+                    "wa-interactive-row mx-2 flex w-[calc(100%-1rem)] items-center gap-3 rounded-2xl px-2 py-2.5 text-right hover:bg-[var(--wa-hover)]",
+                    isActive && "bg-[var(--wa-active)]",
+                  )}
+                >
+                  <Avatar name={name} url={convAvatarUrl(conv, currentUser.id)} size={49} />
+                  <div className="min-w-0 flex-1 text-right">
+                    <div className="truncate text-[var(--wa-text)]">{name}</div>
+                    <div className="truncate text-sm text-[var(--wa-teal-dark)]">
+                      {last && !last.deleted_at ? messagePreview(last) : "רוצה להתחיל איתך שיחה"}
+                    </div>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        )}
+
         {loading ? (
           <ChatListSkeleton />
-        ) : filtered.length === 0 ? (
+        ) : filtered.length === 0 && incomingRequests.length === 0 && !emailQuery ? (
           <div className="p-8 text-center text-sm text-[var(--wa-text-secondary)]">
             {query
               ? "לא נמצאו תוצאות"
@@ -198,6 +286,7 @@ export function ChatList({
             const isSelf = isSelfConversation(conv, currentUser.id)
             const isPinned = isSelf || pinnedSet.has(conv.id)
             const isFav = favoriteSet.has(conv.id)
+            const requestView = chatRequestView(conv, currentUser.id)
             const othersCount = (conv.participants ?? []).filter((p) => p.user_id !== currentUser.id).length
             const tickStatus = isMine && last ? messageTickStatus(last, othersCount) : null
             const lastViewCount = (last?.reads ?? []).filter((r) => r.user_id !== last?.sender_id).length
@@ -224,7 +313,14 @@ export function ChatList({
                   />
                   <div className="flex min-w-0 flex-1 flex-col">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="truncate text-[var(--wa-text)]">{name}</span>
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span className="truncate text-[var(--wa-text)]">{name}</span>
+                        {requestView === "outgoing" && (
+                          <span className="shrink-0 rounded-full bg-[var(--wa-accent-soft)] px-2 py-0.5 text-[10px] font-medium text-[var(--wa-teal-dark)]">
+                            ממתין
+                          </span>
+                        )}
+                      </span>
                       <div className="flex shrink-0 items-center gap-1">
                         {isPinned && <Pin className="h-3 w-3 text-[var(--wa-text-secondary)]" />}
                         {last && (
@@ -245,7 +341,13 @@ export function ChatList({
                           <MessageTicks status={tickStatus} isGroup={conv.is_group} viewCount={lastViewCount} />
                         )}
                         <span className="truncate">
-                          {last?.deleted_at ? "ההודעה נמחקה" : messagePreview(last)}
+                          {requestView === "declined"
+                            ? "הבקשה נדחתה"
+                            : requestView === "outgoing" && !last
+                              ? "ממתין לאישור"
+                              : last?.deleted_at
+                                ? "ההודעה נמחקה"
+                                : messagePreview(last)}
                         </span>
                       </span>
                       <div className="flex shrink-0 items-center gap-1">

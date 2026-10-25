@@ -21,7 +21,9 @@ import { ContactMessage } from "./contact-message"
 import { EventMessage } from "./event-message"
 import { resolveMediaKind } from "./media-gallery"
 import { isExpiredChatMedia, MEDIA_EXPIRED_LABEL } from "@/lib/media-retention"
-import { useSignedMediaUrlControls } from "@/lib/use-signed-media-url"
+import { useChatMediaDisplay } from "@/lib/use-chat-media"
+import { DriveDownloadCard } from "./drive-download-card"
+import { useDriveOptional } from "./drive-provider"
 import { SystemCallMessage } from "./system-call-message"
 import { SystemWatchMessage } from "./system-watch-message"
 import { SystemMeetingMessage } from "./system-meeting-message"
@@ -235,11 +237,27 @@ export function MessageBubble({
   const menuRef = useRef<HTMLDivElement>(null)
   const bubbleRef = useRef<HTMLDivElement>(null)
   const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const drive = useDriveOptional()
+  const [driveBusy, setDriveBusy] = useState(false)
+  const [driveError, setDriveError] = useState<string | null>(null)
   const {
     url: displayFileUrl,
     loading: mediaUrlLoading,
+    needsDownload,
     refresh: refreshMediaUrl,
-  } = useSignedMediaUrlControls(message.view_once ? null : message.file_url)
+  } = useChatMediaDisplay(message.view_once ? null : message.file_url)
+  const downloadDriveMedia = async () => {
+    if (!drive || !message.file_url) return
+    setDriveBusy(true)
+    setDriveError(null)
+    try {
+      await drive.copyToMyDrive({ kind: "message", id: message.id, fileUrl: message.file_url })
+    } catch (err) {
+      setDriveError(err instanceof Error ? err.message : "ההורדה נכשלה")
+    } finally {
+      setDriveBusy(false)
+    }
+  }
   const senderProfile = participants.find((p) => p.user_id === message.sender_id)?.profile
   const senderName = senderProfile?.display_name ?? senderProfile?.email ?? "משתמש"
 
@@ -649,6 +667,25 @@ export function MessageBubble({
           </div>
         )}
 
+        {!viewOnce && needsDownload && message.file_url && (
+          <DriveDownloadCard
+            kind={
+              message.type === "video"
+                ? "video"
+                : message.type === "audio"
+                  ? "audio"
+                  : message.type === "file"
+                    ? "file"
+                    : "image"
+            }
+            fileName={message.file_name}
+            fileSize={message.file_size}
+            loading={driveBusy}
+            error={driveError}
+            onDownload={() => void downloadDriveMedia()}
+          />
+        )}
+
         {viewOnce && message.file_url && (
           <button
             type="button"
@@ -667,7 +704,7 @@ export function MessageBubble({
           </button>
         )}
 
-        {!viewOnce && !isSticker && mediaKind === "image" && message.file_url && displayFileUrl && (
+        {!viewOnce && !needsDownload && !isSticker && mediaKind === "image" && message.file_url && displayFileUrl && (
           <button
             type="button"
             onClick={openMedia}
@@ -682,7 +719,7 @@ export function MessageBubble({
           </button>
         )}
 
-        {!viewOnce && !isSticker && mediaKind === "image" && message.file_url && !displayFileUrl && (
+        {!viewOnce && !needsDownload && !isSticker && mediaKind === "image" && message.file_url && !displayFileUrl && (
           <button
             type="button"
             onClick={(e) => {
@@ -696,7 +733,7 @@ export function MessageBubble({
           </button>
         )}
 
-        {!viewOnce && mediaKind === "video" && message.file_url && displayFileUrl && (
+        {!viewOnce && !needsDownload && mediaKind === "video" && message.file_url && displayFileUrl && (
           <button
             type="button"
             onClick={openMedia}
@@ -717,7 +754,7 @@ export function MessageBubble({
           </button>
         )}
 
-        {!viewOnce && mediaKind === "video" && message.file_url && !displayFileUrl && (
+        {!viewOnce && !needsDownload && mediaKind === "video" && message.file_url && !displayFileUrl && (
           <button
             type="button"
             onClick={(e) => {
@@ -731,7 +768,7 @@ export function MessageBubble({
           </button>
         )}
 
-        {message.type === "audio" && message.file_url && (
+        {message.type === "audio" && message.file_url && !needsDownload && (
           <VoiceMessage
             fileUrl={message.file_url}
             messageId={message.id}
@@ -760,7 +797,7 @@ export function MessageBubble({
 
         {eventBody && <EventMessage payload={eventBody} />}
 
-        {isSticker && message.file_url && displayFileUrl && (
+        {isSticker && !needsDownload && message.file_url && displayFileUrl && (
           <button
             type="button"
             onClick={openMedia}
@@ -776,7 +813,7 @@ export function MessageBubble({
           </button>
         )}
 
-        {isSticker && message.file_url && !displayFileUrl && (
+        {isSticker && !needsDownload && message.file_url && !displayFileUrl && (
           <button
             type="button"
             onClick={(e) => {
@@ -793,7 +830,7 @@ export function MessageBubble({
           <div className="mb-1 text-sm text-[var(--wa-text-secondary)]">{stickerPreviewLabel()}</div>
         )}
 
-        {mediaKind === "file" && message.file_url && (
+        {mediaKind === "file" && message.file_url && !needsDownload && (
           <button
             type="button"
             onClick={openMedia}

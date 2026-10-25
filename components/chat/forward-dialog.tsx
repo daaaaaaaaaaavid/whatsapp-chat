@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import type { Conversation, Message, Profile } from "@/lib/types"
 import { convDisplayName, messagePreview } from "@/lib/conversation-display"
+import { chatRequestView } from "@/lib/chat-request"
 import { Avatar } from "./avatar"
 import { Search, X } from "lucide-react"
 
@@ -38,6 +39,7 @@ export function ForwardDialog({
   const list = useMemo(() => {
     const q = query.trim().toLowerCase()
     return conversations.filter((c) => {
+      if (chatRequestView(c, currentUser.id) !== "none") return false
       if (!q) return true
       return convDisplayName(c, currentUser.id).toLowerCase().includes(q)
     })

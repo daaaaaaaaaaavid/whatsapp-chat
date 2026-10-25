@@ -322,7 +322,8 @@ export function NewChatDialog({
         <p className="mt-2 px-1 text-xs leading-relaxed text-[var(--wa-text-secondary)]">
           {hasSyncedGoogle
             ? "בזמן ההקלדה מוצגות הצעות מאנשי הקשר שסנכרנת מגוגל."
-            : "סנכרן פעם אחת מגוגל — ואז חיפוש לפי שם או מייל יציע אוטומטית."}
+            : "סנכרן פעם אחת מגוגל — ואז חיפוש לפי שם או מייל יציע אוטומטית."}{" "}
+          שיחה עם מישהו חדש נפתחת אצלו רק אחרי שהוא מאשר.
         </p>
       </div>
 
@@ -390,7 +391,7 @@ export function NewChatDialog({
             <Mail className="h-6 w-6" />
           </div>
           <div className="min-w-0 flex-1 text-right">
-            <div className="font-medium text-[var(--wa-text)]">התחל שיחה או צור קישור הזמנה</div>
+            <div className="font-medium text-[var(--wa-text)]">שלח בקשת שיחה</div>
             <div className="truncate text-sm text-[var(--wa-text-secondary)]">{q}</div>
           </div>
         </button>
@@ -508,7 +509,7 @@ export function NewChatDialog({
                 <div className="min-w-0 flex-1 border-b border-[var(--wa-border)] pb-2.5">
                   <div className="truncate text-[var(--wa-text)]">{u.display_name ?? u.email}</div>
                   <div className="truncate text-sm text-[var(--wa-text-secondary)]">
-                    {u.email ? `${u.email} · ב-WhaChat` : "ב-WhaChat"}
+                    {u.email ? `${u.email} · בקשת שיחה` : "בקשת שיחה · יאשרו לפני שזה נפתח"}
                   </div>
                 </div>
               </button>
@@ -536,7 +537,7 @@ export function NewChatDialog({
                         {s.profile.display_name ?? s.profile.email}
                       </div>
                       <div className="truncate text-sm text-[var(--wa-text-secondary)]">
-                        {s.profile.email ?? "ב-WhaChat"} · ב-WhaChat
+                        {s.profile.email ?? "ב-WhaChat"} · בקשת שיחה
                       </div>
                     </div>
                   </button>

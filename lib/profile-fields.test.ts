@@ -14,5 +14,6 @@ describe("profile field projections", () => {
     expect(OWN_PROFILE_COLUMNS).toContain("email")
     expect(OWN_PROFILE_COLUMNS).toContain("chat_prefs")
     expect(OWN_PROFILE_COLUMNS).toContain("blocked_user_ids")
+    expect(OWN_PROFILE_COLUMNS).toContain("google_drive_connected_at")
   })
 })

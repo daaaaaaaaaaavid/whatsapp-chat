@@ -26,8 +26,10 @@ import {
   UNSUPPORTED_MEDIA_MESSAGE,
   voiceRecordingFile,
 } from "@/lib/media-mime"
-import { uploadMediaWithProgress } from "@/lib/media-upload"
-import { mediaReferenceUrl, withMediaDurationHint } from "@/lib/media-url"
+import { withMediaDurationHint } from "@/lib/media-url"
+import { uploadUserDriveMedia } from "@/lib/google-drive-client"
+import { DriveNotConnectedError, withDriveMediaHash } from "@/lib/google-drive"
+import { useDriveOptional } from "./drive-provider"
 import {
   Plus,
   SendHorizontal,
@@ -259,6 +261,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
   const onTypingRef = useRef(onTyping)
   onTypingRef.current = onTyping
   const isEditing = Boolean(editingMessage)
+  const drive = useDriveOptional()
 
   useLayoutEffect(() => {
     if (!showAttach) {
@@ -536,37 +539,43 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
           setUploadStatus(null)
           throw new Error("file too large")
         }
-        const supabase = createClient()
-        const ext = file.name.split(".").pop() || "bin"
-        const path = `${currentUserId}/${conversationId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
-
+        if (!drive?.connected) {
+          drive?.requestConnect()
+          const err = new DriveNotConnectedError()
+          setUploadError(err.message)
+          setUploadStatus(null)
+          throw err
+        }
         const contentType = resolveFileMime(file)
-        const { error } = await uploadMediaWithProgress(supabase, path, file, {
-          contentType,
-          upsert: false,
-          onProgress: (p) => {
-            setUploadStatus((prev) =>
-              prev
-                ? { ...prev, fileName: file.name, current: 1, total: 1, fileProgress: p.ratio }
-                : { fileName: file.name, current: 1, total: 1, fileProgress: p.ratio },
-            )
-          },
-        })
-        if (error) {
-          const msg = error.message.toLowerCase()
-          if (msg.includes("bucket") || msg.includes("not found")) {
-            setUploadError("חסר bucket בשם media ב־Supabase. הרץ את migration-private-media.sql")
-          } else if (msg.includes("policy") || msg.includes("row-level") || msg.includes("security")) {
-            setUploadError("אין הרשאה להעלות. הרץ את migration-private-media.sql ב־Supabase")
+        let publicUrl: string
+        try {
+          publicUrl = await uploadUserDriveMedia({
+            userId: currentUserId,
+            file,
+            fileName: file.name,
+            mimeType: contentType,
+            onProgress: (p) => {
+              setUploadStatus((prev) =>
+                prev
+                  ? { ...prev, fileName: file.name, current: 1, total: 1, fileProgress: p.ratio }
+                  : { fileName: file.name, current: 1, total: 1, fileProgress: p.ratio },
+              )
+            },
+          })
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "העלאה לדרייב נכשלה"
+          const msg = message.toLowerCase()
+          if (error instanceof DriveNotConnectedError) {
+            drive.requestConnect()
+            setUploadError(error.message)
           } else if (msg.includes("mime") || msg.includes("type") || msg.includes("not allowed")) {
             setUploadError(UNSUPPORTED_MEDIA_MESSAGE)
           } else {
-            setUploadError(error.message)
+            setUploadError(message)
           }
           setUploadStatus(null)
-          throw error
+          throw error instanceof Error ? error : new Error(message)
         }
-        let publicUrl = mediaReferenceUrl(supabase, path)
 
         let type: MessageType = "file"
         const lower = file.name.toLowerCase()
@@ -584,12 +593,14 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
           /\.(mp4|webm|mov|m4v|avi|mkv|3gp)$/.test(lower)
         ) {
           type = "video"
+          publicUrl = withDriveMediaHash(publicUrl, "whachat=video")
         } else if (
           kindHint === "image" ||
           file.type.startsWith("image/") ||
           /\.(jpe?g|png|gif|webp|bmp|heic|avif)$/.test(lower)
         ) {
           type = "image"
+          publicUrl = withDriveMediaHash(publicUrl, "whachat=image")
         }
 
         await sendMessage({
@@ -616,7 +627,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
         throw err
       }
     },
-    [conversationId, currentUserId, sendMessage],
+    [conversationId, currentUserId, drive, sendMessage],
   )
 
   const stageFiles = useCallback(
@@ -948,37 +959,38 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
           setUploadError("הקובץ גדול מדי (מקסימום 50MB)")
           throw new Error("file too large")
         }
-        const supabase = createClient()
-        const ext = item.file.name.split(".").pop() || "bin"
-        const path = `${currentUserId}/${conversationId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
-
-        const contentType = resolveFileMime(item.file)
-        const { error } = await uploadMediaWithProgress(supabase, path, item.file, {
-          contentType,
-          upsert: false,
-          onProgress: (p) => {
-            setUploadStatus({
-              fileName: item.file.name,
-              current: i + 1,
-              total: items.length,
-              fileProgress: p.ratio,
-            })
-          },
-        })
-        if (error) {
-          const msg = error.message.toLowerCase()
-          if (msg.includes("bucket") || msg.includes("not found")) {
-            setUploadError("חסר bucket בשם media ב־Supabase. הרץ את migration-private-media.sql")
-          } else if (msg.includes("policy") || msg.includes("row-level") || msg.includes("security")) {
-            setUploadError("אין הרשאה להעלות. הרץ את migration-private-media.sql ב־Supabase")
-          } else if (msg.includes("mime") || msg.includes("type") || msg.includes("not allowed")) {
-            setUploadError(UNSUPPORTED_MEDIA_MESSAGE)
-          } else {
-            setUploadError(error.message)
-          }
-          throw error
+        if (!drive?.connected) {
+          drive?.requestConnect()
+          throw new DriveNotConnectedError()
         }
-        const publicUrl = mediaReferenceUrl(supabase, path)
+        const contentType = resolveFileMime(item.file)
+        let publicUrl: string
+        try {
+          publicUrl = await uploadUserDriveMedia({
+            userId: currentUserId,
+            file: item.file,
+            fileName: item.file.name,
+            mimeType: contentType,
+            extraHash: item.kind === "video" ? "whachat=video" : item.kind === "image" ? "whachat=image" : null,
+            onProgress: (p) => {
+              setUploadStatus({
+                fileName: item.file.name,
+                current: i + 1,
+                total: items.length,
+                fileProgress: p.ratio,
+              })
+            },
+          })
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "העלאה לדרייב נכשלה"
+          if (error instanceof DriveNotConnectedError) {
+            drive.requestConnect()
+            setUploadError(error.message)
+          } else {
+            setUploadError(message)
+          }
+          throw error instanceof Error ? error : new Error(message)
+        }
 
         const captionText = item.caption.trim()
         const canViewOnce = viewOnce && (item.kind === "image" || item.kind === "video")

@@ -31,6 +31,8 @@ import { MediaGallery, mediaItemsFromMessages } from "./media-gallery"
 import { ForwardDialog } from "./forward-dialog"
 import { ViewOnceViewer } from "./view-once-viewer"
 import { convAvatarUrl, convDisplayName, isSelfConversation } from "@/lib/conversation-display"
+import { canComposeInConversation, chatRequestView } from "@/lib/chat-request"
+import { resendChatRequest, respondToChatRequest } from "@/lib/chat-actions"
 import { buildMentionCandidates } from "@/lib/mentions"
 import { formatDateDivider, formatChatListTime } from "@/lib/format"
 import { parseCallSystemPayload } from "@/lib/call-system-message"
@@ -85,6 +87,7 @@ type Props = {
   initialGalleryMessageId?: string | null
   onGalleryOpened?: () => void
   onStartChatByEmail?: (email: string) => Promise<void>
+  onChatRequestChanged?: () => void
   onOpenMention?: (mention: {
     kind: "user" | "group"
     id: string
@@ -125,6 +128,7 @@ export function ConversationView({
   onGalleryOpened,
   onStartChatByEmail,
   onOpenMention,
+  onChatRequestChanged,
 }: Props) {
   const {
     messages,
@@ -161,11 +165,17 @@ export function ConversationView({
   const [threadRootId, setThreadRootId] = useState<string | null>(null)
   const [showJumpToBottom, setShowJumpToBottom] = useState(false)
   const [newBelowCount, setNewBelowCount] = useState(0)
+  const [requestBusy, setRequestBusy] = useState(false)
+  const [requestError, setRequestError] = useState<string | null>(null)
   const markedRef = useRef<string | null>(null)
   const prevMessageLenRef = useRef(0)
   const knownMessageIdsRef = useRef<Set<string>>(new Set())
 
   const isSelf = isSelfConversation(conversation, currentUser.id)
+  const requestView = chatRequestView(conversation, currentUser.id)
+  const canCompose = canComposeInConversation(conversation, currentUser.id)
+  const onBackRef = useRef(onBack)
+  onBackRef.current = onBack
   const threadsEnabled = conversation.is_group
   const otherParticipants = (conversation.participants ?? []).filter((p) => p.user_id !== currentUser.id)
   const totalOthers = otherParticipants.length
@@ -190,7 +200,14 @@ export function ConversationView({
     .filter((p) => typingUsers[p.user_id] != null)
     .map((p) => (p.user_id === currentUser.id ? "אתה" : p.profile?.display_name ?? "משתמש"))
 
-  const subtitle = isSelf
+  const subtitle =
+    requestView === "outgoing"
+      ? "ממתין לאישור"
+      : requestView === "incoming"
+        ? "בקשת שיחה"
+        : requestView === "declined"
+          ? "הבקשה נדחתה"
+          : isSelf
     ? "הודעות שמורות"
     : typingNames.length
       ? typingNames.length === 1
@@ -205,6 +222,39 @@ export function ConversationView({
           : other?.last_seen
             ? `נראה לאחרונה ${formatChatListTime(other.last_seen)}`
             : (other?.about ?? "זמין")
+
+  useEffect(() => {
+    if (requestView === "hidden") onBackRef.current()
+  }, [requestView])
+
+  const handleRespondToRequest = async (accept: boolean) => {
+    if (requestBusy) return
+    setRequestBusy(true)
+    setRequestError(null)
+    try {
+      await respondToChatRequest(conversation.id, accept)
+      onChatRequestChanged?.()
+      if (!accept) onBackRef.current()
+    } catch (err) {
+      setRequestError(err instanceof Error ? err.message : "נכשל בעדכון הבקשה")
+    } finally {
+      setRequestBusy(false)
+    }
+  }
+
+  const handleResendRequest = async () => {
+    if (requestBusy) return
+    setRequestBusy(true)
+    setRequestError(null)
+    try {
+      await resendChatRequest(conversation.id)
+      onChatRequestChanged?.()
+    } catch (err) {
+      setRequestError(err instanceof Error ? err.message : "נכשל בשליחת הבקשה")
+    } finally {
+      setRequestBusy(false)
+    }
+  }
 
   const messageById = useMemo(() => buildMessageMap(messages), [messages])
 
@@ -809,7 +859,7 @@ export function ConversationView({
           </div>
         </button>
         <div className="relative flex items-center gap-0.5 text-[var(--wa-text-secondary)]">
-          {!isSelf && onStartWatch && (
+          {requestView === "none" && !isSelf && onStartWatch && (
             <button
               onClick={onStartWatch}
               className="flex h-10 w-10 items-center justify-center rounded-full transition hover:bg-black/5"
@@ -819,7 +869,7 @@ export function ConversationView({
               <Clapperboard className="h-5 w-5" />
             </button>
           )}
-          {!isSelf && onStartMeeting && (
+          {requestView === "none" && !isSelf && onStartMeeting && (
             <button
               onClick={onStartMeeting}
               className="flex h-10 w-10 items-center justify-center rounded-full transition hover:bg-black/5"
@@ -829,7 +879,7 @@ export function ConversationView({
               <Users className="h-5 w-5" />
             </button>
           )}
-          {!isSelf && onStartCall && !conversation.is_group && (
+          {requestView === "none" && !isSelf && onStartCall && !conversation.is_group && (
             <>
               <button
                 onClick={() => onStartCall(true)}
@@ -1140,7 +1190,13 @@ export function ConversationView({
       )}
       </div>
 
-      {!searchOpen && !selectionMode && (
+      {!searchOpen && !selectionMode && canCompose && (
+        <>
+        {requestView === "outgoing" && (
+          <div className="border-t border-[var(--wa-border)] bg-[var(--wa-accent-soft)] px-4 py-2.5 text-center text-xs leading-relaxed text-[var(--wa-text)]">
+            ממתין ש{name} יאשר את השיחה. אפשר לכתוב בינתיים.
+          </div>
+        )}
         <MessageInput
           ref={messageInputRef}
           conversationId={conversation.id}
@@ -1173,6 +1229,51 @@ export function ConversationView({
           onTyping={handleTyping}
           mentionCandidates={mentionCandidates}
         />
+        </>
+      )}
+
+      {!searchOpen && !selectionMode && (requestView === "incoming" || requestView === "declined") && (
+        <div className="border-t border-[var(--wa-border)] bg-[var(--wa-panel)] px-4 py-4">
+          <p className="text-center text-sm text-[var(--wa-text)]">
+            {requestView === "incoming"
+              ? `${name} רוצה להתחיל איתך שיחה`
+              : `${name} לא אישר את השיחה`}
+          </p>
+          {requestError && (
+            <p className="mt-2 text-center text-xs text-red-600 dark:text-red-300">{requestError}</p>
+          )}
+          <div className="mt-3 flex items-center justify-center gap-2">
+            {requestView === "incoming" ? (
+              <>
+                <button
+                  type="button"
+                  disabled={requestBusy}
+                  onClick={() => void handleRespondToRequest(false)}
+                  className="rounded-full px-4 py-2 text-sm font-medium text-[var(--wa-text-secondary)] transition hover:bg-[var(--wa-hover)] disabled:opacity-60"
+                >
+                  לא תודה
+                </button>
+                <button
+                  type="button"
+                  disabled={requestBusy}
+                  onClick={() => void handleRespondToRequest(true)}
+                  className="rounded-full bg-[#00a884] px-5 py-2 text-sm font-medium text-white transition hover:bg-[#06cf9c] disabled:opacity-60"
+                >
+                  {requestBusy ? "רגע..." : "אישור"}
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                disabled={requestBusy}
+                onClick={() => void handleResendRequest()}
+                className="rounded-full bg-[#00a884] px-5 py-2 text-sm font-medium text-white transition hover:bg-[#06cf9c] disabled:opacity-60"
+              >
+                {requestBusy ? "שולח..." : "שלח בקשה שוב"}
+              </button>
+            )}
+          </div>
+        </div>
       )}
 
       {galleryIndex != null && mediaItems[galleryIndex] && (
@@ -1254,6 +1355,7 @@ export function ConversationView({
           onStartChatByEmail={onStartChatByEmail}
           onOpenMention={onOpenMention}
           mentionCandidates={mentionCandidates}
+          canCompose={canCompose}
         />
       </div>
     )}

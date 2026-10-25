@@ -35,6 +35,8 @@ import { NewGroupDialog } from "./new-group-dialog"
 import { NewSpaceDialog } from "./new-space-dialog"
 import { NewChannelDialog } from "./new-channel-dialog"
 import { ProfileDialog } from "./profile-dialog"
+import { DriveProvider } from "./drive-provider"
+import { DriveConnectBanner } from "./drive-connect-banner"
 import { StatusTab } from "./status-panel"
 import { NavRail, type NavTab } from "./nav-rail"
 import { CallsPanel } from "./calls-panel"
@@ -796,6 +798,7 @@ export function ChatApp({ currentUser: initialUser }: Props) {
   }
 
   return (
+    <DriveProvider currentUser={currentUser} onUserUpdated={setCurrentUser} onToast={pushToast}>
     <div className="flex h-svh w-svw max-w-[100vw] overflow-hidden p-0 sm:p-2.5 lg:p-3">
       <div className="wa-shell flex h-full min-w-0 w-full flex-1 overflow-hidden">
         <NavRail
@@ -854,6 +857,7 @@ export function ChatApp({ currentUser: initialUser }: Props) {
                 onOpenProfile={() => setProfileOpen(true)}
                 onLogout={handleLogout}
               />
+              <DriveConnectBanner />
               {PERSONAL_WORK_UI_ENABLED && (
                 <SpaceSwitcher
                   active={prefs.activeSpace}
@@ -882,6 +886,7 @@ export function ChatApp({ currentUser: initialUser }: Props) {
                 onToggleFavorite={(id) => updatePrefs(toggleFavorite(prefs, id))}
                 onTogglePinned={(id) => updatePrefs(togglePinned(prefs, id))}
                 onMoveToSpace={PERSONAL_WORK_UI_ENABLED ? moveConversationToSpace : undefined}
+                onStartByEmail={handleStartChatByEmail}
               />
             </>
           )}
@@ -1000,6 +1005,7 @@ export function ChatApp({ currentUser: initialUser }: Props) {
                   initialGalleryMessageId={infoGalleryMessageId}
                   onGalleryOpened={() => setInfoGalleryMessageId(null)}
                   onStartChatByEmail={handleStartChatByEmail}
+                  onChatRequestChanged={() => void reload()}
                   onOpenMention={handleOpenMention}
                 />
               </div>
@@ -1253,5 +1259,6 @@ export function ChatApp({ currentUser: initialUser }: Props) {
         </div>
       )}
     </div>
+    </DriveProvider>
   )
 }
