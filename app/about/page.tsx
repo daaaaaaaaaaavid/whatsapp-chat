@@ -32,6 +32,13 @@ export default function AboutPage() {
             קבוצתיות — בדומה לחוויית WhatsApp, עם דגש על פרטיות ושליטה במידע שלך.
           </p>
 
+          <h3 className="mt-8 text-lg font-medium text-[var(--wa-text)]">גוגל דרייב</h3>
+          <p className="mt-3 text-sm leading-relaxed text-[var(--wa-text-secondary)]">
+            בבחירה מרצונך אפשר לחבר את גוגל דרייב. תמונות, סרטונים וסטטוסים נשמרים בתיקייה של {APP_NAME} בחשבון שלך,
+            לא אצלנו. ההרשאה היא רק לקבצים שהאפליקציה יוצרת (<span dir="ltr">drive.file</span>). הנמען לוחץ כדי להעתיק
+            את הקובץ לדרייב שלו ואז צופה ממנו. אפשר לנתק בכל רגע מהפרופיל.
+          </p>
+
           <h3 className="mt-8 text-lg font-medium text-[var(--wa-text)]">סנכרון אנשי קשר מגוגל</h3>
           <p className="mt-3 text-sm leading-relaxed text-[var(--wa-text-secondary)]">
             בבחירה מרצונך, ניתן לסנכרן אנשי קשר מחשבון Google כדי למצוא בקלות משתמשים רשומים ב־{APP_NAME} ולהתחיל איתם
@@ -51,6 +58,12 @@ export default function AboutPage() {
               className="rounded-full border border-[var(--wa-border)] bg-[var(--wa-panel)] px-6 py-2.5 text-sm font-medium text-[var(--wa-text)] transition hover:bg-[var(--wa-header)]"
             >
               מדיניות פרטיות
+            </Link>
+            <Link
+              href="/terms"
+              className="rounded-full border border-[var(--wa-border)] bg-[var(--wa-panel)] px-6 py-2.5 text-sm font-medium text-[var(--wa-text)] transition hover:bg-[var(--wa-header)]"
+            >
+              תנאי שימוש
             </Link>
           </div>
         </section>

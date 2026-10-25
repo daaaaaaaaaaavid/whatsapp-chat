@@ -4,10 +4,10 @@ import { APP_NAME, getSiteUrl, getSupportEmail } from "@/lib/site-config"
 
 export const metadata: Metadata = {
   title: `תנאי שימוש — ${APP_NAME}`,
-  description: `תנאי השימוש של ${APP_NAME}.`,
+  description: `תנאי השימוש של ${APP_NAME}, כולל חיבור לגוגל דרייב.`,
 }
 
-const LAST_UPDATED = "15 ביולי 2026"
+const LAST_UPDATED = "26 באוקטובר 2026"
 
 export default function TermsPage() {
   const supportEmail = getSupportEmail()
@@ -29,8 +29,8 @@ export default function TermsPage() {
       <section>
         <h2 className="text-base font-semibold">2. תיאור השירות</h2>
         <p className="mt-2 text-[var(--wa-text-secondary)]">
-          {APP_NAME} מספקת פלטפורמת הודעות מיידיות הכוללת צ&apos;אטים, קבוצות, שיחות קול/וידאו, ואפשרות אופציונלית
-          לסנכרן אנשי קשר מגוגל לצורך מציאת משתמשים קיימים.
+          {APP_NAME} מספקת פלטפורמת הודעות מיידיות הכוללת צ&apos;אטים, קבוצות, שיחות קול/וידאו, שמירת מדיה בגוגל דרייב
+          שלך (אופציונלי), ואפשרות אופציונלית לסנכרן אנשי קשר מגוגל לצורך מציאת משתמשים קיימים.
         </p>
       </section>
 
@@ -56,18 +56,34 @@ export default function TermsPage() {
       </section>
 
       <section>
-        <h2 className="text-base font-semibold">5. תוכן משתמש</h2>
+        <h2 className="text-base font-semibold">5. תוכן משתמש ודרייב</h2>
         <p className="mt-2 text-[var(--wa-text-secondary)]">
-          אתה שומר על הבעלות בתוכן שאתה שולח. אתה מעניק לנו רישיון מוגבל להציג, לאחסן ולהעביר תוכן זה רק לצורך
-          הפעלת השירות עבורך ועבור משתתפי השיחה.
+          אתה שומר על הבעלות בתוכן שאתה שולח, כולל קבצים שנשמרים בגוגל דרייב שלך. אתה מעניק לנו רישיון מוגבל להציג,
+          להעביר ולהעתיק תוכן זה רק לצורך הפעלת השירות עבורך ועבור משתתפי השיחה (למשל העתקה לדרייב של נמען שלחץ
+          להוריד).
+        </p>
+        <p className="mt-2 text-[var(--wa-text-secondary)]">
+          כשאתה מחבר דרייב, הקבצים יושבים בחשבון Google שלך. מכסת האחסון, החיוב והגיבוי הם מול Google, לא מולנו.
+          אם תנתק את הדרייב או תמחק קובץ משם, הנמען עלול שלא לצפות בו. מדיה עשויה להימחק אוטומטית לפי מדיניות השמירה
+          שבמדיניות הפרטיות.
         </p>
       </section>
 
       <section>
         <h2 className="text-base font-semibold">6. אינטגרציה עם Google</h2>
         <p className="mt-2 text-[var(--wa-text-secondary)]">
-          אם תבחר לחבר את חשבון Google שלך, השימוש כפוף גם לתנאי Google הרלוונטיים. אתה יכול לבטל את ההרשאה בכל
-          עת דרך הגדרות חשבון Google.
+          אם תבחר לחבר את חשבון Google שלך (התחברות, דרייב או אנשי קשר), השימוש כפוף גם לתנאי Google הרלוונטיים,
+          כולל{" "}
+          <a
+            href="https://policies.google.com/terms"
+            className="text-[#008069] hover:underline"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            תנאי השימוש של Google
+          </a>
+          . אנחנו מבקשים רק את ההרשאות הדרושות לתכונה שבחרת. אפשר לבטל כל הרשאה בכל עת דרך הפרופיל ב־{APP_NAME} או
+          דרך הגדרות חשבון Google.
         </p>
       </section>
 
@@ -83,7 +99,7 @@ export default function TermsPage() {
         <h2 className="text-base font-semibold">8. הגבלת אחריות</h2>
         <p className="mt-2 text-[var(--wa-text-secondary)]">
           במידה המרבית המותרת בדין, {APP_NAME} ומפעיליה לא יישאו באחריות לנזקים עקיפים, תוצאתיים, או אובדן נתונים
-          הנובע משימוש בשירות.
+          הנובע משימוש בשירות, כולל מחיקה או אי־זמינות של קבצים בגוגל דרייב.
         </p>
       </section>
 
