@@ -21,6 +21,8 @@ import { ContactMessage } from "./contact-message"
 import { EventMessage } from "./event-message"
 import { resolveMediaKind } from "./media-gallery"
 import { isExpiredChatMedia, MEDIA_EXPIRED_LABEL } from "@/lib/media-retention"
+import { isDriveMediaUrl, isDriveNotConnectedError } from "@/lib/google-drive"
+import { downloadUrlAsFile, messageMediaStreamUrl } from "@/lib/message-media"
 import { useChatMediaDisplay } from "@/lib/use-chat-media"
 import { DriveDownloadCard } from "./drive-download-card"
 import { useDriveOptional } from "./drive-provider"
@@ -32,6 +34,7 @@ import {
   Ban,
   FileText,
   Download,
+  HardDrive,
   Trash2,
   Video,
   ImageOff,
@@ -240,12 +243,22 @@ export function MessageBubble({
   const drive = useDriveOptional()
   const [driveBusy, setDriveBusy] = useState(false)
   const [driveError, setDriveError] = useState<string | null>(null)
+  const [mediaNotice, setMediaNotice] = useState<string | null>(null)
+  const [mediaMissing, setMediaMissing] = useState(false)
   const {
     url: displayFileUrl,
     loading: mediaUrlLoading,
     needsDownload,
+    isDrive,
     refresh: refreshMediaUrl,
-  } = useChatMediaDisplay(message.view_once ? null : message.file_url)
+  } = useChatMediaDisplay(message.view_once ? null : message.file_url, {
+    messageId: message.id,
+  })
+
+  useEffect(() => {
+    setMediaMissing(false)
+  }, [message.id, message.file_url])
+
   const downloadDriveMedia = async () => {
     if (!drive || !message.file_url) return
     setDriveBusy(true)
@@ -465,6 +478,43 @@ export function MessageBubble({
     }, 450)
   }
 
+  const canDownloadComputer =
+    (message.type === "video" || message.type === "file") && Boolean(message.file_url) && !viewOnce
+  const canSaveDrive = canDownloadComputer && isDriveMediaUrl(message.file_url)
+
+  const saveToDrive = async () => {
+    if (!drive || !message.file_url) return
+    setDriveBusy(true)
+    setDriveError(null)
+    setMediaNotice(null)
+    try {
+      await drive.copyToMyDrive({ kind: "message", id: message.id, fileUrl: message.file_url })
+      setMediaNotice("נשמר בדרייב")
+    } catch (err) {
+      if (!isDriveNotConnectedError(err)) {
+        setDriveError(err instanceof Error ? err.message : "השמירה נכשלה")
+      }
+    } finally {
+      setDriveBusy(false)
+    }
+  }
+
+  const downloadToComputer = async () => {
+    const name = message.file_name || (message.type === "video" ? "video.mp4" : "file")
+    const href = isDriveMediaUrl(message.file_url) ? messageMediaStreamUrl(message.id) : displayFileUrl
+    setDriveBusy(true)
+    setDriveError(null)
+    setMediaNotice(null)
+    try {
+      if (!href) throw new Error("ההורדה נכשלה")
+      await downloadUrlAsFile(href, name)
+    } catch (err) {
+      setDriveError(err instanceof Error ? err.message : "ההורדה נכשלה")
+    } finally {
+      setDriveBusy(false)
+    }
+  }
+
   const menuItems = [
     ...(onReply
       ? [
@@ -529,6 +579,32 @@ export function MessageBubble({
             onClick: () => {
               closeMenu()
               onForward()
+            },
+          },
+        ]
+      : []),
+    ...(canSaveDrive
+      ? [
+          {
+            id: "save-drive" as const,
+            label: driveBusy ? "שומר..." : "שמירה בדרייב",
+            icon: HardDrive,
+            onClick: () => {
+              closeMenu()
+              void saveToDrive()
+            },
+          },
+        ]
+      : []),
+    ...(canDownloadComputer
+      ? [
+          {
+            id: "download-computer" as const,
+            label: "הורדה למחשב",
+            icon: Download,
+            onClick: () => {
+              closeMenu()
+              void downloadToComputer()
             },
           },
         ]
@@ -667,6 +743,19 @@ export function MessageBubble({
           </div>
         )}
 
+        {mediaMissing && isDrive && (
+          <div className="mb-1 flex max-w-xs items-center gap-2 rounded-md bg-black/5 px-3 py-3 text-[13px] text-[var(--wa-text-secondary)]">
+            <ImageOff className="h-5 w-5 shrink-0 opacity-50" />
+            <span>הקובץ נמחק ולא ניתן לצפות בו</span>
+          </div>
+        )}
+
+        {(driveError || mediaNotice) && (
+          <p className={cn("mb-1 text-xs", driveError ? "text-red-500" : "text-[#00a884]")}>
+            {driveError || mediaNotice}
+          </p>
+        )}
+
         {!viewOnce && needsDownload && message.file_url && (
           <DriveDownloadCard
             kind={
@@ -704,7 +793,7 @@ export function MessageBubble({
           </button>
         )}
 
-        {!viewOnce && !needsDownload && !isSticker && mediaKind === "image" && message.file_url && displayFileUrl && (
+        {!viewOnce && !needsDownload && !isSticker && mediaKind === "image" && message.file_url && displayFileUrl && !mediaMissing && (
           <button
             type="button"
             onClick={openMedia}
@@ -715,6 +804,9 @@ export function MessageBubble({
               src={displayFileUrl}
               alt="תמונה"
               className="max-h-80 w-full cursor-pointer object-cover transition hover:brightness-95"
+              onError={() => {
+                if (isDrive) setMediaMissing(true)
+              }}
             />
           </button>
         )}
@@ -733,7 +825,7 @@ export function MessageBubble({
           </button>
         )}
 
-        {!viewOnce && !needsDownload && mediaKind === "video" && message.file_url && displayFileUrl && (
+        {!viewOnce && !needsDownload && mediaKind === "video" && message.file_url && displayFileUrl && !mediaMissing && (
           <button
             type="button"
             onClick={openMedia}
@@ -745,6 +837,9 @@ export function MessageBubble({
               muted
               playsInline
               preload="metadata"
+              onError={() => {
+                if (isDrive) setMediaMissing(true)
+              }}
             />
             <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/25">
               <span className="flex h-12 w-12 items-center justify-center rounded-full bg-black/55 text-white">
@@ -797,7 +892,7 @@ export function MessageBubble({
 
         {eventBody && <EventMessage payload={eventBody} />}
 
-        {isSticker && !needsDownload && message.file_url && displayFileUrl && (
+        {isSticker && !needsDownload && message.file_url && displayFileUrl && !mediaMissing && (
           <button
             type="button"
             onClick={openMedia}
@@ -809,6 +904,9 @@ export function MessageBubble({
               alt="מדבקה"
               className="max-h-40 max-w-full object-contain"
               draggable={false}
+              onError={() => {
+                if (isDrive) setMediaMissing(true)
+              }}
             />
           </button>
         )}
@@ -830,7 +928,7 @@ export function MessageBubble({
           <div className="mb-1 text-sm text-[var(--wa-text-secondary)]">{stickerPreviewLabel()}</div>
         )}
 
-        {mediaKind === "file" && message.file_url && !needsDownload && (
+        {mediaKind === "file" && message.file_url && !needsDownload && !mediaMissing && (
           <button
             type="button"
             onClick={openMedia}

@@ -61,7 +61,7 @@ export function VoiceMessage({
   avatarName,
 }: Props) {
   const { url: signedAvatarUrl } = useSignedMediaUrlControls(avatarUrl)
-  const driveMedia = useChatMediaDisplay(fileUrl)
+  const driveMedia = useChatMediaDisplay(fileUrl, { messageId })
   const hintDuration = parseMediaDurationHint(fileUrl) ?? 0
   const [ready, setReady] = useState(false)
   const [playing, setPlaying] = useState(false)
@@ -212,7 +212,8 @@ export function VoiceMessage({
       try {
         const supabase = createClient()
         const blob = driveMedia.url
-          ? await fetch(driveMedia.url).then((res) => {
+          ? await fetch(driveMedia.url).then(async (res) => {
+              if (res.status === 404) throw new Error("הקובץ נמחק ולא ניתן לצפות בו")
               if (!res.ok) throw new Error("empty media")
               return res.blob()
             })
@@ -244,7 +245,9 @@ export function VoiceMessage({
       } catch (err) {
         console.error("VoiceMessage load failed:", err)
         if (!cancelled) {
+          const missing = err instanceof Error && err.message.includes("נמחק")
           setLoadError(true)
+          setPlayError(missing ? err.message : null)
           setReady(false)
           setBuffering(false)
         }

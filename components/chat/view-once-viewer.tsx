@@ -3,9 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Eye, X } from "lucide-react"
 import { useChatMediaDisplay } from "@/lib/use-chat-media"
-import { copyDriveMedia } from "@/lib/google-drive-client"
-import { isDriveMediaUrl, parseDriveMediaRef } from "@/lib/google-drive"
-import { useDriveOptional } from "./drive-provider"
+import { isDriveMediaUrl } from "@/lib/google-drive"
+import { messageMediaStreamUrl } from "@/lib/message-media"
 import { openViewOnceMessage } from "@/lib/view-once"
 import type { Message } from "@/lib/types"
 
@@ -18,49 +17,14 @@ type Props = {
 }
 
 export function ViewOnceViewer({ message, burnsOnClose, onBurned, onClose }: Props) {
-  const drive = useDriveOptional()
-  const driveRef = parseDriveMediaRef(message.file_url)
-  const media = useChatMediaDisplay(message.file_url, { enabled: !driveRef || !burnsOnClose })
-  const [grantedUrl, setGrantedUrl] = useState<string | null>(null)
-  const [granting, setGranting] = useState(false)
+  const driveFile = isDriveMediaUrl(message.file_url)
+  const media = useChatMediaDisplay(driveFile ? null : message.file_url)
+  const url = driveFile && message.file_url ? messageMediaStreamUrl(message.id) : media.url
   const [closing, setClosing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const burnedRef = useRef(false)
   const videoRef = useRef<HTMLVideoElement>(null)
   const isVideo = message.type === "video"
-  const url = grantedUrl ?? media.url
-
-  useEffect(() => {
-    if (!driveRef || !burnsOnClose || !message.file_url) return
-    if (!drive?.ready) return
-    if (!drive.connected) {
-      drive.requestConnect()
-      setError("חבר את גוגל דרייב כדי לצפות")
-      return
-    }
-    let cancelled = false
-    const objectUrls: string[] = []
-    setGranting(true)
-    void (async () => {
-      try {
-        await copyDriveMedia({ kind: "message", id: message.id, mode: "view" })
-        const blob = await drive.downloadBlob(driveRef.fileId)
-        if (cancelled) return
-        const next = URL.createObjectURL(blob)
-        objectUrls.push(next)
-        setGrantedUrl(next)
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : "לא ניתן לפתוח את המדיה")
-      } finally {
-        if (!cancelled) setGranting(false)
-      }
-    })()
-    return () => {
-      cancelled = true
-      for (const u of objectUrls) URL.revokeObjectURL(u)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [burnsOnClose, message.file_url, message.id, drive?.ready, drive?.connected])
 
   const finish = useCallback(async () => {
     if (closing) return
@@ -94,7 +58,7 @@ export function ViewOnceViewer({ message, burnsOnClose, onBurned, onClose }: Pro
     return () => document.removeEventListener("contextmenu", block)
   }, [])
 
-  const loading = Boolean(message.file_url) && !url && !error && (granting || media.loading || isDriveMediaUrl(message.file_url))
+  const loading = Boolean(message.file_url) && !url && !error && media.loading
 
   return (
     <div className="fixed inset-0 z-[90] flex flex-col bg-black text-white">
@@ -120,7 +84,7 @@ export function ViewOnceViewer({ message, burnsOnClose, onBurned, onClose }: Pro
       <div className="relative flex min-h-0 flex-1 items-center justify-center px-3 pb-6">
         {loading && <p className="text-sm text-white/60">טוען...</p>}
         {error && <p className="px-6 text-center text-sm text-red-300">{error}</p>}
-        {url && isVideo && (
+        {url && !error && isVideo && (
           <video
             ref={videoRef}
             src={url}
@@ -132,9 +96,12 @@ export function ViewOnceViewer({ message, burnsOnClose, onBurned, onClose }: Pro
             className="max-h-full max-w-full rounded-lg"
             onEnded={() => void finish()}
             onContextMenu={(e) => e.preventDefault()}
+            onError={() => {
+              if (driveFile) setError("הקובץ נמחק ולא ניתן לצפות בו")
+            }}
           />
         )}
-        {url && !isVideo && (
+        {url && !error && !isVideo && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={url}
@@ -142,6 +109,9 @@ export function ViewOnceViewer({ message, burnsOnClose, onBurned, onClose }: Pro
             draggable={false}
             className="max-h-full max-w-full select-none rounded-lg object-contain"
             onContextMenu={(e) => e.preventDefault()}
+            onError={() => {
+              if (driveFile) setError("הקובץ נמחק ולא ניתן לצפות בו")
+            }}
           />
         )}
       </div>

@@ -17,6 +17,8 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useChatMediaDisplay } from "@/lib/use-chat-media"
+import { isDriveMediaUrl } from "@/lib/google-drive"
+import { downloadUrlAsFile, messageMediaStreamUrl } from "@/lib/message-media"
 import { DriveDownloadCard } from "./drive-download-card"
 import { useDriveOptional } from "./drive-provider"
 import { Avatar } from "./avatar"
@@ -66,7 +68,7 @@ function GalleryThumb({
   thumb: GalleryItem
   duration?: number
 }) {
-  const { url } = useChatMediaDisplay(thumb.url)
+  const { url } = useChatMediaDisplay(thumb.url, { messageId: thumb.id })
   if (thumb.type === "image") {
     return url ? <img src={url} alt="" className="h-full w-full object-cover" /> : null
   }
@@ -158,12 +160,16 @@ export function MediaGallery({
   const stripRef = useRef<HTMLDivElement>(null)
   const [mounted, setMounted] = useState(false)
   const [videoDurations, setVideoDurations] = useState<Record<string, number>>({})
-  const { url: displayUrl, needsDownload } = useChatMediaDisplay(item?.url)
+  const [mediaMissing, setMediaMissing] = useState(false)
+  const { url: displayUrl, needsDownload } = useChatMediaDisplay(item?.url, { messageId: item?.id })
   const drive = useDriveOptional()
   const [driveBusy, setDriveBusy] = useState(false)
   const [driveError, setDriveError] = useState<string | null>(null)
 
   useEffect(() => setMounted(true), [])
+  useEffect(() => {
+    setMediaMissing(false)
+  }, [item?.id])
 
   const goPrev = useCallback(() => {
     onIndexChange(Math.max(0, index - 1))
@@ -211,7 +217,9 @@ export function MediaGallery({
       const supabase = createClient()
       for (const it of items) {
         if (it.type !== "video" || videoDurations[it.id] != null) continue
-        const signed = await resolveMediaDisplayUrl(supabase, it.url)
+        const signed = isDriveMediaUrl(it.url)
+          ? messageMediaStreamUrl(it.id)
+          : await resolveMediaDisplayUrl(supabase, it.url)
         if (!signed || cancelled) continue
         const v = document.createElement("video")
         v.preload = "metadata"
@@ -295,17 +303,21 @@ export function MediaGallery({
           </button>
         )}
 
-        <a
-          href={displayUrl ?? item.url}
-          download={item.name ?? undefined}
-          target="_blank"
-          rel="noopener noreferrer"
+        <button
+          type="button"
           className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-white/10"
-          aria-label="הורדה"
-          onClick={(e) => e.stopPropagation()}
+          aria-label="הורדה למחשב"
+          onClick={(e) => {
+            e.stopPropagation()
+            const href = displayUrl ?? (isDriveMediaUrl(item.url) ? messageMediaStreamUrl(item.id) : item.url)
+            void downloadUrlAsFile(href, item.name || "file").catch((err) => {
+              setMediaMissing(true)
+              setDriveError(err instanceof Error ? err.message : "ההורדה נכשלה")
+            })
+          }}
         >
           <Download className="h-5 w-5" />
-        </a>
+        </button>
 
         <div className="mr-auto flex min-w-0 items-center gap-3 pl-2">
           <div className="min-w-0 text-right">
@@ -358,7 +370,12 @@ export function MediaGallery({
           className="flex max-h-full max-w-full items-center justify-center"
           onClick={(e) => e.stopPropagation()}
         >
-          {needsDownload && (
+          {mediaMissing && (
+            <p className="px-6 text-center text-sm text-white/80">
+              {driveError || "הקובץ נמחק ולא ניתן לצפות בו"}
+            </p>
+          )}
+          {needsDownload && !mediaMissing && (
             <DriveDownloadCard
               kind={item.type === "video" ? "video" : item.type === "file" ? "file" : "image"}
               fileName={item.name}
@@ -376,15 +393,18 @@ export function MediaGallery({
               }}
             />
           )}
-          {item.type === "image" && displayUrl && (
+          {item.type === "image" && displayUrl && !needsDownload && !mediaMissing && (
             <img
               src={displayUrl}
               alt={item.name ?? "תמונה"}
               className="max-h-[calc(100svh-10.5rem)] max-w-[min(100vw-2rem,960px)] object-contain select-none"
               draggable={false}
+              onError={() => {
+                if (isDriveMediaUrl(item.url)) setMediaMissing(true)
+              }}
             />
           )}
-          {item.type === "video" && displayUrl && (
+          {item.type === "video" && displayUrl && !needsDownload && !mediaMissing && (
             <video
               key={item.id}
               src={displayUrl}
@@ -392,9 +412,12 @@ export function MediaGallery({
               autoPlay
               playsInline
               className="max-h-[calc(100svh-10.5rem)] max-w-[min(100vw-2rem,960px)] rounded-sm bg-black shadow-2xl"
+              onError={() => {
+                if (isDriveMediaUrl(item.url)) setMediaMissing(true)
+              }}
             />
           )}
-          {item.type === "file" && (
+          {item.type === "file" && !needsDownload && !mediaMissing && (
             <div className="flex w-full max-w-sm flex-col items-center gap-4 rounded-2xl bg-[#202c33] px-8 py-10 text-center text-white">
               <div className="flex h-20 w-20 items-center justify-center rounded-full bg-[#00a884]/20">
                 <FileText className="h-10 w-10 text-[#00a884]" />
@@ -405,15 +428,19 @@ export function MediaGallery({
                   <div className="mt-1 text-sm text-[#8696a0]">{formatFileSize(item.size)}</div>
                 )}
               </div>
-              <a
-                href={displayUrl ?? item.url}
-                download={item.name ?? undefined}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                type="button"
+                onClick={() => {
+                  const href = displayUrl ?? (isDriveMediaUrl(item.url) ? messageMediaStreamUrl(item.id) : item.url)
+                  void downloadUrlAsFile(href, item.name || "file").catch((err) => {
+                    setMediaMissing(true)
+                    setDriveError(err instanceof Error ? err.message : "ההורדה נכשלה")
+                  })
+                }}
                 className="mt-2 rounded-full bg-[#00a884] px-6 py-2.5 text-sm font-medium text-white hover:bg-[#029e7a]"
               >
                 הורד קובץ
-              </a>
+              </button>
             </div>
           )}
         </div>

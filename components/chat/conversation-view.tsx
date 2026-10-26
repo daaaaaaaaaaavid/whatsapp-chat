@@ -38,6 +38,7 @@ import { formatDateDivider, formatChatListTime } from "@/lib/format"
 import { parseCallSystemPayload } from "@/lib/call-system-message"
 import { parsePollPayload } from "@/lib/poll"
 import { parseContactPayload } from "@/lib/contact-message"
+import { isDriveMediaUrl } from "@/lib/google-drive"
 import { parseEventPayload } from "@/lib/event-message"
 import { isStickerMessage } from "@/lib/sticker-message"
 import { parseWatchSystemPayload } from "@/lib/watch-system-message"
@@ -623,8 +624,31 @@ export function ConversationView({
   )
 
   const handleDeleteForEveryone = async (messageId: string) => {
-    const supabase = createClient()
+    const target = messages.find((m) => m.id === messageId)
     const deletedAt = new Date().toISOString()
+    const applyLocal = () => {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId
+            ? { ...m, deleted_at: deletedAt, content: null, file_url: null, type: "text" as const }
+            : m,
+        ),
+      )
+    }
+    if (target?.file_url && isDriveMediaUrl(target.file_url)) {
+      try {
+        const res = await fetch(`/api/drive/message-media?id=${encodeURIComponent(messageId)}`, {
+          method: "DELETE",
+        })
+        if (res.ok) {
+          applyLocal()
+          return
+        }
+      } catch (err) {
+        console.error("drive message delete failed", err)
+      }
+    }
+    const supabase = createClient()
     const { error } = await supabase
       .from("messages")
       .update({ deleted_at: deletedAt, content: null, file_url: null })
@@ -634,13 +658,7 @@ export function ConversationView({
       console.error("delete for everyone failed", error.message)
       return
     }
-    setMessages((prev) =>
-      prev.map((m) =>
-        m.id === messageId
-          ? { ...m, deleted_at: deletedAt, content: null, file_url: null, type: "text" as const }
-          : m,
-      ),
-    )
+    applyLocal()
   }
 
   const handleTyping = useCallback((typing: boolean) => {

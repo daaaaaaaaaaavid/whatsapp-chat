@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { isDriveMediaUrl } from "@/lib/google-drive"
+import { messageMediaStreamUrl } from "@/lib/message-media"
 import { useDriveOptional } from "@/components/chat/drive-provider"
 import { useSignedMediaUrlControls } from "@/lib/use-signed-media-url"
 
@@ -9,7 +10,7 @@ const blobCache = new Map<string, string>()
 
 export function useChatMediaDisplay(
   fileUrl: string | null | undefined,
-  opts?: { enabled?: boolean },
+  opts?: { enabled?: boolean; messageId?: string | null },
 ): {
   url: string | null
   loading: boolean
@@ -21,8 +22,13 @@ export function useChatMediaDisplay(
   const drive = useDriveOptional()
   const isDrive = isDriveMediaUrl(fileUrl)
   const signed = useSignedMediaUrlControls(isDrive || !enabled ? null : fileUrl)
-  const viewFileId = enabled && isDrive ? drive?.viewFileId(fileUrl) ?? null : null
-  const needsDownload = Boolean(enabled && isDrive && !viewFileId)
+  const streamMessageId = enabled && isDrive && opts?.messageId ? opts.messageId : null
+  const viewFileId = streamMessageId
+    ? null
+    : enabled && isDrive
+      ? (drive?.viewFileId(fileUrl) ?? null)
+      : null
+  const needsDownload = Boolean(enabled && isDrive && !viewFileId && !streamMessageId)
   const [blobUrl, setBlobUrl] = useState<string | null>(() =>
     viewFileId ? blobCache.get(viewFileId) ?? null : null,
   )
@@ -74,6 +80,15 @@ export function useChatMediaDisplay(
 
   if (!enabled) {
     return { url: null, loading: false, needsDownload: false, isDrive, refresh }
+  }
+  if (streamMessageId) {
+    return {
+      url: messageMediaStreamUrl(streamMessageId),
+      loading: false,
+      needsDownload: false,
+      isDrive: true,
+      refresh,
+    }
   }
   if (!isDrive) {
     return {
