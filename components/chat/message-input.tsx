@@ -59,6 +59,7 @@ import {
 import { parseReplyContent } from "@/lib/message-content"
 import { useVoiceTyping } from "@/lib/use-voice-typing"
 import { VoiceTypingBar } from "./voice-typing-bar"
+import { RecordingDock } from "./recording-dock"
 import {
   encodeMentions,
   extractMentions,
@@ -237,6 +238,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [sendError, setSendError] = useState<string | null>(null)
   const [recording, setRecording] = useState(false)
+  const [recordingElapsed, setRecordingElapsed] = useState(0)
   const [recordingPreview, setRecordingPreview] = useState<RecordingPreview | null>(null)
   const [sendingRecording, setSendingRecording] = useState(false)
   const [pending, setPending] = useState<PendingItem[]>([])
@@ -416,6 +418,21 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
     setRecording(false)
     onTypingRef.current?.(false)
   }, [conversationId])
+
+  useEffect(() => {
+    if (!recording) return
+    const tick = () => {
+      const started = recordingStartedAtRef.current
+      if (started == null) return
+      setRecordingElapsed((performance.now() - started) / 1000)
+    }
+    tick()
+    const id = window.setInterval(tick, 200)
+    return () => {
+      window.clearInterval(id)
+      setRecordingElapsed(0)
+    }
+  }, [recording])
 
   const sendMessage = useCallback(
     async (payload: {
@@ -1026,7 +1043,18 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
   }
 
   const stopRecording = () => {
-    mediaRecorderRef.current?.stop()
+    const recorder = mediaRecorderRef.current
+    if (!recorder || recorder.state === "inactive") {
+      setRecording(false)
+      return
+    }
+    recorder.stop()
+  }
+
+  const cancelRecording = () => {
+    discardRecordingRef.current = true
+    const recorder = mediaRecorderRef.current
+    if (recorder && recorder.state !== "inactive") recorder.stop()
     setRecording(false)
   }
 
@@ -1078,6 +1106,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
       recorder.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop())
         mediaRecorderRef.current = null
+        setRecording(false)
         const startedAt = recordingStartedAtRef.current
         recordingStartedAtRef.current = null
         const durationSec =
@@ -1395,58 +1424,6 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
         </div>
       )}
 
-      {recording && (
-        <div className="absolute -top-10 inset-x-0 flex justify-center">
-          <button
-            type="button"
-            onClick={stopRecording}
-            className="flex items-center gap-2 rounded-full bg-[#ea0038] px-4 py-1.5 text-sm text-white shadow"
-          >
-            <span className="h-2 w-2 animate-pulse rounded-full bg-[var(--wa-panel)]" />
-            מקליט... לחץ לעצירה ולהאזנה
-          </button>
-        </div>
-      )}
-
-      {recordingPreview && (
-        <div
-          className="flex items-center gap-2 border-t border-[var(--wa-border)] bg-[var(--wa-header)] px-4 py-2"
-          dir="ltr"
-        >
-          <button
-            type="button"
-            onClick={discardRecordingPreview}
-            disabled={sendingRecording}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#ea0038] transition hover:bg-black/5 disabled:opacity-40"
-            aria-label="מחק הקלטה"
-            title="מחק הקלטה"
-          >
-            <Trash2 className="h-5 w-5" />
-          </button>
-          <audio
-            key={recordingPreview.url}
-            src={recordingPreview.url}
-            controls
-            preload="metadata"
-            className="h-10 min-w-0 flex-1 max-w-full"
-            aria-label="תצוגה מקדימה של ההקלטה"
-          />
-          <button
-            type="button"
-            onClick={() => void sendRecordingPreview()}
-            disabled={sendingRecording}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white transition hover:bg-[#06cf9c] disabled:opacity-50"
-            aria-label="שלח הקלטה"
-            title="שלח הקלטה"
-          >
-            {sendingRecording ? (
-              <LoaderCircle className="h-5 w-5 animate-spin" />
-            ) : (
-              <SendHorizontal className="h-5 w-5 -scale-x-100" />
-            )}
-          </button>
-        </div>
-      )}
 
       {showEmoji && (
         <EmojiPicker id={emojiPickerId} onSelect={insertEmoji} onClose={closeEmojiPicker} />
@@ -1772,6 +1749,17 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
         onPrefsChange={voice.updatePrefs}
       />
 
+      {recording || recordingPreview ? (
+        <RecordingDock
+          phase={recording ? "live" : "preview"}
+          elapsedSec={recordingElapsed}
+          preview={recordingPreview}
+          sending={sendingRecording}
+          onStop={stopRecording}
+          onDiscard={recording ? cancelRecording : discardRecordingPreview}
+          onSend={() => void sendRecordingPreview()}
+        />
+      ) : (
       <form onSubmit={handleSendText} className="wa-composer mx-2 mb-2 mt-1 flex items-end gap-1.5 rounded-[1.6rem] px-2 py-1.5">
         <button
           type="button"
@@ -1970,7 +1958,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
             }}
             className={`wa-voice-btn mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition ${
               voice.listening
-                ? "wa-voice-live bg-[var(--wa-accent-soft)] text-[var(--wa-teal-dark)]"
+                ? "wa-voice-live"
                 : "text-[var(--wa-text-secondary)] hover:bg-black/5"
             }`}
             aria-label={voice.listening ? "עצירת הקלדה קולית" : "הקלדה קולית"}
@@ -2011,6 +1999,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
           </button>
         )}
       </form>
+      )}
     </div>
   )
 })

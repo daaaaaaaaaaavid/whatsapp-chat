@@ -713,76 +713,74 @@ textarea {
   clip-path: polygon(0 0, 100% 0, 0 100%);
 }
 
-/* Voice typing mic — live state (matches the voice typing extension) */
+/* Voice typing mic — live halo, no recording badge */
 .wa-voice-btn {
   position: relative;
   overflow: visible;
 }
 
+.wa-voice-live {
+  background: linear-gradient(155deg, #e7fff8, var(--wa-teal) 52%, color-mix(in srgb, var(--wa-violet) 72%, var(--wa-teal)));
+  color: #04241c;
+  box-shadow: 0 8px 18px var(--wa-glow);
+}
+
 .wa-voice-live::before {
   content: "";
   position: absolute;
-  inset: 1px;
+  inset: -4px;
   border-radius: 50%;
-  border: 2px solid color-mix(in srgb, var(--wa-teal) 55%, transparent);
+  border: 1.5px solid color-mix(in srgb, var(--wa-teal) 50%, transparent);
   pointer-events: none;
-  animation: wa-voice-ring 1.35s ease-out infinite;
+  animation: wa-voice-ring 1.6s ease-out infinite;
 }
 
-.wa-voice-live::after {
+.wa-voice-orb {
+  background: linear-gradient(155deg, #e7fff8, var(--wa-teal) 52%, color-mix(in srgb, var(--wa-violet) 72%, var(--wa-teal)));
+  box-shadow: 0 8px 18px var(--wa-glow);
+}
+
+.wa-voice-orb::before {
   content: "";
   position: absolute;
-  top: 5px;
-  inset-inline-end: 5px;
-  width: 7px;
-  height: 7px;
+  inset: -4px;
   border-radius: 50%;
-  background: #dc2626;
+  border: 1.5px solid color-mix(in srgb, var(--wa-teal) 45%, transparent);
   pointer-events: none;
-  animation: wa-voice-dot 1.1s ease-in-out infinite;
-}
-
-.wa-voice-live svg {
-  animation: wa-voice-beat 1.15s ease-in-out infinite;
+  animation: wa-voice-ring 1.6s ease-out infinite;
 }
 
 @keyframes wa-voice-ring {
   0% {
-    opacity: 0.7;
-    transform: scale(0.88);
+    opacity: 0.75;
+    transform: scale(0.92);
   }
   100% {
     opacity: 0;
-    transform: scale(1.42);
+    transform: scale(1.28);
   }
 }
 
-@keyframes wa-voice-dot {
+@keyframes wa-eq-bar {
   0%,
   100% {
-    transform: scale(1);
+    transform: scaleY(0.35);
+    opacity: 0.55;
+  }
+  50% {
+    transform: scaleY(1);
     opacity: 1;
   }
-  50% {
-    transform: scale(1.28);
-    opacity: 0.7;
-  }
 }
 
-@keyframes wa-voice-beat {
-  0%,
-  100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.12);
-  }
+.wa-eq-bar {
+  animation: wa-eq-bar 1.05s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .wa-voice-live::before,
-  .wa-voice-live::after,
-  .wa-voice-live svg {
+  .wa-voice-orb::before,
+  .wa-eq-bar {
     animation: none;
   }
 }
