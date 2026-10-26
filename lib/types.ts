@@ -166,8 +166,10 @@ export type Conversation = {
   created_by: string | null
   created_at: string
   updated_at: string
-  /** Direct chats with someone new stay pending until they accept. */
+  /** Direct chats with someone new stay pending until they reply or close the chat. */
   request_status?: "pending" | "accepted" | "declined" | null
+  /** Email of someone who is not on WhaChat yet. The chat is waiting for them. */
+  pending_email?: string | null
   /** When set, this group is a channel inside a Work Space */
   work_space_id?: string | null
   participants?: Participant[]

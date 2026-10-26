@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { claimPendingEmailChats } from "@/lib/chat-actions"
 import type { Conversation, Message, Participant, Profile } from "@/lib/types"
 
 type SummaryRow = {
@@ -89,6 +90,7 @@ export function useConversations(currentUserId: string) {
   const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const load = useCallback(async () => {
+    await claimPendingEmailChats(currentUserId)
     const supabase = createClient()
 
     const { data: myParts } = await supabase

@@ -30,7 +30,7 @@ import { ThreadPanel } from "./thread-panel"
 import { MediaGallery, mediaItemsFromMessages } from "./media-gallery"
 import { ForwardDialog } from "./forward-dialog"
 import { ViewOnceViewer } from "./view-once-viewer"
-import { convAvatarUrl, convDisplayName, isSelfConversation } from "@/lib/conversation-display"
+import { convAvatarUrl, convDisplayName, emailHeldAddress, isSelfConversation } from "@/lib/conversation-display"
 import { canComposeInConversation, chatRequestView } from "@/lib/chat-request"
 import { resendChatRequest, respondToChatRequest } from "@/lib/chat-actions"
 import { buildMentionCandidates } from "@/lib/mentions"
@@ -200,11 +200,16 @@ export function ConversationView({
     .filter((p) => typingUsers[p.user_id] != null)
     .map((p) => (p.user_id === currentUser.id ? "אתה" : p.profile?.display_name ?? "משתמש"))
 
+  const heldEmail =
+    emailHeldAddress(conversation) && otherParticipants.length === 0
+      ? emailHeldAddress(conversation)
+      : null
+
   const subtitle =
     requestView === "outgoing"
-      ? "ממתין לאישור"
+      ? "ממתין לתשובה"
       : requestView === "incoming"
-        ? "בקשת שיחה"
+        ? "הודעה חדשה"
         : requestView === "declined"
           ? "הבקשה נדחתה"
           : isSelf
@@ -226,6 +231,26 @@ export function ConversationView({
   useEffect(() => {
     if (requestView === "hidden") onBackRef.current()
   }, [requestView])
+
+  const acceptPromiseRef = useRef<Promise<void> | null>(null)
+  useEffect(() => {
+    acceptPromiseRef.current = null
+  }, [conversation.id])
+
+  const acceptIncomingOnReply = useCallback(async () => {
+    if (chatRequestView(conversation, currentUser.id) !== "incoming") return
+    if (!acceptPromiseRef.current) {
+      acceptPromiseRef.current = respondToChatRequest(conversation.id, true)
+        .then(() => {
+          onChatRequestChanged?.()
+        })
+        .catch((err) => {
+          acceptPromiseRef.current = null
+          throw err
+        })
+    }
+    await acceptPromiseRef.current
+  }, [conversation, currentUser.id, onChatRequestChanged])
 
   const handleRespondToRequest = async (accept: boolean) => {
     if (requestBusy) return
@@ -1194,10 +1219,29 @@ export function ConversationView({
         <>
         {requestView === "outgoing" && (
           <div className="border-t border-[var(--wa-border)] bg-[var(--wa-accent-soft)] px-4 py-2.5 text-center text-xs leading-relaxed text-[var(--wa-text)]">
-            ממתין ש{name} יאשר את השיחה. אפשר לכתוב בינתיים.
+            {heldEmail
+              ? `ההודעות יחכו ל-${heldEmail} עד שייכנס. אז יוכל לענות או לסגור את הצ'אט.`
+              : `${name} יכול לענות או לסגור את הצ'אט.`}
+          </div>
+        )}
+        {requestView === "incoming" && (
+          <div className="flex items-center justify-between gap-3 border-t border-[var(--wa-border)] bg-[var(--wa-accent-soft)] px-4 py-2.5">
+            <p className="min-w-0 flex-1 text-right text-xs leading-relaxed text-[var(--wa-text)]">
+              {name} שלח לך הודעה. אפשר לענות, או לסגור את הצ'אט.
+              {requestError ? ` ${requestError}` : ""}
+            </p>
+            <button
+              type="button"
+              disabled={requestBusy}
+              onClick={() => void handleRespondToRequest(false)}
+              className="shrink-0 rounded-full px-3 py-1.5 text-xs font-medium text-[var(--wa-text-secondary)] transition hover:bg-[var(--wa-hover)] disabled:opacity-60"
+            >
+              סגור צ'אט
+            </button>
           </div>
         )}
         <MessageInput
+          onBeforeSend={requestView === "incoming" ? acceptIncomingOnReply : undefined}
           ref={messageInputRef}
           conversationId={conversation.id}
           currentUserId={currentUser.id}
@@ -1232,46 +1276,23 @@ export function ConversationView({
         </>
       )}
 
-      {!searchOpen && !selectionMode && (requestView === "incoming" || requestView === "declined") && (
+      {!searchOpen && !selectionMode && requestView === "declined" && (
         <div className="border-t border-[var(--wa-border)] bg-[var(--wa-panel)] px-4 py-4">
           <p className="text-center text-sm text-[var(--wa-text)]">
-            {requestView === "incoming"
-              ? `${name} רוצה להתחיל איתך שיחה`
-              : `${name} לא אישר את השיחה`}
+            {`${name} סגר את הצ'אט`}
           </p>
           {requestError && (
             <p className="mt-2 text-center text-xs text-red-600 dark:text-red-300">{requestError}</p>
           )}
           <div className="mt-3 flex items-center justify-center gap-2">
-            {requestView === "incoming" ? (
-              <>
-                <button
-                  type="button"
-                  disabled={requestBusy}
-                  onClick={() => void handleRespondToRequest(false)}
-                  className="rounded-full px-4 py-2 text-sm font-medium text-[var(--wa-text-secondary)] transition hover:bg-[var(--wa-hover)] disabled:opacity-60"
-                >
-                  לא תודה
-                </button>
-                <button
-                  type="button"
-                  disabled={requestBusy}
-                  onClick={() => void handleRespondToRequest(true)}
-                  className="rounded-full bg-[#00a884] px-5 py-2 text-sm font-medium text-white transition hover:bg-[#06cf9c] disabled:opacity-60"
-                >
-                  {requestBusy ? "רגע..." : "אישור"}
-                </button>
-              </>
-            ) : (
-              <button
-                type="button"
-                disabled={requestBusy}
-                onClick={() => void handleResendRequest()}
-                className="rounded-full bg-[#00a884] px-5 py-2 text-sm font-medium text-white transition hover:bg-[#06cf9c] disabled:opacity-60"
-              >
-                {requestBusy ? "שולח..." : "שלח בקשה שוב"}
-              </button>
-            )}
+            <button
+              type="button"
+              disabled={requestBusy}
+              onClick={() => void handleResendRequest()}
+              className="rounded-full bg-[#00a884] px-5 py-2 text-sm font-medium text-white transition hover:bg-[#06cf9c] disabled:opacity-60"
+            >
+              {requestBusy ? "שולח..." : "שלח שוב"}
+            </button>
           </div>
         </div>
       )}

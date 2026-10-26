@@ -718,17 +718,7 @@ export function ChatApp({ currentUser: initialUser }: Props) {
   const handleStartChatByEmail = useCallback(
     async (email: string) => {
       const result = await startChatOrInviteByEmail(currentUser.id, email)
-      if (result.status === "invited") {
-        try {
-          await navigator.clipboard.writeText(result.shareText)
-        } catch {
-          // ignore clipboard failures
-        }
-        window.alert(
-          `נוצר קישור הזמנה עבור ${result.email}.\nהודעת ההזמנה הועתקה — הדבק במייל או בגוגל צ'אט.`,
-        )
-        return
-      }
+      if (result.status !== "chat") return
       const conversationId = result.conversationId
       if (prefsRef.current.activeSpace === "work") {
         updatePrefs(setConversationSpace(prefsRef.current, conversationId, "work"))

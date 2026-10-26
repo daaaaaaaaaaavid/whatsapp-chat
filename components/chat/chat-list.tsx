@@ -227,7 +227,7 @@ export function ChatList({
             <div className="min-w-0 flex-1 text-right">
               <div className="truncate font-medium text-[var(--wa-text)]">שיחה חדשה</div>
               <div className="truncate text-sm text-[var(--wa-text-secondary)]">
-                {startingEmail ? "פותח..." : `${emailQuery} · יאשרו לפני שהשיחה נפתחת`}
+                {startingEmail ? "פותח..." : `${emailQuery} · הצ'אט ייפתח, והוא יוכל לענות או לסגור`}
               </div>
             </div>
           </button>
@@ -239,7 +239,7 @@ export function ChatList({
 
         {!showArchive && incomingRequests.length > 0 && (
           <div className="pb-1">
-            <div className="px-4 pb-1 pt-2 text-xs font-medium text-[var(--wa-teal-dark)]">בקשות שיחה</div>
+            <div className="px-4 pb-1 pt-2 text-xs font-medium text-[var(--wa-teal-dark)]">שיחות חדשות</div>
             {incomingRequests.map((conv) => {
               const name = convDisplayName(conv, currentUser.id)
               const last = conv.last_message
@@ -258,7 +258,7 @@ export function ChatList({
                   <div className="min-w-0 flex-1 text-right">
                     <div className="truncate text-[var(--wa-text)]">{name}</div>
                     <div className="truncate text-sm text-[var(--wa-teal-dark)]">
-                      {last && !last.deleted_at ? messagePreview(last) : "רוצה להתחיל איתך שיחה"}
+                          {last && !last.deleted_at ? messagePreview(last) : "שלח לך הודעה"}
                     </div>
                   </div>
                 </button>
@@ -342,9 +342,9 @@ export function ChatList({
                         )}
                         <span className="truncate">
                           {requestView === "declined"
-                            ? "הבקשה נדחתה"
-                            : requestView === "outgoing" && !last
-                              ? "ממתין לאישור"
+                            ? "הצ'אט נסגר"
+                              : requestView === "outgoing" && !last
+                              ? "ממתין לתשובה"
                               : last?.deleted_at
                                 ? "ההודעה נמחקה"
                                 : messagePreview(last)}

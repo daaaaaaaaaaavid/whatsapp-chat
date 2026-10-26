@@ -346,66 +346,178 @@ export type DmInviteResult =
       inviterName: string
     }
 
-/** Start a DM if the user exists; otherwise create a shareable invite link. */
+function normalizeEmailAddress(email: string) {
+  return email.trim().toLowerCase()
+}
+
+/** Open a direct chat addressed to an email that is not registered yet. */
+export async function getOrCreatePendingEmailConversation(
+  currentUserId: string,
+  rawEmail: string,
+): Promise<{ id: string; created: boolean }> {
+  const email = normalizeEmailAddress(rawEmail)
+  await ensureSupabaseConfig()
+  const supabase = createClient()
+
+  type ExistingChat = {
+    id: string
+    name: string | null
+    request_status?: string | null
+  }
+
+  const withStatus = await supabase
+    .from("conversations")
+    .select("id, name, request_status")
+    .eq("created_by", currentUserId)
+    .eq("is_group", false)
+
+  let existing: ExistingChat[] | null = (withStatus.data ?? null) as ExistingChat[] | null
+  let existingError = withStatus.error
+
+  if (existingError && /request_status/i.test(existingError.message)) {
+    const plain = await supabase
+      .from("conversations")
+      .select("id, name")
+      .eq("created_by", currentUserId)
+      .eq("is_group", false)
+    existing = (plain.data ?? null) as ExistingChat[] | null
+    existingError = plain.error
+  }
+
+  if (existingError) throw new Error(errMessage(existingError, "נכשל בטעינת שיחות"))
+
+  const found = (existing ?? []).find(
+    (row) => (row.name ?? "").trim().toLowerCase() === email,
+  )
+  if (found?.id) {
+    if (found.request_status === "declined") {
+      try {
+        await resendChatRequest(found.id)
+      } catch {
+        // The chat is still there; they can try again from the thread.
+      }
+    }
+    return { id: found.id, created: false }
+  }
+
+  const conversationId = crypto.randomUUID()
+  let payload: Record<string, unknown> = {
+    id: conversationId,
+    is_group: false,
+    created_by: currentUserId,
+    name: email,
+    request_status: "pending",
+    pending_email: email,
+  }
+
+  let inserted = false
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const { error } = await supabase.from("conversations").insert(payload)
+    if (!error) {
+      inserted = true
+      break
+    }
+    const msg = error.message.toLowerCase()
+    if (msg.includes("pending_email") && "pending_email" in payload) {
+      const { pending_email: _omit, ...rest } = payload
+      payload = rest
+      continue
+    }
+    if (msg.includes("request_status") && "request_status" in payload) {
+      const { request_status: _omit, ...rest } = payload
+      payload = rest
+      continue
+    }
+    throw new Error(errMessage(error, "נכשל ביצירת שיחה"))
+  }
+  if (!inserted) throw new Error("נכשל ביצירת שיחה")
+
+  const { error: partsError } = await supabase.from("conversation_participants").insert({
+    conversation_id: conversationId,
+    user_id: currentUserId,
+  })
+  if (partsError) {
+    await supabase.from("conversations").delete().eq("id", conversationId)
+    throw new Error(errMessage(partsError, "נכשל בהוספת משתתפים לשיחה"))
+  }
+
+  return { id: conversationId, created: true }
+}
+
+/** Remember the waiting chat so the person is added to it when they sign in. */
+async function linkPendingEmailInvite(
+  email: string,
+  conversationId: string,
+): Promise<{ userId?: string } | null> {
+  const res = await fetch("/api/invites/dm", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, conversationId }),
+  })
+  const body = (await res.json().catch(() => null)) as {
+    status?: string
+    userId?: string
+    message?: string
+    error?: string
+  } | null
+  if (!res.ok) {
+    console.error("pending email invite:", body?.message || body?.error || res.status)
+    return null
+  }
+  if (body?.status === "already_registered" && body.userId) return { userId: body.userId }
+  return null
+}
+
+/** Attach the signed-in user to chats that were opened for their email. */
+const claimedEmailChats = new Set<string>()
+
+export async function claimPendingEmailChats(userId: string): Promise<void> {
+  if (claimedEmailChats.has(userId)) return
+  claimedEmailChats.add(userId)
+  try {
+    const res = await fetch("/api/invites/dm/claim", { method: "POST" })
+    if (!res.ok) claimedEmailChats.delete(userId)
+  } catch {
+    claimedEmailChats.delete(userId)
+  }
+}
+
+/** Open a chat with this email. If they are not registered yet, the thread still opens. */
 export async function startChatOrInviteByEmail(
   currentUserId: string,
   email: string,
 ): Promise<DmInviteResult> {
-  const profile = await findUserByEmail(email)
+  const normalized = normalizeEmailAddress(email)
+  await ensureSupabaseConfig()
+  const supabase = createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (user?.email && normalizeEmailAddress(user.email) === normalized) {
+    const conversationId = await getOrCreateSelfConversation(currentUserId)
+    return { status: "chat", conversationId }
+  }
+
+  const profile = await findUserByEmail(normalized)
   if (profile) {
     const conversationId = await getOrCreateDirectConversation(currentUserId, profile.id)
     return { status: "chat", conversationId }
   }
 
-  const res = await fetch("/api/invites/dm", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: email.trim() }),
-  })
-
-  if (res.status === 429) {
-    throw new Error("נוצרו יותר מדי הזמנות. נסה שוב מאוחר יותר.")
-  }
-
-  const body = (await res.json().catch(() => null)) as {
-    status?: string
-    userId?: string
-    inviteUrl?: string
-    shareText?: string
-    email?: string
-    inviterName?: string
-    error?: string
-    message?: string
-  } | null
-
-  if (res.status === 503 && body?.error === "migration_required") {
-    throw new Error(body.message || "חסרה טבלת הזמנות. הרץ את migration-dm-invites.sql")
-  }
-
-  if (!res.ok) {
-    if (body?.error === "cannot_invite_self") throw new Error("לא ניתן להזמין את עצמך")
-    if (body?.error === "invalid_email") throw new Error("כתובת מייל לא תקינה")
-    throw new Error("נכשל ביצירת הזמנה")
-  }
-
-  if (body?.status === "already_registered" && body.userId) {
-    const conversationId = await getOrCreateDirectConversation(currentUserId, body.userId)
-    return { status: "chat", conversationId }
-  }
-
-  if (body?.status === "invited" && body.inviteUrl && body.email) {
-    return {
-      status: "invited",
-      inviteUrl: body.inviteUrl,
-      shareText:
-        body.shareText ||
-        `${body.inviterName || "מישהו"} הזמין אותך לשיחה.\nלכניסה לחץ כאן:\n${body.inviteUrl}`,
-      email: body.email,
-      inviterName: body.inviterName || "משתמש",
+  const pending = await getOrCreatePendingEmailConversation(currentUserId, normalized)
+  try {
+    const linked = await linkPendingEmailInvite(normalized, pending.id)
+    if (linked?.userId) {
+      const directId = await getOrCreateDirectConversation(currentUserId, linked.userId)
+      if (pending.created && directId !== pending.id) {
+        await supabase.from("conversations").delete().eq("id", pending.id)
+      }
+      return { status: "chat", conversationId: directId }
     }
+  } catch (err) {
+    console.error("pending email invite:", err instanceof Error ? err.message : err)
   }
-
-  throw new Error("נכשל ביצירת הזמנה")
+  return { status: "chat", conversationId: pending.id }
 }
 
 export async function acceptDmInvite(token: string): Promise<string> {

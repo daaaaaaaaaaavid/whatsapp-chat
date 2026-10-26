@@ -1,4 +1,5 @@
 import type { Conversation, Message } from "@/lib/types"
+import { isValidEmail } from "@/lib/validation"
 import { callSystemLabel, parseCallSystemPayload } from "@/lib/call-system-message"
 import { plainMessageText } from "@/lib/message-formatting"
 import { parsePollPayload, pollPreviewLabel } from "@/lib/poll"
@@ -9,19 +10,33 @@ import { parseWatchSystemPayload, watchSystemLabel } from "@/lib/watch-system-me
 import { parseMeetingSystemPayload, meetingSystemLabel } from "@/lib/meeting-system-message"
 import { viewOncePreviewLabel } from "@/lib/view-once"
 
+/** Email this direct chat is waiting on, when the other person has no account yet. */
+export function emailHeldAddress(
+  conv: Pick<Conversation, "is_group" | "name" | "pending_email">,
+): string | null {
+  const pending = conv.pending_email?.trim()
+  if (pending && isValidEmail(pending)) return pending
+  if (conv.is_group) return null
+  const name = conv.name?.trim() ?? ""
+  return isValidEmail(name) ? name : null
+}
+
 /** Non-group chat with only the current user (notes / message yourself). */
 export function isSelfConversation(conv: Conversation, currentUserId: string): boolean {
   if (conv.is_group) return false
   const parts = conv.participants ?? []
   if (parts.length === 0) return false
-  return parts.every((p) => p.user_id === currentUserId)
+  if (!parts.every((p) => p.user_id === currentUserId)) return false
+  if (emailHeldAddress(conv)) return false
+  return true
 }
 
 export function convDisplayName(conv: Conversation, currentUserId: string): string {
   if (conv.is_group) return conv.name ?? "קבוצה"
   if (isSelfConversation(conv, currentUserId)) return "הודעה לעצמי"
   const other = conv.participants?.find((p) => p.user_id !== currentUserId)
-  return other?.profile?.display_name ?? other?.profile?.email ?? "משתמש"
+  if (other) return other.profile?.display_name ?? other.profile?.email ?? "משתמש"
+  return emailHeldAddress(conv) ?? "משתמש"
 }
 
 export function convAvatarUrl(conv: Conversation, currentUserId: string): string | null {

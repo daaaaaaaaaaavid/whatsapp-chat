@@ -39,6 +39,9 @@ alter table public.conversations
 alter table public.conversations
   add column if not exists request_status text not null default 'accepted';
 
+alter table public.conversations
+  add column if not exists pending_email text;
+
 -- Participants
 create table if not exists public.conversation_participants (
   id uuid primary key default gen_random_uuid(),
@@ -851,9 +854,9 @@ begin
     and lower(trim(gc.email)) = lower(trim(p.email))
     and p.id is distinct from auth.uid();
 
-  update public.profiles
+  update public.profiles as prof
   set google_contacts_synced_at = now()
-  where id = auth.uid();
+  where prof.id = auth.uid();
 
   return query
     select distinct on (p.id) p.*

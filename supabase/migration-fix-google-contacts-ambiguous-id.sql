@@ -1,8 +1,12 @@
 -- Fix "column reference id is ambiguous" when syncing Google contacts.
--- The OUT column `id` in RETURNS TABLE clashed with profiles.id in the UPDATE.
+-- RETURNS TABLE (id ...) creates a PL/pgSQL variable named id, which clashes
+-- with profiles.id / google_contacts.id. #variable_conflict use_column
+-- makes every reference resolve to the table column.
 -- Run in: Supabase → SQL Editor → Run
 
-create or replace function public.match_my_google_contacts()
+drop function if exists public.match_my_google_contacts();
+
+create function public.match_my_google_contacts()
 returns table (
   id uuid,
   email text,
@@ -16,41 +20,46 @@ language plpgsql
 security definer
 set search_path = public
 as $$
+#variable_conflict use_column
+declare
+  uid uuid;
 begin
-  if auth.uid() is null then
+  uid := auth.uid();
+  if uid is null then
     raise exception 'not authenticated';
   end if;
 
-  update public.google_contacts
+  update public.google_contacts as gc
   set matched_profile_id = null
-  where user_id = auth.uid();
+  where gc.user_id = uid;
 
-  update public.google_contacts gc
-  set matched_profile_id = p.id
-  from public.profiles p
-  where gc.user_id = auth.uid()
+  update public.google_contacts as gc
+  set matched_profile_id = prof.id
+  from public.profiles as prof
+  where gc.user_id = uid
     and gc.email is not null
-    and p.email is not null
-    and lower(trim(gc.email)) = lower(trim(p.email))
-    and p.id is distinct from auth.uid();
+    and prof.email is not null
+    and lower(trim(gc.email)) = lower(trim(prof.email))
+    and prof.id is distinct from uid;
 
-  update public.profiles me
+  update public.profiles as prof
   set google_contacts_synced_at = now()
-  where me.id = auth.uid();
+  where prof.id = uid;
 
   return query
-    select distinct on (p.id)
-      p.id,
-      null::text as email,
-      p.display_name,
-      p.avatar_url,
-      p.about,
-      p.last_seen,
-      p.created_at
-    from public.profiles p
-    inner join public.google_contacts gc on gc.matched_profile_id = p.id
-    where gc.user_id = auth.uid()
-    order by p.id, p.display_name nulls last;
+    select distinct on (prof.id)
+      prof.id,
+      null::text,
+      prof.display_name,
+      prof.avatar_url,
+      prof.about,
+      prof.last_seen,
+      prof.created_at
+    from public.profiles as prof
+    inner join public.google_contacts as gc
+      on gc.matched_profile_id = prof.id
+     and gc.user_id = uid
+    order by prof.id, prof.display_name nulls last;
 end;
 $$;
 

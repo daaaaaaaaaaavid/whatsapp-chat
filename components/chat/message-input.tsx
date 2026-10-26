@@ -121,6 +121,8 @@ type Props = {
   onTyping?: (typing: boolean) => void
   /** People and groups available for @mentions */
   mentionCandidates?: MentionCandidate[]
+  /** Runs before the message is stored. Used to accept an incoming chat on reply. */
+  onBeforeSend?: () => Promise<void>
 }
 
 export type MessageInputHandle = {
@@ -212,6 +214,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
     onEdited,
     onTyping,
     mentionCandidates = [],
+    onBeforeSend,
   },
   ref,
 ) {
@@ -425,6 +428,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
       reply_to?: Message | null
       view_once?: boolean
     }) => {
+      if (onBeforeSend) await onBeforeSend()
       const tempId = `temp-${crypto.randomUUID()}`
       const createdAt = new Date().toISOString()
       const optimistic: Message = {
@@ -515,7 +519,7 @@ export const MessageInput = forwardRef<MessageInputHandle, Props>(function Messa
       })
       return real
     },
-    [conversationId, currentUserId, onOptimistic, onSent, onSendFailed],
+    [conversationId, currentUserId, onBeforeSend, onOptimistic, onSent, onSendFailed],
   )
 
   const uploadAndSend = useCallback(

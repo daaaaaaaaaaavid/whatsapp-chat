@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { fetchGooglePeopleConnections } from "@/lib/google-contacts"
+import { matchStoredGoogleContacts } from "@/lib/match-google-contacts"
 import { checkRateLimitAsync } from "@/lib/rate-limit"
 import type { Profile } from "@/lib/types"
 
@@ -118,23 +119,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "delete_failed", message: deleteError.message }, { status: 500 })
   }
 
-  const { data: matchedRows, error: matchError } = await supabase.rpc("match_my_google_contacts")
-  if (matchError) {
-    const msg = matchError.message.toLowerCase()
-    if (msg.includes("function") && msg.includes("does not exist")) {
-      return NextResponse.json(
-        {
-          error: "missing_rpc",
-          message:
-            "חסרה פונקציית התאמה. הרץ את supabase/migration-google-contacts.sql ב־SQL Editor של Supabase.",
-        },
-        { status: 500 },
-      )
-    }
-    return NextResponse.json({ error: "match_failed", message: matchError.message }, { status: 500 })
+  let matched: Profile[]
+  try {
+    matched = await matchStoredGoogleContacts(supabase, user.id, user.email ?? null)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "נכשל בהתאמת אנשי קשר"
+    return NextResponse.json({ error: "match_failed", message }, { status: 500 })
   }
-
-  const matched = (matchedRows ?? []) as Profile[]
   const matchedIds = new Set(matched.map((p) => p.id))
 
   const { data: stored } = await supabase

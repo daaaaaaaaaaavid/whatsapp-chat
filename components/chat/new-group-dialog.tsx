@@ -13,6 +13,7 @@ import {
 import type { GoogleContact, Profile } from "@/lib/types"
 import { isValidEmail } from "@/lib/validation"
 import { Check, Search, ArrowLeft, X, Mail, AlertCircle, RefreshCw } from "lucide-react"
+import { GoogleSyncMenu } from "./google-sync-menu"
 
 type Props = {
   open: boolean
@@ -34,6 +35,7 @@ export function NewGroupDialog({ open, currentUserId, onClose, onCreated }: Prop
   const [googleMatched, setGoogleMatched] = useState<Profile[]>([])
   const [googleUnmatched, setGoogleUnmatched] = useState<GoogleContact[]>([])
   const [hasSyncedGoogle, setHasSyncedGoogle] = useState(false)
+  const [contactsReady, setContactsReady] = useState(false)
   const [query, setQuery] = useState("")
   const [selected, setSelected] = useState<Profile[]>([])
   const [step, setStep] = useState<"members" | "name">("members")
@@ -51,6 +53,7 @@ export function NewGroupDialog({ open, currentUserId, onClose, onCreated }: Prop
     setGroupName("")
     setActionError(null)
     setGoogleError(null)
+    setContactsReady(false)
     void Promise.all([fetchContacts(currentUserId), fetchGoogleContacts()]).then(
       ([contactsRes, googleRes]) => {
         setUsers(contactsRes.users)
@@ -62,8 +65,9 @@ export function NewGroupDialog({ open, currentUserId, onClose, onCreated }: Prop
             googleRes.unmatched.length > 0,
         )
         if (googleRes.error) setGoogleError(googleRes.error)
+        setContactsReady(true)
       },
-    )
+    ).catch(() => setContactsReady(true))
   }, [open, currentUserId])
 
   const knownIds = useMemo(() => new Set(users.map((u) => u.id)), [users])
@@ -255,7 +259,16 @@ export function NewGroupDialog({ open, currentUserId, onClose, onCreated }: Prop
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={step === "members" ? "הוספת חברים לקבוצה" : "קבוצה חדשה"}>
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={step === "members" ? "הוספת חברים לקבוצה" : "קבוצה חדשה"}
+      headerAction={
+        step === "members" && hasSyncedGoogle ? (
+          <GoogleSyncMenu syncing={syncing} onSync={() => void handleSyncGoogle()} />
+        ) : null
+      }
+    >
       {step === "members" ? (
         <>
           {selected.length > 0 && (
@@ -301,30 +314,26 @@ export function NewGroupDialog({ open, currentUserId, onClose, onCreated }: Prop
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={() => void handleSyncGoogle()}
-            disabled={syncing}
-            className="flex w-full items-center gap-3 border-b border-[var(--wa-border)] bg-[var(--wa-header)] px-5 py-3.5 text-right transition hover:bg-[var(--wa-hover)] disabled:opacity-60"
-          >
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--wa-panel)] text-[#1a73e8] shadow-sm">
-              <RefreshCw className={`h-6 w-6 ${syncing ? "animate-spin" : ""}`} />
-            </div>
-            <div className="min-w-0 flex-1 text-right">
-              <div className="font-medium text-[var(--wa-text)]">
-                {syncing
-                  ? "מסנכרן מגוגל..."
-                  : hasSyncedGoogle
-                    ? "סנכרן שוב מגוגל"
-                    : "סנכרן אנשי קשר מגוגל"}
+          {contactsReady && !hasSyncedGoogle && (
+            <button
+              type="button"
+              onClick={() => void handleSyncGoogle()}
+              disabled={syncing}
+              className="flex w-full items-center gap-3 border-b border-[var(--wa-border)] bg-[var(--wa-header)] px-5 py-3.5 text-right transition hover:bg-[var(--wa-hover)] disabled:opacity-60"
+            >
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--wa-panel)] text-[#1a73e8] shadow-sm">
+                <RefreshCw className={`h-6 w-6 ${syncing ? "animate-spin" : ""}`} />
               </div>
-              <div className="text-sm text-[var(--wa-text-secondary)]">
-                {hasSyncedGoogle
-                  ? `${googleMatched.length + googleUnmatched.length} אנשי קשר נשמרו · לחץ לעדכון`
-                  : "חובה לסנכרן פעם אחת כדי לקבל הצעות אוטומטיות"}
+              <div className="min-w-0 flex-1 text-right">
+                <div className="font-medium text-[var(--wa-text)]">
+                  {syncing ? "מסנכרן מגוגל..." : "סנכרן אנשי קשר מגוגל"}
+                </div>
+                <div className="text-sm text-[var(--wa-text-secondary)]">
+                  חובה לסנכרן פעם אחת כדי לקבל הצעות אוטומטיות
+                </div>
               </div>
-            </div>
-          </button>
+            </button>
+          )}
 
           {actionError && (
             <div className="mx-4 mb-3 flex gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">

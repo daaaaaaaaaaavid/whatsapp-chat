@@ -8,10 +8,11 @@ type Props = {
   open: boolean
   onClose: () => void
   title: string
+  headerAction?: React.ReactNode
   children: React.ReactNode
 }
 
-export function Modal({ open, onClose, title, children }: Props) {
+export function Modal({ open, onClose, title, headerAction, children }: Props) {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose()
@@ -32,7 +33,8 @@ export function Modal({ open, onClose, title, children }: Props) {
           <button onClick={onClose} aria-label="סגור">
             <X className="h-6 w-6" />
           </button>
-          <h2 className="text-lg font-medium">{title}</h2>
+          <h2 className="min-w-0 flex-1 truncate text-lg font-medium">{title}</h2>
+          {headerAction}
         </header>
         <div className="wa-scroll flex-1 overflow-y-auto">{children}</div>
       </div>

@@ -7,7 +7,6 @@ import {
   fetchContacts,
   getOrCreateDirectConversation,
   startChatOrInviteByEmail,
-  type DmInviteResult,
 } from "@/lib/chat-actions"
 import {
   contactMatchScore,
@@ -17,7 +16,8 @@ import {
 } from "@/lib/google-contacts-client"
 import type { GoogleContact, Profile } from "@/lib/types"
 import { isValidEmail } from "@/lib/validation"
-import { Search, Users, AlertCircle, Mail, RefreshCw, MessageCircle, Copy, Check, Link2 } from "lucide-react"
+import { Search, Users, AlertCircle, Mail, RefreshCw, MessageCircle } from "lucide-react"
+import { GoogleSyncMenu } from "./google-sync-menu"
 
 type Props = {
   open: boolean
@@ -57,10 +57,6 @@ export function NewChatDialog({
   const [error, setError] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [googleError, setGoogleError] = useState<string | null>(null)
-  const [inviteResult, setInviteResult] = useState<Extract<DmInviteResult, { status: "invited" }> | null>(
-    null,
-  )
-  const [copied, setCopied] = useState<"link" | "message" | null>(null)
 
   const loadLists = async () => {
     setLoading(true)
@@ -108,8 +104,6 @@ export function NewChatDialog({
     if (!open) return
     setQuery("")
     setActionError(null)
-    setInviteResult(null)
-    setCopied(null)
     void loadLists()
   }, [open, currentUserId])
 
@@ -249,38 +243,16 @@ export function NewChatDialog({
     if (busy || !looksLikeEmail(target)) return
     setBusy(true)
     setActionError(null)
-    setInviteResult(null)
-    setCopied(null)
     try {
       const result = await startChatOrInviteByEmail(currentUserId, target)
       if (result.status === "chat") {
         onCreated(result.conversationId)
         return
       }
-      setInviteResult(result)
-      try {
-        await navigator.clipboard.writeText(result.shareText)
-        setCopied("message")
-        window.setTimeout(() => setCopied(null), 2500)
-      } catch {
-        // clipboard optional
-      }
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "נכשל בפתיחת שיחה")
     } finally {
       setBusy(false)
-    }
-  }
-
-  const handleCopyInvite = async (kind: "link" | "message") => {
-    if (!inviteResult) return
-    const value = kind === "link" ? inviteResult.inviteUrl : inviteResult.shareText
-    try {
-      await navigator.clipboard.writeText(value)
-      setCopied(kind)
-      window.setTimeout(() => setCopied(null), 2500)
-    } catch {
-      setActionError("לא ניתן להעתיק. העתק ידנית מהשדה למטה.")
     }
   }
 
@@ -292,7 +264,16 @@ export function NewChatDialog({
     browseGoogleUnmatched.length === 0
 
   return (
-    <Modal open={open} onClose={onClose} title="צ'אט חדש">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="צ'אט חדש"
+      headerAction={
+        hasSyncedGoogle ? (
+          <GoogleSyncMenu syncing={syncing} onSync={() => void handleSyncGoogle()} />
+        ) : null
+      }
+    >
       <div className="p-3">
         <div className="flex items-center gap-3 rounded-lg bg-[var(--wa-header)] px-4 py-2">
           <Search className="h-4 w-4 text-[var(--wa-text-secondary)]" />
@@ -323,10 +304,11 @@ export function NewChatDialog({
           {hasSyncedGoogle
             ? "בזמן ההקלדה מוצגות הצעות מאנשי הקשר שסנכרנת מגוגל."
             : "סנכרן פעם אחת מגוגל — ואז חיפוש לפי שם או מייל יציע אוטומטית."}{" "}
-          שיחה עם מישהו חדש נפתחת אצלו רק אחרי שהוא מאשר.
+          הצ'אט נפתח מיד. הצד השני יכול לענות או לסגור אותו.
         </p>
       </div>
 
+      {!loading && !hasSyncedGoogle && (
       <button
         type="button"
         onClick={() => void handleSyncGoogle()}
@@ -338,19 +320,14 @@ export function NewChatDialog({
         </div>
         <div className="min-w-0 flex-1 text-right">
           <div className="font-medium text-[var(--wa-text)]">
-            {syncing
-              ? "מסנכרן מגוגל..."
-              : hasSyncedGoogle
-                ? "סנכרן שוב מגוגל"
-                : "סנכרן אנשי קשר מגוגל"}
+            {syncing ? "מסנכרן מגוגל..." : "סנכרן אנשי קשר מגוגל"}
           </div>
           <div className="text-sm text-[var(--wa-text-secondary)]">
-            {hasSyncedGoogle
-              ? `${googleMatched.length + googleUnmatched.length} אנשי קשר נשמרו · לחץ לעדכון`
-              : "חובה לסנכרן פעם אחת כדי לקבל הצעות אוטומטיות"}
+            חובה לסנכרן פעם אחת כדי לקבל הצעות אוטומטיות
           </div>
         </div>
       </button>
+      )}
 
       <button
         type="button"
@@ -391,62 +368,10 @@ export function NewChatDialog({
             <Mail className="h-6 w-6" />
           </div>
           <div className="min-w-0 flex-1 text-right">
-            <div className="font-medium text-[var(--wa-text)]">שלח בקשת שיחה</div>
+            <div className="font-medium text-[var(--wa-text)]">התחל שיחה</div>
             <div className="truncate text-sm text-[var(--wa-text-secondary)]">{q}</div>
           </div>
         </button>
-      )}
-
-      {inviteResult && (
-        <div className="mx-4 mb-3 overflow-hidden rounded-xl border border-[#00a884]/20 bg-[var(--wa-accent-soft)]">
-          <div className="flex items-start gap-3 px-4 pt-4">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white">
-              <Link2 className="h-5 w-5" />
-            </div>
-            <div className="min-w-0 flex-1 text-right">
-              <p className="text-sm font-semibold text-[var(--wa-text)]">קישור הזמנה מוכן</p>
-              <p className="mt-0.5 text-xs leading-relaxed text-[var(--wa-text-secondary)]">
-                {inviteResult.inviterName} מזמין את {inviteResult.email} לשיחה.
-                העתק ושלח במייל, גוגל צ&apos;אט או בכל מקום.
-              </p>
-            </div>
-          </div>
-
-          <div className="mx-4 mt-3 rounded-lg bg-[var(--wa-panel)]/80 px-3 py-2.5" dir="rtl">
-            <p className="whitespace-pre-wrap text-xs leading-relaxed text-[var(--wa-text)]">
-              {inviteResult.shareText}
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 px-4 py-3">
-            <button
-              type="button"
-              onClick={() => void handleCopyInvite("message")}
-              className="inline-flex items-center gap-1.5 rounded-full bg-[#00a884] px-3.5 py-2 text-xs font-medium text-white"
-            >
-              {copied === "message" ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-              {copied === "message" ? "ההודעה הועתקה" : "העתק הודעת הזמנה"}
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleCopyInvite("link")}
-              className="inline-flex items-center gap-1.5 rounded-full border border-[#00a884]/30 bg-[var(--wa-panel)] px-3.5 py-2 text-xs font-medium text-[var(--wa-teal-dark)]"
-            >
-              {copied === "link" ? <Check className="h-3.5 w-3.5" /> : <Link2 className="h-3.5 w-3.5" />}
-              {copied === "link" ? "הקישור הועתק" : "העתק קישור בלבד"}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setInviteResult(null)
-                onClose()
-              }}
-              className="mr-auto rounded-full px-3 py-2 text-xs font-medium text-[var(--wa-text-secondary)] hover:bg-[var(--wa-panel)]/70"
-            >
-              סגור
-            </button>
-          </div>
-        </div>
       )}
 
       {error && (
@@ -509,7 +434,7 @@ export function NewChatDialog({
                 <div className="min-w-0 flex-1 border-b border-[var(--wa-border)] pb-2.5">
                   <div className="truncate text-[var(--wa-text)]">{u.display_name ?? u.email}</div>
                   <div className="truncate text-sm text-[var(--wa-text-secondary)]">
-                    {u.email ? `${u.email} · בקשת שיחה` : "בקשת שיחה · יאשרו לפני שזה נפתח"}
+                    {u.email ? `${u.email} · התחל שיחה` : "התחל שיחה"}
                   </div>
                 </div>
               </button>
@@ -537,7 +462,7 @@ export function NewChatDialog({
                         {s.profile.display_name ?? s.profile.email}
                       </div>
                       <div className="truncate text-sm text-[var(--wa-text-secondary)]">
-                        {s.profile.email ?? "ב-WhaChat"} · בקשת שיחה
+                        {s.profile.email ?? "ב-WhaChat"} · התחל שיחה
                       </div>
                     </div>
                   </button>
@@ -562,7 +487,7 @@ export function NewChatDialog({
                       </div>
                       <div className="truncate text-sm text-[var(--wa-text-secondary)]">
                         {s.contact.email
-                          ? `${s.contact.email} · שלח הזמנה`
+                          ? `${s.contact.email} · התחל שיחה`
                           : "לא ב-WhaChat"}
                       </div>
                     </div>
@@ -589,7 +514,7 @@ export function NewChatDialog({
                   <div className="min-w-0 flex-1 border-b border-[var(--wa-border)] pb-2.5">
                     <div className="truncate text-[var(--wa-text)]">{c.display_name ?? c.email}</div>
                     <div className="truncate text-sm text-[var(--wa-text-secondary)]">
-                      {c.email ? `${c.email} · שלח הזמנה` : "לא ב-WhaChat"}
+                      {c.email ? `${c.email} · התחל שיחה` : "לא ב-WhaChat"}
                     </div>
                   </div>
                 </button>
@@ -602,7 +527,7 @@ export function NewChatDialog({
               <p>
                 {isSearching
                   ? showEmailStart
-                    ? "לחץ למעלה כדי לפתוח שיחה או ליצור קישור הזמנה"
+                    ? "לחץ למעלה כדי לפתוח את הצ'אט"
                     : hasSyncedGoogle
                       ? "לא נמצאו הצעות תואמות באנשי הקשר"
                       : "אין עדיין אנשי קשר מסונכרנים מגוגל"

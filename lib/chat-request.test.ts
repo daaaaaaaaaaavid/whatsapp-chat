@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { canComposeInConversation, chatRequestView } from "@/lib/chat-request"
+import { isSelfConversation } from "@/lib/conversation-display"
 import type { Conversation } from "@/lib/types"
 
 function conv(partial: Partial<Conversation>): Conversation {
@@ -41,12 +42,26 @@ describe("chatRequestView", () => {
     ).toBe("none")
   })
 
-  it("shows a pending request to the recipient and a waiting state to the sender", () => {
+  it("lets both people write, and the recipient can still close the chat", () => {
     const pending = conv({ request_status: "pending", created_by: "alice" })
     expect(chatRequestView(pending, "alice")).toBe("outgoing")
     expect(chatRequestView(pending, "bob")).toBe("incoming")
     expect(canComposeInConversation(pending, "alice")).toBe(true)
-    expect(canComposeInConversation(pending, "bob")).toBe(false)
+    expect(canComposeInConversation(pending, "bob")).toBe(true)
+  })
+
+  it("opens a waiting chat for an email that is not registered yet", () => {
+    const pending = conv({
+      request_status: "pending",
+      created_by: "alice",
+      name: "dc6427874@gmail.com",
+      participants: [
+        { id: "p1", conversation_id: "c1", user_id: "alice", is_admin: false, joined_at: "" },
+      ],
+    })
+    expect(isSelfConversation(pending, "alice")).toBe(false)
+    expect(chatRequestView(pending, "alice")).toBe("outgoing")
+    expect(canComposeInConversation(pending, "alice")).toBe(true)
   })
 
   it("hides a declined request from the person who said no", () => {

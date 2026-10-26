@@ -67,6 +67,29 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "cannot_invite_self" }, { status: 400 })
     }
 
+    const conversationIdRaw =
+      body && typeof body === "object" && "conversationId" in body
+        ? String((body as { conversationId?: unknown }).conversationId ?? "").trim()
+        : ""
+    let conversationId: string | null = null
+    if (conversationIdRaw) {
+      if (!/^[0-9a-f-]{36}$/i.test(conversationIdRaw)) {
+        return NextResponse.json({ error: "invalid_conversation" }, { status: 400 })
+      }
+      const { data: conv, error: convError } = await supabase
+        .from("conversations")
+        .select("id, created_by, is_group, name")
+        .eq("id", conversationIdRaw)
+        .maybeSingle()
+      if (convError || !conv || conv.created_by !== user.id || conv.is_group) {
+        return NextResponse.json({ error: "invalid_conversation" }, { status: 400 })
+      }
+      if ((conv.name ?? "").trim().toLowerCase() !== email) {
+        return NextResponse.json({ error: "invalid_conversation" }, { status: 400 })
+      }
+      conversationId = conv.id
+    }
+
     const existingId = await lookupExistingUserId(email)
     if (existingId) {
       return NextResponse.json({
@@ -90,7 +113,7 @@ export async function POST(req: Request) {
 
     const { data: existingInvite } = await supabase
       .from("dm_invites")
-      .select("token, expires_at")
+      .select("id, token, expires_at, conversation_id")
       .eq("inviter_id", user.id)
       .is("accepted_at", null)
       .gt("expires_at", new Date().toISOString())
@@ -106,6 +129,7 @@ export async function POST(req: Request) {
         token,
         inviter_id: user.id,
         invitee_email: email,
+        ...(conversationId ? { conversation_id: conversationId } : {}),
       })
       if (insertError) {
         const msg = insertError.message.toLowerCase()
@@ -117,6 +141,23 @@ export async function POST(req: Request) {
         }
         console.error("dm_invites insert:", insertError.message)
         return NextResponse.json({ error: "create_failed" }, { status: 500 })
+      }
+    } else if (
+      conversationId &&
+      existingInvite?.id &&
+      existingInvite.conversation_id !== conversationId
+    ) {
+      const patch = { conversation_id: conversationId }
+      const updated = await supabase
+        .from("dm_invites")
+        .update(patch)
+        .eq("id", existingInvite.id)
+        .eq("inviter_id", user.id)
+      if (updated.error) {
+        const admin = createServiceClient()
+        if (admin) {
+          await admin.from("dm_invites").update(patch).eq("id", existingInvite.id)
+        }
       }
     }
 
