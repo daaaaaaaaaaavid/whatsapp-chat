@@ -195,6 +195,20 @@ export async function loadDriveAccount(userId: string): Promise<DriveAccountRow 
   return data as DriveAccountRow | null
 }
 
+const driveTokenCache = new Map<string, { accessToken: string; expiresAt: number }>()
+
+/** Owner access token for reading a file, without touching the Drive folder. */
+export async function driveAccessTokenForUser(userId: string): Promise<string> {
+  const cached = driveTokenCache.get(userId)
+  if (cached && cached.expiresAt > Date.now() + 60_000) return cached.accessToken
+  const row = await loadDriveAccount(userId)
+  if (!row) throw new DriveAccountMissingError()
+  const refreshToken = decryptDriveToken(row.refresh_token)
+  const next = await refreshGoogleAccessToken(refreshToken)
+  driveTokenCache.set(userId, next)
+  return next.accessToken
+}
+
 export async function openDriveSession(userId: string): Promise<DriveSession> {
   const row = await loadDriveAccount(userId)
   if (!row) throw new DriveAccountMissingError()
